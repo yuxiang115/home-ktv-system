@@ -628,6 +628,76 @@ describe("mobile controller runtime", () => {
     expect(requests.some((request) => request.url === "/rooms/living-room/commands/add-queue-entry")).toBe(false);
   });
 
+  it("renders indexed KTV search groups with disabled queue actions", async () => {
+    const user = userEvent.setup();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))],
+      songSearchResponse: (query) => ({
+        query,
+        local: [],
+        indexed: {
+          status: "available",
+          message: "找到 KTV 索引结果",
+          results: [
+            {
+              indexedSongId: "ktv-song-sunny",
+              title: "索引晴天",
+              artistName: "周杰伦",
+              category: "流行",
+              sourceLabel: "KTV索引",
+              matchReason: "title",
+              versions: [
+                {
+                  indexedAssetId: "ktv-asset-sunny-mkv",
+                  displayName: "索引晴天.mkv",
+                  sourceLabel: "KTV索引",
+                  extension: ".mkv",
+                  sizeBytes: 734003200,
+                  category: "流行",
+                  queueState: "needs_catalog_sync",
+                  canQueue: false,
+                  disabledLabel: "需同步入库后可点歌",
+                  filePath: "/mnt/nas/KTV歌曲/索引晴天.mkv"
+                },
+                {
+                  indexedAssetId: "ktv-asset-sunny-mpg",
+                  displayName: "索引晴天.mpg",
+                  sourceLabel: "KTV索引",
+                  extension: ".mpg",
+                  sizeBytes: null,
+                  category: "流行",
+                  queueState: "needs_catalog_sync",
+                  canQueue: false,
+                  disabledLabel: "需同步入库后可点歌",
+                  file_path: "/mnt/nas/KTV歌曲/索引晴天.mpg"
+                }
+              ]
+            }
+          ]
+        },
+        online: { status: "disabled", message: "本地未入库，补歌功能后续可用", candidates: [] }
+      })
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    expect(await screen.findByText("KTV 索引结果")).toBeTruthy();
+    expect(screen.getByText("索引晴天")).toBeTruthy();
+    expect(screen.getAllByText("KTV索引").length).toBeGreaterThan(0);
+    expect(screen.getByText("2 个索引版本")).toBeTruthy();
+    expect(screen.getByText("未知大小")).toBeTruthy();
+    const disabledButton = screen.getAllByRole("button", { name: "需同步入库后可点歌" })[0] as HTMLButtonElement;
+    expect(disabledButton.disabled).toBe(true);
+
+    await user.click(disabledButton);
+
+    expect(requests.some((request) => request.url === "/rooms/living-room/commands/add-queue-entry")).toBe(false);
+    const searchPanelText = screen.getByRole("region", { name: "搜索歌曲" }).textContent ?? "";
+    expect(searchPanelText).not.toContain("/mnt/nas");
+    expect(searchPanelText).not.toContain("file_path");
+  });
+
   it("falls back to a short disabled real MV search label", async () => {
     installControllerFetchMock({
       restoreResponses: [json(sessionResponse(roomSnapshot()))],
