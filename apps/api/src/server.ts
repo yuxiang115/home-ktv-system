@@ -23,31 +23,28 @@ import { PgScanRunRepository } from "./modules/ingest/repositories/scan-run-repo
 import { createScanScheduler, type ScanScheduler, type ScanSchedulerOptions } from "./modules/ingest/scan-scheduler.js";
 import { createOnlineRuntime } from "./modules/online/runtime.js";
 import type { OnlineCandidateProvider } from "./modules/online/provider-registry.js";
-import { PgKtvIndexReadRepository, type KtvIndexReadRepository } from "./modules/ktv-index/ktv-index-read-repository.js";
-import { PgPlayerDeviceSessionRepository, type PlayerDeviceSessionRepository } from "./modules/player/register-player.js";
+import type { PlayerDeviceSessionRepository } from "./modules/player/register-player.js";
 import {
   InMemoryControlSessionRepository,
-  PgControlSessionRepository,
   type ControlSessionRepository
 } from "./modules/controller/repositories/control-session-repository.js";
-import { PgPlaybackEventRepository, type PlaybackEventRepository } from "./modules/playback/repositories/playback-event-repository.js";
-import { PgPlaybackSessionRepository } from "./modules/playback/repositories/playback-session-repository.js";
+import type { PlaybackEventRepository } from "./modules/playback/repositories/playback-event-repository.js";
 import type {
   UpdatePlaybackFactsInput,
   UpdatePlayerPositionInput
 } from "./modules/playback/repositories/playback-session-repository.js";
-import { InMemoryQueueEntryRepository, PgQueueEntryRepository } from "./modules/playback/repositories/queue-entry-repository.js";
+import { InMemoryQueueEntryRepository } from "./modules/playback/repositories/queue-entry-repository.js";
 import {
-  PgRoomSessionCommandRepository,
   type RoomSessionCommandRecord,
   type RoomSessionCommandRepository
 } from "./modules/playback/repositories/room-session-command-repository.js";
-import {
-  InMemoryRoomPairingTokenRepository,
-  PgRoomPairingTokenRepository
-} from "./modules/rooms/repositories/pairing-token-repository.js";
-import { PgRoomRepository, type RoomRepository } from "./modules/rooms/repositories/room-repository.js";
+import { InMemoryRoomPairingTokenRepository } from "./modules/rooms/repositories/pairing-token-repository.js";
+import type { RoomRepository } from "./modules/rooms/repositories/room-repository.js";
 import { RoomSnapshotBroadcaster } from "./modules/realtime/room-snapshot-broadcaster.js";
+import {
+  createPgRuntimeRepositories,
+  type RuntimeRepositories
+} from "./runtime/pg-runtime-repositories.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerCors } from "./routes/cors.js";
 import { registerAdminCatalogRoutes } from "./routes/admin-catalog.js";
@@ -58,7 +55,7 @@ import { registerAvailableSongsRoutes } from "./routes/available-songs.js";
 import { registerControlCommandRoutes } from "./routes/control-commands.js";
 import { registerControlSessionRoutes } from "./routes/control-sessions.js";
 import { registerMediaRoutes } from "./routes/media.js";
-import { registerPlayerRoutes, type PlayerRouteRepositories } from "./routes/player.js";
+import { registerPlayerRoutes } from "./routes/player.js";
 import { registerRealtimeRoutes } from "./routes/realtime.js";
 import { registerRoomSnapshotRoutes } from "./routes/room-snapshots.js";
 import { registerSongSearchRoutes } from "./routes/song-search.js";
@@ -104,7 +101,7 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
   const room = createLivingRoom(resolvedConfig);
   const session = createInitialPlaybackSession(room);
   const pool = resolvedConfig.databaseUrl ? (options.poolFactory ?? createPgPool)(resolvedConfig.databaseUrl) : null;
-  const repositories = pool ? createPgRepositories(pool) : createInMemoryRepositories(room, session);
+  const repositories = pool ? createPgRuntimeRepositories(pool) : createInMemoryRepositories(room, session);
   const onlineRuntime = createOnlineRuntime({
     config: resolvedConfig,
     pool,
@@ -229,31 +226,6 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
 
 function createPgPool(databaseUrl: string): Pool {
   return new Pool({ connectionString: databaseUrl });
-}
-
-type RuntimeRepositories = PlayerRouteRepositories & {
-  songs: SongRepository & AdminCatalogSongRepository;
-  controlSessions: ControlSessionRepository;
-  controlCommands: RoomSessionCommandRepository;
-  ktvIndex?: KtvIndexReadRepository;
-};
-
-function createPgRepositories(pool: Pool): RuntimeRepositories {
-  const playbackSessions = new PgPlaybackSessionRepository(pool);
-
-  return {
-    rooms: new PgRoomRepository(pool),
-    playbackSessions,
-    queueEntries: new PgQueueEntryRepository(pool),
-    assets: new PgAssetRepository(pool),
-    songs: new PgSongRepository(pool),
-    pairingTokens: new PgRoomPairingTokenRepository(pool),
-    controlSessions: new PgControlSessionRepository(pool),
-    controlCommands: new PgRoomSessionCommandRepository(pool),
-    deviceSessions: new PgPlayerDeviceSessionRepository(pool),
-    playbackEvents: new PgPlaybackEventRepository(pool),
-    ktvIndex: new PgKtvIndexReadRepository(pool)
-  };
 }
 
 function createRuntimeIngest(input: {
