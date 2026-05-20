@@ -276,6 +276,39 @@ function createPairing() {
   };
 }
 
+function indexedAddSnapshot(): RoomControlSnapshot {
+  return {
+    type: "room.control.snapshot",
+    roomId: "living-room",
+    roomSlug: "living-room",
+    sessionVersion: 2,
+    state: "idle",
+    pairing: createPairing(),
+    tvPresence: { online: true, deviceName: "TV", lastSeenAt: now.toISOString(), conflict: null },
+    controllers: { onlineCount: 1 },
+    currentTarget: null,
+    switchTarget: null,
+    targetVocalMode: "instrumental",
+    queue: [
+      {
+        queueEntryId: "queue-indexed-1",
+        songId: "song-ktv-ktv-song-1",
+        assetId: "asset-ktv-ktv-asset-1",
+        songTitle: "七里香",
+        artistName: "周杰伦",
+        requestedBy: "phone-1",
+        queuePosition: 1,
+        status: "queued",
+        canPromote: false,
+        canDelete: true,
+        undoExpiresAt: null
+      }
+    ],
+    notice: null,
+    generatedAt: now.toISOString()
+  };
+}
+
 function isSnapshotUpdated(message: unknown): boolean {
   return Boolean(message && typeof message === "object" && (message as { type?: string }).type === "room.control.snapshot.updated");
 }
@@ -344,7 +377,8 @@ async function createRealtimeServer(harness: ReturnType<typeof createHarness>) {
     config: createConfig(),
     repositories: harness.repositories,
     assetGateway: harness.assetGateway,
-    broadcaster: harness.broadcaster
+    broadcaster: harness.broadcaster,
+    ...(harness.indexedQueueCommands ? { indexedQueueCommands: harness.indexedQueueCommands } : {})
   });
   await registerPlayerRoutes(server, {
     config: createConfig(),
@@ -356,7 +390,10 @@ async function createRealtimeServer(harness: ReturnType<typeof createHarness>) {
   return server;
 }
 
-function createHarness(options: { queueEntries?: readonly QueueEntry[] } = {}) {
+function createHarness(options: {
+  queueEntries?: readonly QueueEntry[];
+  indexedQueueCommands?: Parameters<typeof registerControlCommandRoutes>[1]["indexedQueueCommands"];
+} = {}) {
   const room = createRoom();
   const currentTestTime = new Date();
   const songs = new Map<string, Song>([
@@ -416,6 +453,7 @@ function createHarness(options: { queueEntries?: readonly QueueEntry[] } = {}) {
   return {
     room,
     broadcaster,
+    indexedQueueCommands: options.indexedQueueCommands,
     assetGateway: new AssetGateway({
       assetRepository: createAssetRepository(assets),
       mediaPathResolver: new MediaPathResolver({ mediaRoot: "/media-root" }),

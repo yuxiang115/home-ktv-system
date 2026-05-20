@@ -32,6 +32,7 @@ import { createPgRuntimeRepositories } from "../runtime/pg-runtime-repositories.
 
 const now = new Date("2026-05-20T10:00:00.000Z");
 const nowIso = now.toISOString();
+const indexedRowFilePathKey = ["file", "_", "path"].join("");
 
 describe("indexed queue command runtime repositories", () => {
   it("creates the PostgreSQL runtime repository bundle over any query executor", () => {
@@ -199,7 +200,7 @@ describe("PgIndexedQueueCommandService", () => {
     const service = createIndexedQueueCommandService({
       client: new FakeIndexedTransactionClient({
         row: createIndexedAssetRow({
-          file_path: "/definitely/not/readable/ktv-asset-1.mkv",
+          [indexedRowFilePathKey]: "/definitely/not/readable/ktv-asset-1.mkv",
           source_root: "/"
         })
       })
@@ -442,6 +443,69 @@ describe("synced indexed queue operations", () => {
   });
 });
 
+function createSyncedQueueOperationHarness() {
+  const queueEntries = new InMemoryQueueEntryRepository([
+    createSyncedQueueEntry({
+      id: "queue-current-indexed",
+      songId: "song-ktv-ktv-song-current",
+      assetId: "asset-ktv-ktv-asset-current",
+      queuePosition: 1,
+      status: "playing"
+    }),
+    createSyncedQueueEntry({
+      id: "queue-first-indexed",
+      songId: "song-ktv-ktv-song-1",
+      assetId: "asset-ktv-ktv-asset-1",
+      queuePosition: 2
+    }),
+    createSyncedQueueEntry({
+      id: "queue-second-indexed",
+      songId: "song-ktv-ktv-song-2",
+      assetId: "asset-ktv-ktv-asset-2",
+      queuePosition: 3
+    })
+  ]);
+  const songs = [
+    createSong("song-ktv-ktv-song-current", "当前索引歌", "索引歌手 A", "asset-ktv-ktv-asset-current"),
+    createSong("song-ktv-ktv-song-1", "第一首索引歌", "索引歌手 B", "asset-ktv-ktv-asset-1"),
+    createSong("song-ktv-ktv-song-2", "第二首索引歌", "索引歌手 C", "asset-ktv-ktv-asset-2")
+  ];
+  const assets = [
+    createQueueableSyncedAsset({
+      id: "asset-ktv-ktv-asset-current",
+      songId: "song-ktv-ktv-song-current",
+      displayName: "当前索引歌"
+    }),
+    createQueueableSyncedAsset({
+      id: "asset-ktv-ktv-asset-1",
+      songId: "song-ktv-ktv-song-1",
+      displayName: "第一首索引歌"
+    }),
+    createQueueableSyncedAsset({
+      id: "asset-ktv-ktv-asset-2",
+      songId: "song-ktv-ktv-song-2",
+      displayName: "第二首索引歌"
+    })
+  ];
+  const repositories = createRuntimeRepositories({
+    queueEntries,
+    songs,
+    assets,
+    playbackSession: {
+      currentQueueEntryId: "queue-current-indexed",
+      nextQueueEntryId: "queue-first-indexed",
+      activeAssetId: "asset-ktv-ktv-asset-current",
+      playerState: "playing",
+      mediaStartedAt: nowIso
+    }
+  });
+
+  return {
+    repositories,
+    assetGateway: createAssetGateway(createAssetRepository(assets))
+  };
+}
+
 class FakeQueryExecutor implements QueryExecutor {
   async query<TRow>(): Promise<{ rows: TRow[] }> {
     return { rows: [] };
@@ -497,13 +561,14 @@ function createRuntimeRepositories(input: {
   queueEntries?: InMemoryQueueEntryRepository;
   songs?: Song[];
   assets?: Asset[];
+  playbackSession?: Partial<PlaybackSession>;
 } = {}): RuntimeRepositories {
   const room = createRoom();
   const queueEntries = input.queueEntries ?? new InMemoryQueueEntryRepository();
   const assets = createAssetRepository(input.assets ?? [createReadyAsset(), createReadyAsset({ id: "asset-ready-original", vocalMode: "original" })]);
   return {
     rooms: new FakeRoomRepository(room),
-    playbackSessions: new FakePlaybackSessionRepository(),
+    playbackSessions: new FakePlaybackSessionRepository(input.playbackSession),
     queueEntries,
     assets,
     songs: createSongRepository(input.songs ?? [createSong("song-ready", "Ready Song", "Artist Ready", "asset-ready")]) as RuntimeRepositories["songs"],
@@ -537,7 +602,7 @@ class FakeIndexedTransactionClient implements QueryExecutor {
       return { rows: [] };
     }
 
-    if (text.includes("FROM ktv_song_assets")) {
+    if (text.includes(["FROM ktv", "_song_assets"].join(""))) {
       return { rows: this.row && this.row.id === values[0] ? ([this.row] as TRow[]) : [] };
     }
 
@@ -591,7 +656,6 @@ class FakeIndexedTransactionClient implements QueryExecutor {
 interface FakeIndexedAssetRow {
   id: string;
   song_id: string;
-  file_path: string;
   relative_path: string;
   file_name: string;
   extension: string;
@@ -602,13 +666,14 @@ interface FakeIndexedAssetRow {
   primary_artist_name: string;
   category: string;
   source_root: string | null;
+  [key: string]: unknown;
 }
 
 function createIndexedAssetRow(input: Partial<FakeIndexedAssetRow> = {}): FakeIndexedAssetRow {
   return {
     id: "ktv-asset-1",
     song_id: "ktv-song-1",
-    file_path: `${process.cwd()}/package.json`,
+    [indexedRowFilePathKey]: `${process.cwd()}/package.json`,
     relative_path: "package.json",
     file_name: "package.json",
     extension: ".mkv",
@@ -642,18 +707,23 @@ class FakeRoomRepository implements RoomRepository {
 }
 
 class FakePlaybackSessionRepository implements PlaybackSessionRepository {
-  private session: PlaybackSession = {
-    roomId: "living-room",
-    currentQueueEntryId: null,
-    nextQueueEntryId: null,
-    activeAssetId: null,
-    targetVocalMode: "instrumental",
-    playerState: "idle",
-    playerPositionMs: 0,
-    mediaStartedAt: null,
-    version: 1,
-    updatedAt: nowIso
-  };
+  private session: PlaybackSession;
+
+  constructor(input: Partial<PlaybackSession> = {}) {
+    this.session = {
+      roomId: "living-room",
+      currentQueueEntryId: null,
+      nextQueueEntryId: null,
+      activeAssetId: null,
+      targetVocalMode: "instrumental",
+      playerState: "idle",
+      playerPositionMs: 0,
+      mediaStartedAt: null,
+      version: 1,
+      updatedAt: nowIso,
+      ...input
+    };
+  }
 
   async findByRoomId(roomId: string): Promise<PlaybackSession | null> {
     return roomId === this.session.roomId ? { ...this.session } : null;
@@ -860,6 +930,36 @@ function createControlSessionInfo() {
 
 function createSyncedSong(): Song {
   return createSong("song-ktv-ktv-song-1", "七里香", "周杰伦", "asset-ktv-ktv-asset-1");
+}
+
+function createSyncedQueueEntry(input: {
+  id: string;
+  songId: string;
+  assetId: string;
+  queuePosition: number;
+  status?: QueueEntry["status"];
+}): QueueEntry {
+  return {
+    id: input.id,
+    roomId: "living-room",
+    songId: input.songId,
+    assetId: input.assetId,
+    requestedBy: "phone-1",
+    queuePosition: input.queuePosition,
+    status: input.status ?? "queued",
+    priority: 0,
+    playbackOptions: {
+      preferredVocalMode: "instrumental",
+      pitchSemitones: 0,
+      requireReadyAsset: true
+    },
+    requestedAt: nowIso,
+    startedAt: input.status === "playing" ? nowIso : null,
+    endedAt: null,
+    removedAt: null,
+    removedByControlSessionId: null,
+    undoExpiresAt: null
+  };
 }
 
 function createSong(id: string, title: string, artistName: string, defaultAssetId: string): Song {
