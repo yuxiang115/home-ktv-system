@@ -62,7 +62,7 @@ async function main(currentCommand, currentArg) {
       for (const service of serviceNames()) {
         await startService(service);
       }
-      printUrls();
+      await printUrls();
       return;
     case "stop":
       ensureDirs();
@@ -78,14 +78,14 @@ async function main(currentCommand, currentArg) {
       for (const service of serviceNames()) {
         await startService(service);
       }
-      printUrls();
+      await printUrls();
       return;
     case "status":
       ensureDirs();
       for (const service of serviceNames()) {
         reportStatus(service);
       }
-      printUrls();
+      await printUrls();
       return;
     case "tail":
       ensureDirs();
@@ -266,20 +266,59 @@ async function tailLogs(service) {
   });
 }
 
-function printUrls() {
+async function printUrls() {
   const tvLocal = `http://localhost:5173/?apiBaseUrl=${API_BASE_URL}&roomSlug=${ROOM_SLUG}&deviceName=Living%20Room%20TV`;
   const tvLan = `http://${LAN_IP}:5173/?apiBaseUrl=${API_BASE_URL}&roomSlug=${ROOM_SLUG}&deviceName=Living%20Room%20TV`;
+  const mobileControllerUrl = await resolveMobileControllerUrl();
 
   console.log("");
   console.log("URLs:");
   console.log(`  API health:        ${API_BASE_URL}/health`);
   console.log(`  Admin:             http://${LAN_IP}:5174/`);
-  console.log(`  Mobile controller: ${CONTROLLER_BASE_URL}/controller?room=${ROOM_SLUG}`);
+  console.log(`  Mobile controller: ${mobileControllerUrl}`);
   console.log(`  TV local:          ${tvLocal}`);
   console.log(`  TV LAN:            ${tvLan}`);
   console.log("");
   console.log("Logs:");
   console.log(`  ${LOG_DIR}`);
+}
+
+async function resolveMobileControllerUrl() {
+  const fallbackUrl = `${CONTROLLER_BASE_URL}/controller?room=${encodeURIComponent(ROOM_SLUG)}`;
+  const snapshotUrl = `${API_BASE_URL}/rooms/${encodeURIComponent(ROOM_SLUG)}/snapshot`;
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      const snapshot = await fetchJsonWithTimeout(snapshotUrl, 800);
+      const pairing = snapshot && typeof snapshot === "object" && "pairing" in snapshot ? snapshot.pairing : null;
+      if (pairing && typeof pairing === "object") {
+        const controllerUrl =
+          "controllerUrl" in pairing && typeof pairing.controllerUrl === "string" ? pairing.controllerUrl : null;
+        const qrPayload = "qrPayload" in pairing && typeof pairing.qrPayload === "string" ? pairing.qrPayload : null;
+        return controllerUrl || qrPayload || fallbackUrl;
+      }
+    } catch {}
+
+    if (attempt < 4) {
+      await sleep(300);
+    }
+  }
+
+  return fallbackUrl;
+}
+
+async function fetchJsonWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`Request failed with ${response.status}`);
+    }
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function printUsage(error = false) {
