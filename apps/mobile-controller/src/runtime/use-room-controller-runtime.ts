@@ -1,4 +1,4 @@
-import type { SongSearchResponse, SongSearchQueueState } from "@home-ktv/domain";
+import type { SongSearchIndexedQueueState, SongSearchQueueState, SongSearchResponse } from "@home-ktv/domain";
 import type { RoomControlSnapshot } from "@home-ktv/player-contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -23,8 +23,12 @@ export const sessionRefreshIntervalMs = 15 * 60 * 1000;
 export interface RoomControllerState {
   connectionStatus: "connecting" | "connected" | "reconnecting" | "error";
   deviceId: string;
-  duplicateConfirm: { songId: string; assetId: string; title: string } | null;
+  duplicateConfirm:
+    | { kind: "canonical"; songId: string; assetId: string; title: string }
+    | { kind: "indexed"; indexedAssetId: string; title: string }
+    | null;
   errorMessage: string | null;
+  pendingIndexedAssetId: string | null;
   pendingUndo: { queueEntryId: string; undoExpiresAt: string } | null;
   pendingSupplementKeys: readonly string[];
   roomSlug: string;
@@ -40,6 +44,7 @@ export interface RoomControllerState {
   deleteQueueEntry(queueEntryId: string): Promise<void>;
   promoteQueueEntry(queueEntryId: string): Promise<void>;
   requestAddSongVersion(songId: string, assetId: string, title: string, queueState: SongSearchQueueState): void;
+  requestAddIndexedAsset(indexedAssetId: string, title: string, queueState: SongSearchIndexedQueueState): void;
   requestSupplement(provider: string, providerCandidateId: string): Promise<void>;
   requestSkip(): void;
   setSongSearchQuery(query: string): void;
@@ -56,12 +61,11 @@ export function useRoomControllerRuntime(): RoomControllerState {
   const [songSearch, setSongSearch] = useState<SongSearchResponse | null>(null);
   const [songSearchQuery, setSongSearchQueryState] = useState("");
   const [songSearchStatus, setSongSearchStatus] = useState<RoomControllerState["songSearchStatus"]>("idle");
-  const [duplicateConfirm, setDuplicateConfirm] = useState<{ songId: string; assetId: string; title: string } | null>(
-    null
-  );
+  const [duplicateConfirm, setDuplicateConfirm] = useState<RoomControllerState["duplicateConfirm"]>(null);
   const [connectionStatus, setConnectionStatus] = useState<RoomControllerState["connectionStatus"]>("connecting");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
+  const [pendingIndexedAssetId, setPendingIndexedAssetId] = useState<string | null>(null);
   const [pendingUndo, setPendingUndo] = useState<{ queueEntryId: string; undoExpiresAt: string } | null>(null);
   const [pendingSupplementKeys, setPendingSupplementKeys] = useState<readonly string[]>([]);
   const snapshotRef = useRef<RoomControlSnapshot | null>(null);
@@ -293,6 +297,24 @@ export function useRoomControllerRuntime(): RoomControllerState {
     [runCommand]
   );
 
+  const addIndexedAsset = useCallback(
+    async (indexedAssetId: string) => {
+      setPendingIndexedAssetId(indexedAssetId);
+      try {
+        await runCommand((input) => addQueueEntry({ ...input, indexedAssetId }));
+        const restored = await restoreControlSession({ roomSlug: initial.roomSlug, deviceId });
+        setSnapshot(restored.snapshot);
+        await runSongSearch(songSearchQueryRef.current);
+        setErrorMessage(null);
+      } catch (error) {
+        setErrorMessage(errorMessageFrom(error, "点歌失败"));
+      } finally {
+        setPendingIndexedAssetId((current) => (current === indexedAssetId ? null : current));
+      }
+    },
+    [deviceId, initial.roomSlug, runCommand, runSongSearch]
+  );
+
   const requestOnlineSupplement = useCallback(
     async (provider: string, providerCandidateId: string) => {
       const key = supplementKey(provider, providerCandidateId);
@@ -326,6 +348,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
     deviceId,
     duplicateConfirm,
     errorMessage,
+    pendingIndexedAssetId,
     pendingUndo,
     pendingSupplementKeys,
     roomSlug: initial.roomSlug,
@@ -342,7 +365,11 @@ export function useRoomControllerRuntime(): RoomControllerState {
       if (!selection) {
         return;
       }
-      await addSongVersion(selection.songId, selection.assetId);
+      if (selection.kind === "indexed") {
+        await addIndexedAsset(selection.indexedAssetId);
+      } else {
+        await addSongVersion(selection.songId, selection.assetId);
+      }
       setDuplicateConfirm(null);
     },
     confirmSkip: async () => {
@@ -357,11 +384,19 @@ export function useRoomControllerRuntime(): RoomControllerState {
     },
     requestAddSongVersion: (songId, assetId, title, queueState) => {
       if (queueState === "queued") {
-        setDuplicateConfirm({ songId, assetId, title });
+        setDuplicateConfirm({ kind: "canonical", songId, assetId, title });
         return;
       }
 
       void addSongVersion(songId, assetId);
+    },
+    requestAddIndexedAsset: (indexedAssetId, title, queueState) => {
+      if (queueState === "queued") {
+        setDuplicateConfirm({ kind: "indexed", indexedAssetId, title });
+        return;
+      }
+
+      void addIndexedAsset(indexedAssetId);
     },
     requestSupplement: requestOnlineSupplement,
     requestSkip: () => setSkipConfirmOpen(true),

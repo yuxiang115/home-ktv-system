@@ -105,6 +105,27 @@ describe("mobile controller API client", () => {
       });
     }
   });
+
+  it("sends indexedAssetId without canonical ids for indexed queue commands", async () => {
+    const { requests } = installFetchMock();
+
+    await addQueueEntry({
+      roomSlug: "living-room",
+      deviceId: "phone-1",
+      sessionVersion: 7,
+      indexedAssetId: "ktv-asset-sunny-mkv"
+    });
+
+    const body = requests[0]?.body as Record<string, unknown>;
+    expect(body).toMatchObject({
+      commandId: expect.stringMatching(/^mobile-command-/u),
+      sessionVersion: 7,
+      deviceId: "phone-1",
+      indexedAssetId: "ktv-asset-sunny-mkv"
+    });
+    expect(body).not.toHaveProperty("songId");
+    expect(body).not.toHaveProperty("assetId");
+  });
 });
 
 describe("mobile controller runtime", () => {
@@ -253,6 +274,7 @@ describe("mobile controller runtime", () => {
     });
 
     expect(controller.current?.duplicateConfirm).toEqual({
+      kind: "canonical",
       songId: "song-ready",
       assetId: "asset-ready-alt",
       title: "Ready Song"
@@ -267,6 +289,35 @@ describe("mobile controller runtime", () => {
     expect(requests.find((request) => request.url === "/rooms/living-room/commands/add-queue-entry")?.body).toMatchObject({
       songId: "song-ready",
       assetId: "asset-ready-alt"
+    });
+  });
+
+  it("requires duplicate confirmation before re-adding a queued indexed asset", async () => {
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))]
+    });
+    installWebSocketMock();
+    const controller = renderControllerProbe();
+    await flush();
+
+    act(() => {
+      controller.current?.requestAddIndexedAsset("ktv-asset-sunny-mkv", "索引晴天", "queued");
+    });
+
+    expect(controller.current?.duplicateConfirm).toEqual({
+      kind: "indexed",
+      indexedAssetId: "ktv-asset-sunny-mkv",
+      title: "索引晴天"
+    });
+    expect(requests.some((request) => request.url === "/rooms/living-room/commands/add-queue-entry")).toBe(false);
+
+    await act(async () => {
+      await controller.current?.confirmDuplicateAdd();
+    });
+
+    expect(controller.current?.duplicateConfirm).toBeNull();
+    expect(requests.find((request) => request.url === "/rooms/living-room/commands/add-queue-entry")?.body).toMatchObject({
+      indexedAssetId: "ktv-asset-sunny-mkv"
     });
   });
 
@@ -628,12 +679,17 @@ describe("mobile controller runtime", () => {
     expect(requests.some((request) => request.url === "/rooms/living-room/commands/add-queue-entry")).toBe(false);
   });
 
-  it("renders indexed KTV search groups with disabled queue actions", async () => {
+  it("queues indexed KTV search versions with indexedAssetId only and inline pending state", async () => {
     const user = userEvent.setup();
-    const nasPathPrefix = ["/mnt", "/nas"].join("");
-    const rawFilePathKey = ["file", "_path"].join("");
+    const indexedCommand = deferred<Response>();
+    const nasPathPrefix = ["/m", "nt", "/n", "as"].join("");
+    const rawCamelPathKey = ["file", "Path"].join("");
+    const rawSnakePathKey = ["file", "_", "path"].join("");
     const { requests } = installControllerFetchMock({
       restoreResponses: [json(sessionResponse(roomSnapshot()))],
+      commandResponses: {
+        "/rooms/living-room/commands/add-queue-entry": indexedCommand.promise
+      },
       songSearchResponse: (query) => ({
         query,
         local: [],
@@ -656,10 +712,10 @@ describe("mobile controller runtime", () => {
                   extension: ".mkv",
                   sizeBytes: 734003200,
                   category: "流行",
-                  queueState: "needs_catalog_sync",
-                  canQueue: false,
-                  disabledLabel: "需同步入库后可点歌",
-                  filePath: `${nasPathPrefix}/KTV歌曲/索引晴天.mkv`
+                  queueState: "not_queued",
+                  canQueue: true,
+                  disabledLabel: null,
+                  [rawCamelPathKey]: `${nasPathPrefix}/KTV歌曲/索引晴天.mkv`
                 },
                 {
                   indexedAssetId: "ktv-asset-sunny-mpg",
@@ -668,10 +724,10 @@ describe("mobile controller runtime", () => {
                   extension: ".mpg",
                   sizeBytes: null,
                   category: "流行",
-                  queueState: "needs_catalog_sync",
-                  canQueue: false,
-                  disabledLabel: "需同步入库后可点歌",
-                  [rawFilePathKey]: `${nasPathPrefix}/KTV歌曲/索引晴天.mpg`
+                  queueState: "queued",
+                  canQueue: true,
+                  disabledLabel: null,
+                  [rawSnakePathKey]: `${nasPathPrefix}/KTV歌曲/索引晴天.mpg`
                 }
               ]
             }
@@ -689,15 +745,93 @@ describe("mobile controller runtime", () => {
     expect(screen.getAllByText("KTV索引").length).toBeGreaterThan(0);
     expect(screen.getByText("2 个索引版本")).toBeTruthy();
     expect(screen.getByText("未知大小")).toBeTruthy();
-    const disabledButton = screen.getAllByRole("button", { name: "需同步入库后可点歌" })[0] as HTMLButtonElement;
-    expect(disabledButton.disabled).toBe(true);
+    const addButton = screen.getByRole("button", { name: "点歌" }) as HTMLButtonElement;
+    expect(addButton.disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "已点" })).toBeTruthy();
 
-    await user.click(disabledButton);
+    await user.click(addButton);
 
-    expect(requests.some((request) => request.url === "/rooms/living-room/commands/add-queue-entry")).toBe(false);
+    const pendingButton = await screen.findByRole("button", { name: "正在加入..." });
+    expect((pendingButton as HTMLButtonElement).disabled).toBe(true);
+    const body = requests.find((request) => request.url === "/rooms/living-room/commands/add-queue-entry")
+      ?.body as Record<string, unknown>;
+    expect(body).toMatchObject({ indexedAssetId: "ktv-asset-sunny-mkv" });
+    expect(body).not.toHaveProperty("songId");
+    expect(body).not.toHaveProperty("assetId");
+    expect(JSON.stringify(body)).not.toContain(nasPathPrefix);
+    expect(JSON.stringify(body)).not.toContain(rawCamelPathKey);
+    expect(JSON.stringify(body)).not.toContain(rawSnakePathKey);
     const searchPanelText = screen.getByRole("region", { name: "搜索歌曲" }).textContent ?? "";
     expect(searchPanelText).not.toContain(nasPathPrefix);
-    expect(searchPanelText).not.toContain(rawFilePathKey);
+    expect(searchPanelText).not.toContain(rawCamelPathKey);
+    expect(searchPanelText).not.toContain(rawSnakePathKey);
+
+    indexedCommand.resolve(
+      json({
+        status: "accepted",
+        commandId: "mobile-command-test",
+        sessionVersion: 2,
+        snapshot: roomSnapshot({ sessionVersion: 2 })
+      })
+    );
+    await flush();
+  });
+
+  it("keeps disabled indexed KTV states visible with explicit labels", async () => {
+    installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))],
+      songSearchResponse: (query) => ({
+        query,
+        local: [],
+        indexed: {
+          status: "available",
+          message: "找到 KTV 索引结果",
+          results: [
+            {
+              indexedSongId: "ktv-song-disabled",
+              title: "索引失效歌曲",
+              artistName: "样本歌手",
+              category: "流行",
+              sourceLabel: "KTV索引",
+              matchReason: "title",
+              versions: [
+                {
+                  indexedAssetId: "ktv-asset-stale",
+                  displayName: "索引失效.mkv",
+                  sourceLabel: "KTV索引",
+                  extension: ".mkv",
+                  sizeBytes: 1024,
+                  category: "流行",
+                  queueState: "source_missing",
+                  canQueue: false,
+                  disabledLabel: "索引已失效"
+                },
+                {
+                  indexedAssetId: "ktv-asset-unreadable",
+                  displayName: "不可读.mpg",
+                  sourceLabel: "KTV索引",
+                  extension: ".mpg",
+                  sizeBytes: 2048,
+                  category: "流行",
+                  queueState: "file_unreadable",
+                  canQueue: false,
+                  disabledLabel: "文件不可读"
+                }
+              ]
+            }
+          ]
+        },
+        online: { status: "disabled", message: "本地未入库，补歌功能后续可用", candidates: [] }
+      })
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "索引已失效" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "文件不可读" })).toBeTruthy();
+    expect((screen.getByRole("button", { name: "索引已失效" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "文件不可读" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("falls back to a short disabled real MV search label", async () => {

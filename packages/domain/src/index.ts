@@ -252,7 +252,7 @@ export interface SongSearchOnlineResult {
   candidates: OnlineCandidateCard[];
 }
 
-export type SongSearchIndexedQueueState = "needs_catalog_sync";
+export type SongSearchIndexedQueueState = "not_queued" | "queued" | "source_missing" | "file_unreadable";
 
 export interface SongSearchIndexedVersionOption {
   indexedAssetId: string;
@@ -262,8 +262,8 @@ export interface SongSearchIndexedVersionOption {
   sizeBytes: number | null;
   category: string;
   queueState: SongSearchIndexedQueueState;
-  canQueue: false;
-  disabledLabel: string;
+  canQueue: boolean;
+  disabledLabel: string | null;
 }
 
 export interface SongSearchIndexedResult {

@@ -570,6 +570,11 @@ button:not(:disabled):hover {
   background: rgba(11, 16, 32, 0.64);
 }
 
+.indexed-version-row > button {
+  min-width: 132px;
+  white-space: nowrap;
+}
+
 .indexed-source {
   color: var(--ktv-accent);
   background: rgba(34, 211, 238, 0.12) !important;

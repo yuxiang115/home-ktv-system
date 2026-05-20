@@ -186,9 +186,9 @@ describe("song search routes", () => {
             extension: ".mkv",
             sizeBytes: 734003200,
             category: "流行",
-            queueState: "needs_catalog_sync",
-            canQueue: false,
-            disabledLabel: "需同步入库后可点歌"
+            queueState: "not_queued",
+            canQueue: true,
+            disabledLabel: null
           }
         ]
       })
@@ -205,7 +205,9 @@ describe("song search routes", () => {
       {
         query: "七里香",
         limit: 20,
-        versionsPerSong: 4
+        versionsPerSong: 4,
+        queuedIndexedAssetIds: [],
+        unreadableIndexedAssetIds: []
       }
     ]);
     expect(response.json().indexed).toEqual({
@@ -227,9 +229,9 @@ describe("song search routes", () => {
               extension: ".mkv",
               sizeBytes: 734003200,
               category: "流行",
-              queueState: "needs_catalog_sync",
-              canQueue: false,
-              disabledLabel: "需同步入库后可点歌"
+              queueState: "not_queued",
+              canQueue: true,
+              disabledLabel: null
             }
           ]
         }
@@ -590,9 +592,9 @@ function createIndexedSearchResult(input: Partial<SongSearchIndexedResult> = {})
         extension: ".mkv",
         sizeBytes: 734003200,
         category: "流行",
-        queueState: "needs_catalog_sync",
-        canQueue: false,
-        disabledLabel: "需同步入库后可点歌"
+        queueState: "not_queued",
+        canQueue: true,
+        disabledLabel: null
       }
     ],
     ...input

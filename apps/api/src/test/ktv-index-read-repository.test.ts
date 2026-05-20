@@ -4,7 +4,7 @@ import { buildNasSample } from "../modules/ktv-index/ktv-index-diagnostics.js";
 import { PgKtvIndexReadRepository } from "../modules/ktv-index/ktv-index-read-repository.js";
 
 describe("PgKtvIndexReadRepository", () => {
-  it("searches active indexed songs with grouped nonqueueable versions", async () => {
+  it("searches active indexed songs with grouped queueable versions", async () => {
     const db = new ScriptedKtvIndexDb();
     const repository = new PgKtvIndexReadRepository(db);
 
@@ -31,9 +31,9 @@ describe("PgKtvIndexReadRepository", () => {
         extension: ".mkv",
         sizeBytes: 123456,
         category: "流行",
-        queueState: "needs_catalog_sync",
-        canQueue: false,
-        disabledLabel: "需同步入库后可点歌"
+        queueState: "not_queued",
+        canQueue: true,
+        disabledLabel: null
       },
       {
         indexedAssetId: "ktv-asset-2",
@@ -42,9 +42,9 @@ describe("PgKtvIndexReadRepository", () => {
         extension: ".mpg",
         sizeBytes: null,
         category: "演唱会",
-        queueState: "needs_catalog_sync",
-        canQueue: false,
-        disabledLabel: "需同步入库后可点歌"
+        queueState: "not_queued",
+        canQueue: true,
+        disabledLabel: null
       }
     ]);
     expect(JSON.stringify(results)).not.toContain("filePath");
@@ -55,6 +55,34 @@ describe("PgKtvIndexReadRepository", () => {
     expect(searchQuery?.text).toContain("ktv_song_artists");
     expect(searchQuery?.text).toContain("ktv_artists");
     expect(searchQuery?.values).toEqual(["七里香", "%七里香%", "%七里香%", 10, 2]);
+  });
+
+  it("maps queued and unreadable indexed assets to explicit queue states", async () => {
+    const db = new ScriptedKtvIndexDb();
+    const repository = new PgKtvIndexReadRepository(db);
+
+    const results = await repository.searchIndexedSongs({
+      query: "七里香",
+      limit: 10,
+      versionsPerSong: 2,
+      queuedIndexedAssetIds: ["ktv-asset-1"],
+      unreadableIndexedAssetIds: ["ktv-asset-2"]
+    });
+
+    expect(results[0]?.versions).toEqual([
+      expect.objectContaining({
+        indexedAssetId: "ktv-asset-1",
+        queueState: "queued",
+        canQueue: true,
+        disabledLabel: null
+      }),
+      expect.objectContaining({
+        indexedAssetId: "ktv-asset-2",
+        queueState: "file_unreadable",
+        canQueue: false,
+        disabledLabel: "文件不可读"
+      })
+    ]);
   });
 
   it("returns raw diagnostics and Admin-only preview details", async () => {

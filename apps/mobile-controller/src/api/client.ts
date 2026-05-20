@@ -109,7 +109,19 @@ export async function fetchControlSnapshot(input: {
   return response.snapshot;
 }
 
-export async function addQueueEntry(input: CommandBaseInput & { songId: string; assetId?: string }) {
+export async function addQueueEntry(
+  input: CommandBaseInput &
+    (
+      | { songId: string; assetId?: string; indexedAssetId?: never }
+      | { indexedAssetId: string; songId?: never; assetId?: never }
+    )
+) {
+  if ("indexedAssetId" in input) {
+    return sendCommand(input, "add-queue-entry", {
+      indexedAssetId: input.indexedAssetId
+    });
+  }
+
   return sendCommand(input, "add-queue-entry", {
     songId: input.songId,
     ...(input.assetId ? { assetId: input.assetId } : {})

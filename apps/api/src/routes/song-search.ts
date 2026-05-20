@@ -44,7 +44,9 @@ export async function registerSongSearchRoutes(
         (await dependencies.ktvIndex?.searchIndexedSongs({
           query,
           limit: Math.min(20, limit),
-          versionsPerSong: 4
+          versionsPerSong: 4,
+          queuedIndexedAssetIds: [],
+          unreadableIndexedAssetIds: []
         })) ?? [];
       const onlineCandidates =
         (await dependencies.online?.discoverCandidates({

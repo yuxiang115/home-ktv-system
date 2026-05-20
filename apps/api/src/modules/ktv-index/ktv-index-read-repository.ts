@@ -16,6 +16,8 @@ export interface SearchKtvIndexedSongsInput {
   query: string;
   limit?: number;
   versionsPerSong?: number;
+  queuedIndexedAssetIds?: readonly string[];
+  unreadableIndexedAssetIds?: readonly string[];
 }
 
 export interface GetKtvIndexDiagnosticsInput {
@@ -97,7 +99,10 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
 
   async searchIndexedSongs(input: SearchKtvIndexedSongsInput): Promise<SongSearchIndexedResult[]> {
     const rows = await this.queryIndexedRows(input);
-    return mapIndexedSearchRows(rows);
+    return mapIndexedSearchRows(rows, {
+      queuedIndexedAssetIds: input.queuedIndexedAssetIds ?? [],
+      unreadableIndexedAssetIds: input.unreadableIndexedAssetIds ?? []
+    });
   }
 
   async getDiagnostics(input: GetKtvIndexDiagnosticsInput = {}): Promise<KtvIndexDiagnosticsResponse> {
@@ -368,18 +373,30 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
   }
 }
 
-function mapIndexedSearchRows(rows: readonly IndexedSearchRow[]): SongSearchIndexedResult[] {
-  return mapGroupedRows(rows, (row): SongSearchIndexedVersionOption => ({
-    indexedAssetId: row.asset_id,
-    displayName: row.file_name,
-    sourceLabel: "KTV索引",
-    extension: row.extension,
-    sizeBytes: toNullableNumber(row.size_bytes),
-    category: row.category,
-    queueState: "needs_catalog_sync",
-    canQueue: false,
-    disabledLabel: "需同步入库后可点歌"
-  }));
+function mapIndexedSearchRows(
+  rows: readonly IndexedSearchRow[],
+  input: Pick<SearchKtvIndexedSongsInput, "queuedIndexedAssetIds" | "unreadableIndexedAssetIds">
+): SongSearchIndexedResult[] {
+  const queuedIndexedAssetIds = new Set(input.queuedIndexedAssetIds ?? []);
+  const unreadableIndexedAssetIds = new Set(input.unreadableIndexedAssetIds ?? []);
+
+  return mapGroupedRows(rows, (row): SongSearchIndexedVersionOption => {
+    const indexedAssetId = row.asset_id;
+    const unreadable = unreadableIndexedAssetIds.has(indexedAssetId);
+    const queued = queuedIndexedAssetIds.has(indexedAssetId);
+
+    return {
+      indexedAssetId,
+      displayName: row.file_name,
+      sourceLabel: "KTV索引",
+      extension: row.extension,
+      sizeBytes: toNullableNumber(row.size_bytes),
+      category: row.category,
+      queueState: unreadable ? "file_unreadable" : queued ? "queued" : "not_queued",
+      canQueue: !unreadable,
+      disabledLabel: unreadable ? "文件不可读" : null
+    };
+  });
 }
 
 function mapDiagnosticsPreviewRows(rows: readonly IndexedSearchRow[]): KtvIndexDiagnosticsPreviewResult[] {

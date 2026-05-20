@@ -213,22 +213,41 @@ function ControllerApp() {
                       </div>
 
                       <div className="version-list indexed-version-list">
-                        {result.versions.map((version) => (
-                          <div className="indexed-version-row" key={version.indexedAssetId}>
-                            <div>
-                              <strong>{version.displayName}</strong>
-                              <div className="result-meta">
-                                <span>{version.sourceLabel || indexedSourceFallbackLabel}</span>
-                                <span>{version.extension}</span>
-                                <span>{version.category}</span>
-                                <span>{version.sizeBytes == null ? t("search.unknownSize") : formatFileSize(version.sizeBytes)}</span>
+                        {result.versions.map((version) => {
+                          const isPending = controller.pendingIndexedAssetId === version.indexedAssetId;
+                          const buttonLabel = indexedVersionButtonLabel(version, isPending, t);
+                          const canClick = version.canQueue && !isPending;
+
+                          return (
+                            <div className="indexed-version-row" key={version.indexedAssetId}>
+                              <div>
+                                <strong>{version.displayName}</strong>
+                                <div className="result-meta">
+                                  <span>{version.sourceLabel || indexedSourceFallbackLabel}</span>
+                                  <span>{version.extension}</span>
+                                  <span>{version.category}</span>
+                                  <span>{version.sizeBytes == null ? t("search.unknownSize") : formatFileSize(version.sizeBytes)}</span>
+                                </div>
                               </div>
+                              <button
+                                className="primary-button"
+                                type="button"
+                                disabled={!canClick}
+                                onClick={() =>
+                                  canClick
+                                    ? controller.requestAddIndexedAsset(
+                                        version.indexedAssetId,
+                                        result.title,
+                                        version.queueState
+                                      )
+                                    : undefined
+                                }
+                              >
+                                {buttonLabel}
+                              </button>
                             </div>
-                            <button className="primary-button" type="button" disabled>
-                              {version.disabledLabel}
-                            </button>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </article>
                   ))}
@@ -398,4 +417,27 @@ function formatFileSize(sizeBytes: number | null): string {
 
 function disabledVersionLabel(version: { disabledLabel?: string | null }): string {
   return version.disabledLabel ?? "暂不可播放";
+}
+
+function indexedVersionButtonLabel(
+  version: { queueState: string; canQueue: boolean; disabledLabel?: string | null },
+  isPending: boolean,
+  t: ReturnType<typeof useI18n>["t"]
+): string {
+  if (isPending) {
+    return t("button.addingIndexed");
+  }
+  if (version.queueState === "queued") {
+    return t("search.indexedQueued");
+  }
+  if (version.canQueue) {
+    return t("button.addIndexed");
+  }
+  if (version.queueState === "source_missing") {
+    return version.disabledLabel ?? t("search.indexedStale");
+  }
+  if (version.queueState === "file_unreadable") {
+    return version.disabledLabel ?? t("search.indexedUnreadable");
+  }
+  return version.disabledLabel ?? t("search.indexedStale");
 }
