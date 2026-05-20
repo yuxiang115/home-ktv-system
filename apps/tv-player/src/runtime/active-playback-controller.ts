@@ -1,8 +1,9 @@
 import type { RoomSnapshot } from "@home-ktv/player-contracts";
+import { AUDIO_TRACK_SWITCH_UNSUPPORTED_MESSAGE } from "./playback-capability.js";
 import type { DualVideoPool } from "./video-pool.js";
 
 export type ActivePlaybackResult =
-  | { status: "playing" }
+  | { status: "playing"; warning?: string }
   | { status: "blocked"; message: string }
   | { status: "disabled"; reason: "conflict" | "no-current-target" };
 
@@ -37,13 +38,18 @@ export class ActivePlaybackController {
       targetChanged &&
       (snapshot.currentTarget.playbackProfile?.requiresAudioTrackSelection === true ||
         snapshot.currentTarget.selectedTrackRef != null);
+    let playbackWarning: string | undefined;
     if (shouldSelectAudioTrack) {
       const selectionResult = this.videoPool.selectActiveAudioTrack(snapshot.currentTarget);
       if (selectionResult.status !== "selected") {
-        return {
-          status: "blocked",
-          message: selectionResult.message
-        };
+        if (selectionResult.status === "unsupported" && selectionResult.message === AUDIO_TRACK_SWITCH_UNSUPPORTED_MESSAGE) {
+          playbackWarning = selectionResult.message;
+        } else {
+          return {
+            status: "blocked",
+            message: selectionResult.message
+          };
+        }
       }
     }
 
@@ -62,7 +68,7 @@ export class ActivePlaybackController {
       if (shouldTemporarilyMute) {
         this.videoPool.activeVideo.muted = previousMuted;
       }
-      return { status: "playing" };
+      return playbackWarning ? { status: "playing", warning: playbackWarning } : { status: "playing" };
     } catch (error) {
       if (shouldTemporarilyMute) {
         this.videoPool.activeVideo.muted = previousMuted;

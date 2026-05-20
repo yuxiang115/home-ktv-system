@@ -82,7 +82,7 @@ describe("active playback controller", () => {
     expect(activeVideo.playCalls).toBe(1);
   });
 
-  it("blocks required real MV track selection when audioTracks are unsupported", async () => {
+  it("falls back to the browser default audio track when initial real MV track selection is unsupported", async () => {
     const activeVideo = new FakeVideo();
     const pool = new DualVideoPool(activeVideo, new FakeVideo());
 
@@ -93,10 +93,10 @@ describe("active playback controller", () => {
     );
 
     expect(result).toMatchObject({
-      status: "blocked",
-      message: "current device does not support audio-track switching"
+      status: "playing",
+      warning: "current device does not support audio-track switching"
     });
-    expect(activeVideo.playCalls).toBe(0);
+    expect(activeVideo.playCalls).toBe(1);
   });
 
   it("starts the first playback muted and restores audible playback after it begins", async () => {

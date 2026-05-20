@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { RoomSnapshot, SwitchTarget } from "@home-ktv/player-contracts";
 
-type MockActivePlaybackResult = { status: "playing" } | { status: "blocked"; message: string };
+type MockActivePlaybackResult = { status: "playing"; warning?: string } | { status: "blocked"; message: string };
 
 const mocks = vi.hoisted(() => {
   const createBrowserPlayerClient = vi.fn();
@@ -224,12 +224,12 @@ describe("tv app runtime", () => {
     await waitFor(() => expect(screen.queryByText("点击电视开始播放")).toBeNull());
   });
 
-  it("reports failed telemetry and shows Chinese copy when required audio-track playback is unsupported", async () => {
+  it("keeps playback alive when initial audio-track selection degrades to the browser default track", async () => {
     const playbackSnapshot = snapshot({ state: "loading", targetVocalMode: "instrumental" });
     mocks.roomSnapshot.mockImplementation(() => playbackSnapshot);
     mocks.activePlaybackEnsurePlaying.mockResolvedValueOnce({
-      status: "blocked",
-      message: "current device does not support audio-track switching"
+      status: "playing",
+      warning: "current device does not support audio-track switching"
     });
     const sendTelemetry = vi.fn(async () => {});
     mocks.createBrowserPlayerClient.mockReturnValue(createClient({ sendTelemetry }));
@@ -237,25 +237,23 @@ describe("tv app runtime", () => {
 
     render(<App />);
 
-    await screen.findByText("当前 MV 暂不可播放，请先预处理后再重试。");
-
     await waitFor(() =>
       expect(sendTelemetry).toHaveBeenCalledWith({
         roomSlug: "living-room",
         deviceId: "tv-player-1",
-        eventType: "failed",
+        eventType: "playing",
         sessionVersion: 5,
         queueEntryId: "queue-current",
         assetId: "asset-original",
-        playbackPositionMs: 1234,
+        playbackPositionMs: 0,
         vocalMode: "original",
         switchFamily: "family-main",
         rollbackAssetId: null,
-        message: "current device does not support audio-track switching",
-        errorCode: "TV_PLAYBACK_CAPABILITY_BLOCKED",
-        stage: "playback_capability_blocked"
+        stage: "active_playback_started"
       })
     );
+    expect(sendTelemetry).not.toHaveBeenCalledWith(expect.objectContaining({ eventType: "failed" }));
+    expect(screen.queryByText("当前 MV 暂不可播放，请先预处理后再重试。")).toBeNull();
     expect(screen.queryByText("点击电视开始播放")).toBeNull();
   });
 });
