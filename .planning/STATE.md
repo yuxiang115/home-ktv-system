@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: 真实场景接入、部署和验证
 status: executing
-stopped_at: Completed 19-01-PLAN.md
-last_updated: "2026-05-20T11:59:56.022Z"
+stopped_at: Completed 19-02-PLAN.md
+last_updated: "2026-05-20T12:10:11.153Z"
 last_activity: 2026-05-20
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 7
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-14)
 
 Milestone: v1.3 真实场景接入、部署和验证
 Phase: 19 (search-and-queue-time-catalog-sync) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-05-20
 
@@ -75,6 +75,7 @@ Progress: [----------] 0%
 | Phase 18 P02 | 15 min | 3 tasks | 10 files |
 | Phase 18 P03 | 17 min | 3 tasks | 9 files |
 | Phase 19 P01 | 10 min | 2 tasks | 11 files |
+| Phase 19 P02 | 11 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -152,6 +153,8 @@ Progress: [----------] 0%
 - [Phase 18-03]: Mobile indexed search preserves indexedSongId/indexedAssetId but never renders NAS file paths. — Identity is needed for Phase 19, while paths remain Admin-only diagnostics.
 - [Phase 19]: Indexed active assets are queueable at search-contract layer; queue-time sync decides stale or unreadable failures. — This keeps Mobile usable from Phase 19 while preserving server-side validation in later plans.
 - [Phase 19]: Mobile indexed duplicate confirmation uses a discriminated union for canonical and indexed selections. — Canonical songId/assetId and indexedAssetId have different command payloads and should not be conflated in UI state.
+- [Phase 19]: KTV source identity is persisted in source_records with provider ktv-index and provider_item_id equal to ktv_song_assets.id. — This gives queue-time sync durable traceability without adding ktv_* ids to queue_entries.
+- [Phase 19]: PgKtvCatalogSyncService accepts QueryExecutor and does not open its own transaction. — The indexed add-queue command can compose sync and queue mutation inside one transaction in 19-03.
 
 ### Pending Todos
 
@@ -166,6 +169,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-20T11:59:29.062Z
-Stopped at: Completed 19-01-PLAN.md
+Last session: 2026-05-20T12:09:58.114Z
+Stopped at: Completed 19-02-PLAN.md
 Resume file: None

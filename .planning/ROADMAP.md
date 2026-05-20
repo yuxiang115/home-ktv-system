@@ -63,7 +63,7 @@ Plans:
 **Plans**: 4 plans
 Plans:
 - [x] 19-01-PLAN.md - Indexed result contract and Mobile search UI
-- [ ] 19-02-PLAN.md - Idempotent indexed-asset catalog sync service
+- [x] 19-02-PLAN.md - Idempotent indexed-asset catalog sync service
 - [ ] 19-03-PLAN.md - Queue command integration and duplicate handling
 - [ ] 19-04-PLAN.md - Queue/realtime regression coverage for synced real songs
 **UI hint**: yes
@@ -128,7 +128,7 @@ Phases execute in numeric order: 18 -> 19 -> 20 -> 21 -> 22
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 18. KTV Index Read Model and Diagnostics | 3/3 | Complete    | 2026-05-20 |
-| 19. Search and Queue-Time Catalog Sync | 1/4 | In Progress|  |
+| 19. Search and Queue-Time Catalog Sync | 2/4 | In Progress|  |
 | 20. Real Media Path, Streaming, and Playback Target Verification | 0/4 | Blocked on Phase 19 | — |
 | 21. Real Deployment Profile and Operator Workflow | 0/3 | Blocked on Phase 20 | — |
 | 22. Real-Scene UAT, Failure States, and Milestone Hardening | 0/3 | Blocked on Phase 21 | — |
