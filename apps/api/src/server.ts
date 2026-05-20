@@ -213,7 +213,8 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     rooms: repositories.rooms,
     songs: repositories.songs,
     queueEntries: repositories.queueEntries,
-    online: onlineRuntime.tasks
+    online: onlineRuntime.tasks,
+    ...(repositories.ktvIndex ? { ktvIndex: repositories.ktvIndex } : {})
   });
   await registerControlCommandRoutes(server, {
     config: resolvedConfig,

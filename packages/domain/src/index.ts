@@ -362,6 +362,7 @@ export interface KtvIndexDiagnosticsResponse {
 export interface SongSearchResponse {
   query: string;
   local: SongSearchLocalResult[];
+  indexed: SongSearchIndexedSection;
   online: SongSearchOnlineResult;
 }
 

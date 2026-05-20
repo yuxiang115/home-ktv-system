@@ -104,6 +104,11 @@ describe("song search routes", () => {
           ]
         }
       ],
+      indexed: {
+        status: "unavailable",
+        message: "未找到 KTV 索引结果",
+        results: []
+      },
       online: {
         status: "disabled",
         message: "本地未入库，补歌功能后续可用",

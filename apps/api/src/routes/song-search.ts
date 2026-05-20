@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { SongSearchResponse } from "@home-ktv/domain";
 import type { AdminCatalogSongRepository } from "../modules/catalog/repositories/song-repository.js";
+import type { KtvIndexReadRepository } from "../modules/ktv-index/ktv-index-read-repository.js";
 import type { CandidateTaskService } from "../modules/online/candidate-task-service.js";
 import type { QueueEntryRepository } from "../modules/playback/repositories/queue-entry-repository.js";
 import type { RoomRepository } from "../modules/rooms/repositories/room-repository.js";
@@ -10,6 +11,7 @@ export interface SongSearchRouteDependencies {
   songs: AdminCatalogSongRepository;
   queueEntries: QueueEntryRepository;
   online?: Pick<CandidateTaskService, "discoverCandidates">;
+  ktvIndex?: Pick<KtvIndexReadRepository, "searchIndexedSongs">;
 }
 
 interface SongSearchQuery {
@@ -38,6 +40,12 @@ export async function registerSongSearchRoutes(
       const queue = await dependencies.queueEntries.listEffectiveQueue(room.id);
       const queuedSongIds = queue.map((entry) => entry.songId);
       const records = await dependencies.songs.searchFormalSongs({ query, limit, queuedSongIds });
+      const indexedResults =
+        (await dependencies.ktvIndex?.searchIndexedSongs({
+          query,
+          limit: Math.min(20, limit),
+          versionsPerSong: 4
+        })) ?? [];
       const onlineCandidates =
         (await dependencies.online?.discoverCandidates({
           roomId: room.id,
@@ -56,6 +64,11 @@ export async function registerSongSearchRoutes(
           queueState: record.queueState,
           versions: record.versions
         })),
+        indexed: {
+          status: indexedResults.length > 0 ? "available" : "unavailable",
+          message: indexedResults.length > 0 ? "找到 KTV 索引结果" : "未找到 KTV 索引结果",
+          results: indexedResults
+        },
         online: {
           status: onlineCandidates.length > 0 ? "available" : "disabled",
           message: onlineCandidates.length > 0 ? "找到在线补歌候选" : "本地未入库，补歌功能后续可用",
