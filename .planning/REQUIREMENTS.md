@@ -7,10 +7,10 @@
 
 ### KTV Index Read Model
 
-- [ ] **INDEX-01**: Admin or operator can see whether PostgreSQL has the required `ktv_*` tables, latest index run, active asset count, missing asset count, and indexed library root.
-- [ ] **INDEX-02**: Mobile search can query active `ktv_song_assets` only, filtering out rows where `missing_at is not null`.
-- [ ] **INDEX-03**: Mobile search can find indexed songs by title, artist, pinyin, initials, and category/version metadata without loading the whole library into memory.
-- [ ] **INDEX-04**: Search results clearly distinguish existing formal catalog songs from KTV indexed results.
+- [x] **INDEX-01**: Admin or operator can see whether PostgreSQL has the required `ktv_*` tables, latest index run, active asset count, missing asset count, and indexed library root.
+- [x] **INDEX-02**: Mobile search can query active `ktv_song_assets` only, filtering out rows where `missing_at is not null`.
+- [x] **INDEX-03**: Mobile search can find indexed songs by title, artist, pinyin, initials, and category/version metadata without loading the whole library into memory.
+- [x] **INDEX-04**: Search results clearly distinguish existing formal catalog songs from KTV indexed results.
 
 ### Runtime Catalog Sync
 
@@ -82,10 +82,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INDEX-01 | Phase 18 | Pending |
-| INDEX-02 | Phase 18 | Pending |
-| INDEX-03 | Phase 18 | Pending |
-| INDEX-04 | Phase 18 | Pending |
+| INDEX-01 | Phase 18 | Complete |
+| INDEX-02 | Phase 18 | Complete |
+| INDEX-03 | Phase 18 | Complete |
+| INDEX-04 | Phase 18 | Complete |
 | SYNC-01 | Phase 19 | Pending |
 | SYNC-02 | Phase 19 | Pending |
 | SYNC-03 | Phase 19 | Pending |

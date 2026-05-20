@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: 真实场景接入、部署和验证
-status: ready_for_phase_execution
-stopped_at: Phase 18 planned
-last_updated: "2026-05-20T08:51:16Z"
-last_activity: 2026-05-20 -- Phase 18 planned and verified; ready for Phase 18 execution
+status: executing
+stopped_at: Completed 18-01-PLAN.md
+last_updated: "2026-05-20T09:09:37.657Z"
+last_activity: 2026-05-20
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 17
-  completed_plans: 0
+  total_plans: 3
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,15 +21,15 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-05-14)
 
 **Core value:** 在家庭单电视场景下，让用户用手机完成全部点歌与控制，并稳定地把歌唱起来。
-**Current focus:** v1.3 真实场景接入、部署和验证
+**Current focus:** Phase 18 — ktv-index-read-model-and-diagnostics
 
 ## Current Position
 
 Milestone: v1.3 真实场景接入、部署和验证
-Phase: 18 - KTV Index Read Model and Diagnostics
-Plan: 18-01 next
-Status: Ready to start `$gsd-execute-phase 18`
-Last activity: 2026-05-20 -- Phase 18 planned and verified; ready for Phase 18 execution
+Phase: 18 (ktv-index-read-model-and-diagnostics) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
+Last activity: 2026-05-20
 
 Progress: [----------] 0%
 
@@ -71,6 +71,7 @@ Progress: [----------] 0%
 | Phase 16-policy-seam-android-reservation-and-hardening P01 | 17 min | 2 tasks | 5 files |
 | Phase 16 P03 | 8 min | 2 tasks | 3 files |
 | Phase 16-policy-seam-android-reservation-and-hardening P04 | 18 min | 2 tasks | 4 files |
+| Phase 18 P01 | 12 min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -137,6 +138,9 @@ Progress: [----------] 0%
 - [Phase 16-policy-seam-android-reservation-and-hardening]: Phase 16 Android reservation remains test-only and source-based; no Android runtime import, native package seam, or contract field was added.
 - [Phase 16-policy-seam-android-reservation-and-hardening]: Final real-MV regression coverage checks serialized platform-neutral contracts rather than introducing Android-specific placeholders.
 - [Phase 16-policy-seam-android-reservation-and-hardening]: Admin review copy treats auto-admit and native-app language as forbidden outside the existing negative guard.
+- [Phase 18-01]: Indexed search versions remain nonqueueable in Phase 18 with queueState=needs_catalog_sync. — Queue/playback integration is deferred so ktv_* access remains read-only.
+- [Phase 18-01]: Mobile indexed search omits filePath while Admin diagnostics preview includes it. — NAS paths are diagnostic detail and should not leak into mobile-facing search results.
+- [Phase 18-01]: NAS diagnostics classify unmapped paths separately from missing, unreadable, and timeout. — Deployment path mapping issues need distinct raw evidence before status interpretation.
 
 ### Pending Todos
 
@@ -151,6 +155,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-20T08:51:16Z
-Stopped at: Phase 18 planned
-Resume file: .planning/phases/18-ktv-index-read-model-and-diagnostics/18-01-PLAN.md
+Last session: 2026-05-20T09:09:04.101Z
+Stopped at: Completed 18-01-PLAN.md
+Resume file: None
