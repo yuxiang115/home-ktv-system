@@ -528,6 +528,62 @@ button:not(:disabled):hover {
   min-width: 0;
 }
 
+.indexed-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid rgba(34, 211, 238, 0.24);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(8, 47, 73, 0.18);
+}
+
+.indexed-panel h3,
+.online-panel h3 {
+  margin: 0;
+}
+
+.indexed-result-list {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.indexed-result-row {
+  grid-template-columns: minmax(0, 1fr);
+  background: rgba(2, 6, 23, 0.32);
+}
+
+.indexed-version-list {
+  margin-top: 0;
+}
+
+.indexed-version-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(132px, auto);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(11, 16, 32, 0.64);
+}
+
+.indexed-source {
+  color: var(--ktv-accent);
+  background: rgba(34, 211, 238, 0.12) !important;
+  border-color: rgba(34, 211, 238, 0.3) !important;
+}
+
+.indexed-empty {
+  border: 1px dashed rgba(148, 163, 184, 0.36);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(11, 16, 32, 0.58);
+  font-weight: 800;
+}
+
 .online-placeholder {
   display: grid;
   gap: 4px;
@@ -606,7 +662,8 @@ button:not(:disabled):hover {
   .search-form,
   .queue-row,
   .song-row,
-  .version-row {
+  .version-row,
+  .indexed-version-row {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -614,6 +671,7 @@ button:not(:disabled):hover {
   .row-actions,
   .song-row > button,
   .version-row > button,
+  .indexed-version-row > button,
   .online-candidate-row > button,
   .search-form > button {
     width: 100%;

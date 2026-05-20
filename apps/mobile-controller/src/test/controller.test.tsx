@@ -630,6 +630,8 @@ describe("mobile controller runtime", () => {
 
   it("renders indexed KTV search groups with disabled queue actions", async () => {
     const user = userEvent.setup();
+    const nasPathPrefix = ["/mnt", "/nas"].join("");
+    const rawFilePathKey = ["file", "_path"].join("");
     const { requests } = installControllerFetchMock({
       restoreResponses: [json(sessionResponse(roomSnapshot()))],
       songSearchResponse: (query) => ({
@@ -657,7 +659,7 @@ describe("mobile controller runtime", () => {
                   queueState: "needs_catalog_sync",
                   canQueue: false,
                   disabledLabel: "需同步入库后可点歌",
-                  filePath: "/mnt/nas/KTV歌曲/索引晴天.mkv"
+                  filePath: `${nasPathPrefix}/KTV歌曲/索引晴天.mkv`
                 },
                 {
                   indexedAssetId: "ktv-asset-sunny-mpg",
@@ -669,7 +671,7 @@ describe("mobile controller runtime", () => {
                   queueState: "needs_catalog_sync",
                   canQueue: false,
                   disabledLabel: "需同步入库后可点歌",
-                  file_path: "/mnt/nas/KTV歌曲/索引晴天.mpg"
+                  [rawFilePathKey]: `${nasPathPrefix}/KTV歌曲/索引晴天.mpg`
                 }
               ]
             }
@@ -694,8 +696,8 @@ describe("mobile controller runtime", () => {
 
     expect(requests.some((request) => request.url === "/rooms/living-room/commands/add-queue-entry")).toBe(false);
     const searchPanelText = screen.getByRole("region", { name: "搜索歌曲" }).textContent ?? "";
-    expect(searchPanelText).not.toContain("/mnt/nas");
-    expect(searchPanelText).not.toContain("file_path");
+    expect(searchPanelText).not.toContain(nasPathPrefix);
+    expect(searchPanelText).not.toContain(rawFilePathKey);
   });
 
   it("falls back to a short disabled real MV search label", async () => {

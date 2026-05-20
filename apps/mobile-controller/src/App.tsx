@@ -25,6 +25,7 @@ function ControllerApp() {
   const snapshot = controller.snapshot;
   const current = snapshot?.currentTarget;
   const online = controller.songSearch?.online;
+  const indexed = controller.songSearch?.indexed ?? null;
   const switchTarget = snapshot?.switchTarget;
   const targetVocalMode =
     switchTarget?.vocalMode ??
@@ -189,6 +190,54 @@ function ControllerApp() {
             <p className="empty-state local-empty">{t("search.localEmpty")}</p>
           ) : null}
 
+          {indexed ? (
+            <section className="indexed-panel" aria-label={t("search.indexedTitle")}>
+              <div className="panel-heading">
+                <h3>{t("search.indexedTitle")}</h3>
+                <span className={`search-status ${indexed.status}`}>{indexed.message}</span>
+              </div>
+
+              {indexed.results.length > 0 ? (
+                <div className="indexed-result-list">
+                  {indexed.results.map((result) => (
+                    <article className="song-row indexed-result-row" key={result.indexedSongId}>
+                      <div className="result-main">
+                        <strong>{result.title}</strong>
+                        <p>{result.artistName}</p>
+                        <div className="result-meta">
+                          <span className="indexed-source">{result.sourceLabel}</span>
+                          <span>{result.category}</span>
+                          <span>{t("search.indexedVersionCount", { count: result.versions.length })}</span>
+                        </div>
+                      </div>
+
+                      <div className="version-list indexed-version-list">
+                        {result.versions.map((version) => (
+                          <div className="indexed-version-row" key={version.indexedAssetId}>
+                            <div>
+                              <strong>{version.displayName}</strong>
+                              <div className="result-meta">
+                                <span>{version.sourceLabel}</span>
+                                <span>{version.extension}</span>
+                                <span>{version.category}</span>
+                                <span>{version.sizeBytes == null ? t("search.unknownSize") : formatFileSize(version.sizeBytes)}</span>
+                              </div>
+                            </div>
+                            <button className="primary-button" type="button" disabled>
+                              {version.disabledLabel}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="empty-state indexed-empty">{t("search.indexedEmpty")}</p>
+              )}
+            </section>
+          ) : null}
+
           {online ? (
             <section className="online-panel" aria-label={t("online.aria")}>
               <div className="panel-heading">
@@ -328,6 +377,22 @@ function formatDuration(durationMs: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function formatFileSize(sizeBytes: number | null): string {
+  if (sizeBytes == null) {
+    return "未知大小";
+  }
+
+  const units = ["B", "KB", "MB", "GB"] as const;
+  let value = Math.max(0, sizeBytes);
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const fractionDigits = value >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${value.toFixed(fractionDigits)} ${units[unitIndex]}`;
 }
 
 function disabledVersionLabel(version: { disabledLabel?: string | null }): string {
