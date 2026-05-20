@@ -20,7 +20,7 @@ import { PgSongRepository } from "../modules/catalog/repositories/song-repositor
 import type { CandidateTaskService } from "../modules/online/candidate-task-service.js";
 import type { QueueEntryRepository } from "../modules/playback/repositories/queue-entry-repository.js";
 import type { RoomRepository } from "../modules/rooms/repositories/room-repository.js";
-import { registerSongSearchRoutes } from "../routes/song-search.js";
+import { registerSongSearchRoutes, type IndexedSourceIdentityLookup } from "../routes/song-search.js";
 import { describe, expect, it, vi } from "vitest";
 
 const now = new Date("2026-05-07T00:00:00.000Z").toISOString();
@@ -242,6 +242,60 @@ describe("song search routes", () => {
     expect(JSON.stringify(response.json())).not.toContain("file_path");
   });
 
+  it("marks synced indexed versions as queued while keeping them under indexed.results", async () => {
+    const ktvIndex = new FakeKtvIndexReadRepository([
+      createIndexedSearchResult({
+        indexedSongId: "ktv-song-1",
+        versions: [
+          {
+            indexedAssetId: "ktv-asset-1",
+            displayName: "七里香 - 周杰伦.mkv",
+            sourceLabel: "KTV索引",
+            extension: ".mkv",
+            sizeBytes: 734003200,
+            category: "流行",
+            queueState: "not_queued",
+            canQueue: true,
+            disabledLabel: null
+          }
+        ]
+      })
+    ]);
+    const indexedSources = new FakeIndexedSourceIdentityLookup(["ktv-asset-1"]);
+    const { server } = await createHarness({
+      ktvIndex,
+      indexedSources,
+      queueEntries: [
+        createQueueEntry({
+          songId: "song-ktv-ktv-song-1",
+          assetId: "asset-ktv-ktv-asset-1"
+        })
+      ]
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/rooms/living-room/songs/search?q=%E4%B8%83%E9%87%8C%E9%A6%99"
+    });
+    const body = response.json();
+
+    expect(response.statusCode).toBe(200);
+    expect(indexedSources.calls).toEqual([["asset-ktv-ktv-asset-1"]]);
+    expect(ktvIndex.searchCalls[0]).toMatchObject({
+      queuedIndexedAssetIds: ["ktv-asset-1"]
+    });
+    expect(body.indexed.results).toHaveLength(1);
+    expect(body.indexed.results[0].versions[0]).toMatchObject({
+      indexedAssetId: "ktv-asset-1",
+      queueState: "queued",
+      canQueue: true,
+      disabledLabel: null
+    });
+    expect(JSON.stringify(body)).not.toContain("/mnt/nas");
+    expect(JSON.stringify(body)).not.toContain("filePath");
+    expect(JSON.stringify(body)).not.toContain("file_path");
+  });
+
   it("returns an unavailable indexed section when no KTV index repository is registered", async () => {
     const { server } = await createHarness();
 
@@ -382,6 +436,7 @@ async function createHarness(input: {
   queueEntries?: QueueEntry[];
   online?: Pick<CandidateTaskService, "discoverCandidates">;
   ktvIndex?: Pick<KtvIndexReadRepository, "searchIndexedSongs">;
+  indexedSources?: IndexedSourceIdentityLookup;
 } = {}) {
   const server = Fastify({ logger: false });
   const rooms = new FakeRoomRepository(input.room === undefined ? createRoom() : input.room);
@@ -393,7 +448,8 @@ async function createHarness(input: {
     songs,
     queueEntries,
     ...(input.online ? { online: input.online } : {}),
-    ...(input.ktvIndex ? { ktvIndex: input.ktvIndex } : {})
+    ...(input.ktvIndex ? { ktvIndex: input.ktvIndex } : {}),
+    ...(input.indexedSources ? { indexedSources: input.indexedSources } : {})
   });
 
   return { server, rooms, songs, queueEntries };
@@ -430,6 +486,17 @@ class FakeKtvIndexReadRepository implements Pick<KtvIndexReadRepository, "search
   async searchIndexedSongs(input: Parameters<KtvIndexReadRepository["searchIndexedSongs"]>[0]) {
     this.searchCalls.push(input);
     return this.results;
+  }
+}
+
+class FakeIndexedSourceIdentityLookup implements IndexedSourceIdentityLookup {
+  readonly calls: string[][] = [];
+
+  constructor(private readonly indexedAssetIds: string[]) {}
+
+  async findIndexedAssetIdsForCanonicalAssets(assetIds: readonly string[]): Promise<string[]> {
+    this.calls.push([...assetIds]);
+    return this.indexedAssetIds;
   }
 }
 
@@ -601,12 +668,12 @@ function createIndexedSearchResult(input: Partial<SongSearchIndexedResult> = {})
   };
 }
 
-function createQueueEntry(input: { songId: string }): QueueEntry {
+function createQueueEntry(input: { songId: string; assetId?: string }): QueueEntry {
   return {
     id: `queue-${input.songId}`,
     roomId: "living-room",
     songId: input.songId,
-    assetId: "asset-main",
+    assetId: input.assetId ?? "asset-main",
     requestedBy: "control-session",
     queuePosition: 1,
     status: "queued",
