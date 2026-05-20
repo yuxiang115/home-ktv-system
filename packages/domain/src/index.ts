@@ -252,6 +252,113 @@ export interface SongSearchOnlineResult {
   candidates: OnlineCandidateCard[];
 }
 
+export type SongSearchIndexedQueueState = "needs_catalog_sync";
+
+export interface SongSearchIndexedVersionOption {
+  indexedAssetId: string;
+  displayName: string;
+  sourceLabel: string;
+  extension: string;
+  sizeBytes: number | null;
+  category: string;
+  queueState: SongSearchIndexedQueueState;
+  canQueue: false;
+  disabledLabel: string;
+}
+
+export interface SongSearchIndexedResult {
+  indexedSongId: string;
+  title: string;
+  artistName: string;
+  category: string;
+  sourceLabel: string;
+  matchReason: SongSearchMatchReason | "category";
+  versions: SongSearchIndexedVersionOption[];
+}
+
+export interface SongSearchIndexedSection {
+  status: "available" | "unavailable";
+  message: string;
+  results: SongSearchIndexedResult[];
+}
+
+export interface KtvIndexTableAvailability {
+  tableName: "ktv_index_runs" | "ktv_artists" | "ktv_songs" | "ktv_song_artists" | "ktv_song_assets";
+  exists: boolean;
+}
+
+export interface KtvIndexRunSummary {
+  id: string;
+  sourceRoot: string;
+  sshHost: string | null;
+  status: "running" | "completed" | "failed";
+  filesSeen: number;
+  songsUpserted: number;
+  assetsUpserted: number;
+  errorMessage: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface KtvIndexParseStrategyCount {
+  parseStrategy: string;
+  count: number;
+}
+
+export interface KtvIndexNasSampleResult {
+  indexedAssetId: string;
+  filePath: string;
+  readable: boolean;
+  status: "readable" | "missing" | "unreadable" | "timeout" | "unmapped";
+  message: string | null;
+}
+
+export interface KtvIndexDiagnosticsPreviewVersion {
+  indexedAssetId: string;
+  displayName: string;
+  sourceLabel: string;
+  extension: string;
+  sizeBytes: number | null;
+  category: string;
+  parseConfidence: number;
+  filePath: string;
+  missingAt: string | null;
+}
+
+export interface KtvIndexDiagnosticsPreviewResult {
+  indexedSongId: string;
+  title: string;
+  artistName: string;
+  category: string;
+  sourceLabel: string;
+  matchReason: SongSearchMatchReason | "category";
+  versions: KtvIndexDiagnosticsPreviewVersion[];
+}
+
+export interface KtvIndexDiagnosticsResponse {
+  tables: KtvIndexTableAvailability[];
+  latestRun: KtvIndexRunSummary | null;
+  sourceRoot: string | null;
+  activeAssetCount: number;
+  missingAssetCount: number;
+  songCount: number;
+  artistCount: number;
+  parseStrategies: KtvIndexParseStrategyCount[];
+  lowConfidenceCount: number;
+  minParseConfidence: number | null;
+  nasSample: {
+    requested: number;
+    checked: number;
+    readable: number;
+    missing: number;
+    unreadable: number;
+    timeout: number;
+    unmapped: number;
+    results: KtvIndexNasSampleResult[];
+  };
+  preview: KtvIndexDiagnosticsPreviewResult[];
+}
+
 export interface SongSearchResponse {
   query: string;
   local: SongSearchLocalResult[];
