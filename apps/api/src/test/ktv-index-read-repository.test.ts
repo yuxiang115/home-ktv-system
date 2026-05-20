@@ -54,6 +54,8 @@ describe("PgKtvIndexReadRepository", () => {
     expect(searchQuery?.text).toContain("a.missing_at IS NULL");
     expect(searchQuery?.text).toContain("ktv_song_artists");
     expect(searchQuery?.text).toContain("ktv_artists");
+    expect(searchQuery?.text).not.toContain("ms.song_category");
+    expect(searchQuery?.text).toContain("ms.category AS asset_category");
     expect(searchQuery?.values).toEqual(["七里香", "%七里香%", "%七里香%", 10, 2]);
   });
 

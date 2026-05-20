@@ -230,7 +230,7 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
                 a.size_bytes,
                 a.parse_confidence,
                 a.missing_at,
-                ms.song_category AS asset_category,
+                ms.category AS asset_category,
                 row_number() OVER (PARTITION BY ms.song_id ORDER BY a.updated_at DESC, a.file_path ASC) AS asset_rank
          FROM matched_songs ms
          JOIN ktv_song_assets a ON a.song_id = ms.song_id
