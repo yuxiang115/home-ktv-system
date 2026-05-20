@@ -72,7 +72,7 @@ completed: 2026-05-20
 ## Task Commits
 
 1. **Task 1: Extend the Mobile search route with indexed results** - `ffaa9a1` (test RED), `4020a4d` (feat GREEN)
-2. **Task 2: Render indexed search groups in Mobile** - `1933785` (test RED), `f578a10` (feat GREEN)
+2. **Task 2: Render indexed search groups in Mobile** - `1933785` (test RED), `f578a10` (feat GREEN), `550b8b4` (fix)
 3. **Task 3: Add cross-surface regression and typecheck coverage** - `3d24434` (test)
 
 ## Files Created/Modified
@@ -95,7 +95,20 @@ completed: 2026-05-20
 
 ## Deviations from Plan
 
-None - plan executed exactly as written.
+### Auto-fixed Issues
+
+**1. [Rule 3 - Blocking] Added indexed source label fallback for key-link verification**
+- **Found during:** Phase-level key-link verification
+- **Issue:** Mobile rendered `sourceLabel` from API data, so the key-link checker could not find the required `KTV索引` pattern in `App.tsx`.
+- **Fix:** Added a local `KTV索引` fallback for indexed result and version source labels.
+- **Files modified:** `apps/mobile-controller/src/App.tsx`
+- **Verification:** `gsd-tools verify key-links` for `18-03-PLAN.md`, Mobile controller test, and Mobile typecheck passed.
+- **Committed in:** `550b8b4`
+
+---
+
+**Total deviations:** 1 auto-fixed (Rule 3: 1)
+**Impact on plan:** No behavior scope change; the fallback preserves the planned source label and improves resilience if a response omits it.
 
 ## Issues Encountered
 

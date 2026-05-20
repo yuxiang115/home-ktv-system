@@ -127,8 +127,8 @@ Phases execute in numeric order: 18 -> 19 -> 20 -> 21 -> 22
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 18. KTV Index Read Model and Diagnostics | 3/3 | Complete   | 2026-05-20 |
-| 19. Search and Queue-Time Catalog Sync | 0/4 | Blocked on Phase 18 | — |
+| 18. KTV Index Read Model and Diagnostics | 3/3 | Complete    | 2026-05-20 |
+| 19. Search and Queue-Time Catalog Sync | 0/4 | Ready | — |
 | 20. Real Media Path, Streaming, and Playback Target Verification | 0/4 | Blocked on Phase 19 | — |
 | 21. Real Deployment Profile and Operator Workflow | 0/3 | Blocked on Phase 20 | — |
 | 22. Real-Scene UAT, Failure States, and Milestone Hardening | 0/3 | Blocked on Phase 21 | — |
@@ -138,4 +138,3 @@ Phases execute in numeric order: 18 -> 19 -> 20 -> 21 -> 22
 - v1.0 phases: `.planning/milestones/v1.0-phases/`
 - v1.1 phases: `.planning/milestones/v1.1-phases/`
 - v1.2 phases: `.planning/milestones/v1.2-phases/`
-

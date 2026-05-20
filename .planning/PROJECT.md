@@ -46,7 +46,7 @@ Milestone archives:
 - 本地真实场景部署能通过一个清晰命令/profile 启动 API/Admin/TV/Mobile，并保留各端日志。
 - 用户可以按 UAT 清单完成真实搜索、点歌、TV 播放、切歌、失败提示和恢复验证。
 
-**Status:** requirements and roadmap created on 2026-05-14; ready for Phase 18 discussion.
+**Status:** Phase 18 completed and verified on 2026-05-20; ready for Phase 19 discussion/planning.
 
 ## Requirements
 
@@ -66,6 +66,7 @@ Milestone archives:
 - v1.2 validated real-MV Mobile search and queueing, backend-resolved vocal intent, explicit TV playback profiles and selected audio tracks, runtime-gated original/accompaniment switching, and clear preprocessing/failure states.
 - v1.2 validated review-first hardening after real-MV integration: reserved auto-admit metadata stays inert, demo/local/online/Admin compatibility remains covered, local media hardening reports are portable, and Android TV remains a contract boundary only.
 - v1.2 audit traceability gap was closed by Phase 17 with an aggregate Phase 12 verification and synced milestone metadata.
+- v1.3 Phase 18 validated read-only `ktv_*` index access, Admin Songs diagnostics, bounded NAS sample evidence, and Mobile indexed search results that remain path-safe and nonqueueable until catalog sync.
 
 ## Next Milestone Goals
 
@@ -158,4 +159,4 @@ After each milestone:
 5. Update Current State and Key Decisions.
 
 ---
-*Last updated: 2026-05-14 after starting v1.3 milestone*
+*Last updated: 2026-05-20 after completing Phase 18*
