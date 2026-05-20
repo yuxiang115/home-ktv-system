@@ -48,7 +48,7 @@ import {
 } from "./runtime/pg-runtime-repositories.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerCors } from "./routes/cors.js";
-import { registerAdminCatalogRoutes } from "./routes/admin-catalog.js";
+import { PgKtvIndexSyncedSourceLookup, registerAdminCatalogRoutes } from "./routes/admin-catalog.js";
 import { registerAdminImportRoutes } from "./routes/admin-imports.js";
 import { registerAdminKtvIndexRoutes } from "./routes/admin-ktv-index.js";
 import { registerAdminRoomsRoutes } from "./routes/admin-rooms.js";
@@ -163,6 +163,7 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     await registerAdminCatalogRoutes(server, {
       songs: ingest.catalogSongs,
       admissionService: ingest.admissionService,
+      ktvIndexSources: new PgKtvIndexSyncedSourceLookup(pool),
       songsRoot: ingest.paths.songsRoot
     });
   }

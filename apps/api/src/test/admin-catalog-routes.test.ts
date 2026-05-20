@@ -82,23 +82,16 @@ describe("admin catalog routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(ktvIndexSources.findSyncedSourcesForAssets).toHaveBeenCalledWith(["asset-original", "asset-instrumental"]);
-    expect(response.json()).toMatchObject({
-      songs: [
-        {
-          id: "song-1",
-          assets: expect.arrayContaining([
-            expect.objectContaining({
-              id: "asset-instrumental",
-              ktvIndexSource: {
-                indexedSongId: "ktv-song-1",
-                indexedAssetId: "ktv-asset-1",
-                filePath: "/mnt/nas/KTV歌曲/周杰伦/七里香.mkv",
-                parseConfidence: 0.98
-              }
-            })
-          ])
-        }
-      ]
+    const body = response.json();
+    const sourceAsset = body.songs[0].assets.find((asset: { id: string }) => asset.id === "asset-instrumental");
+    expect(sourceAsset).toMatchObject({
+      id: "asset-instrumental",
+      ktvIndexSource: {
+        indexedSongId: "ktv-song-1",
+        indexedAssetId: "ktv-asset-1",
+        filePath: "/mnt/nas/KTV歌曲/周杰伦/七里香.mkv",
+        parseConfidence: 0.98
+      }
     });
   });
 

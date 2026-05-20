@@ -359,6 +359,18 @@ export interface KtvIndexDiagnosticsResponse {
   preview: KtvIndexDiagnosticsPreviewResult[];
 }
 
+export interface KtvIndexSyncedSourceRecord {
+  songId: SongId;
+  assetId: AssetId;
+  indexedSongId: string;
+  indexedAssetId: string;
+  filePath: string;
+  title: string;
+  artistName: string;
+  category: string;
+  parseConfidence: number | null;
+}
+
 export interface SongSearchResponse {
   query: string;
   local: SongSearchLocalResult[];

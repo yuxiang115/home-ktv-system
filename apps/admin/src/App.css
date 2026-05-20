@@ -1215,6 +1215,8 @@ button:disabled {
 }
 
 .catalog-detail-pane {
+  display: grid;
+  gap: 14px;
   min-width: 0;
   padding: 16px;
 }
@@ -1312,6 +1314,80 @@ button:disabled {
   display: flex;
   gap: 8px;
   justify-content: space-between;
+}
+
+.ktv-synced-sources {
+  background: #ffffff;
+  border: 1px solid #d7dde2;
+  border-radius: 6px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.ktv-synced-sources h2 {
+  font-size: 20px;
+  line-height: 1.2;
+  margin: 2px 0 0;
+}
+
+.ktv-synced-source-list {
+  display: grid;
+  gap: 10px;
+}
+
+.ktv-synced-source-card {
+  background: #f8faf9;
+  border: 1px solid #d7dde2;
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.ktv-synced-source-card header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.ktv-synced-source-card dl {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.ktv-synced-source-card div {
+  min-width: 0;
+}
+
+.ktv-synced-source-card .wide {
+  grid-column: 1 / -1;
+}
+
+.ktv-synced-source-card dt {
+  color: #63707b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ktv-synced-source-card dd {
+  margin: 3px 0 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ktv-synced-source-card code {
+  background: #eef3f1;
+  border-radius: 4px;
+  color: #26413d;
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 2px 5px;
 }
 
 .asset-facts {

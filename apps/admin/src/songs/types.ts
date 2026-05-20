@@ -1,3 +1,5 @@
+import type { KtvIndexSyncedSourceRecord } from "@home-ktv/domain";
+
 export type Language = "mandarin" | "cantonese" | "other";
 export type SongStatus = "ready" | "review_required" | "unavailable";
 export type AssetStatus = "ready" | "caching" | "failed" | "unavailable" | "stale" | "promoted";
@@ -18,6 +20,7 @@ export interface AdminCatalogAsset {
   status: AssetStatus;
   switchFamily: string | null;
   switchQualityStatus: SwitchQualityStatus;
+  ktvIndexSource?: KtvIndexSyncedSourceRecord | null;
   createdAt: string;
   updatedAt: string;
 }

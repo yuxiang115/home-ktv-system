@@ -2,12 +2,14 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import type {
   Asset,
   AssetStatus,
+  KtvIndexSyncedSourceRecord,
   Language,
   LyricMode,
   SongStatus,
   SwitchQualityStatus,
   VocalMode
 } from "@home-ktv/domain";
+import type { QueryExecutor } from "../db/query-executor.js";
 import type {
   CatalogAdmissionService,
   FormalPairEvaluation,
@@ -33,7 +35,45 @@ export interface AdminCatalogRouteDependencies {
     | "updateDefaultAsset"
   >;
   admissionService: Pick<CatalogAdmissionService, "revalidateFormalSong" | "updateFormalAssetWithRevalidation">;
+  ktvIndexSources?: KtvIndexSyncedSourceLookup;
   songsRoot?: string;
+}
+
+export interface KtvIndexSyncedSourceLookup {
+  findSyncedSourcesForAssets(assetIds: readonly string[]): Promise<KtvIndexSyncedSourceRecord[]>;
+}
+
+interface KtvIndexSyncedSourceRow {
+  song_id: string;
+  asset_id: string;
+  provider_item_id: string | null;
+  source_uri: string | null;
+  raw_meta: Record<string, unknown>;
+}
+
+export class PgKtvIndexSyncedSourceLookup implements KtvIndexSyncedSourceLookup {
+  constructor(private readonly db: QueryExecutor) {}
+
+  async findSyncedSourcesForAssets(assetIds: readonly string[]): Promise<KtvIndexSyncedSourceRecord[]> {
+    if (assetIds.length === 0) {
+      return [];
+    }
+
+    const result = await this.db.query<KtvIndexSyncedSourceRow>(
+      `SELECT a.song_id,
+              sr.asset_id,
+              sr.provider_item_id,
+              sr.source_uri,
+              sr.raw_meta
+       FROM source_records sr
+       JOIN assets a ON a.id = sr.asset_id
+       WHERE sr.provider = 'ktv-index'
+         AND sr.asset_id = ANY($1::text[])`,
+      [assetIds]
+    );
+
+    return result.rows.map(mapKtvIndexSyncedSourceRow).filter((source): source is KtvIndexSyncedSourceRecord => Boolean(source));
+  }
 }
 
 const songStatuses: SongStatus[] = ["ready", "review_required", "unavailable"];
@@ -54,7 +94,7 @@ export async function registerAdminCatalogRoutes(
     }
 
     const songs = await dependencies.songs.listFormalSongs(filters);
-    return { songs: songs.map(serializeCatalogSongRecord) };
+    return { songs: await serializeCatalogSongRecords(songs, dependencies.ktvIndexSources) };
   });
 
   server.get("/admin/catalog/songs/:songId", async (request, reply) => {
@@ -64,7 +104,7 @@ export async function registerAdminCatalogRoutes(
       return reply.code(404).send({ error: "FORMAL_SONG_NOT_FOUND" });
     }
 
-    return { song: serializeCatalogSongRecord(record) };
+    return { song: await serializeCatalogSongRecord(record, dependencies.ktvIndexSources) };
   });
 
   server.get("/admin/catalog/songs/:songId/validate", async (request, reply) => {
@@ -97,7 +137,7 @@ export async function registerAdminCatalogRoutes(
       return reply.code(404).send({ error: "FORMAL_SONG_NOT_FOUND" });
     }
 
-    return { song: serializeCatalogSongRecord(record) };
+    return { song: await serializeCatalogSongRecord(record, dependencies.ktvIndexSources) };
   });
 
   server.patch("/admin/catalog/songs/:songId/default-asset", async (request, reply) => {
@@ -114,7 +154,7 @@ export async function registerAdminCatalogRoutes(
 
     const revalidated = await dependencies.admissionService.revalidateFormalSong(songId);
     return {
-      song: serializeCatalogSongRecord(revalidated.record),
+      song: await serializeCatalogSongRecord(revalidated.record, dependencies.ktvIndexSources),
       evaluation: serializeEvaluation(revalidated.evaluation)
     };
   });
@@ -129,7 +169,7 @@ export async function registerAdminCatalogRoutes(
     try {
       const result = await dependencies.admissionService.updateFormalAssetWithRevalidation({ assetId, patch });
       return {
-        song: serializeCatalogSongRecord(result.record),
+        song: await serializeCatalogSongRecord(result.record, dependencies.ktvIndexSources),
         asset: serializeAsset(result.asset),
         evaluation: serializeEvaluation(result.evaluation)
       };
@@ -143,7 +183,7 @@ export async function registerAdminCatalogRoutes(
     try {
       const result = await dependencies.admissionService.revalidateFormalSong(songId);
       return {
-        song: serializeCatalogSongRecord(result.record),
+        song: await serializeCatalogSongRecord(result.record, dependencies.ktvIndexSources),
         evaluation: serializeEvaluation(result.evaluation)
       };
     } catch (error) {
@@ -277,16 +317,51 @@ function parseAssetPatch(body: unknown): UpdateFormalAssetWithRevalidationInput[
   return input;
 }
 
-function serializeCatalogSongRecord(record: AdminCatalogSongRecord) {
+async function serializeCatalogSongRecords(
+  records: readonly AdminCatalogSongRecord[],
+  ktvIndexSources: KtvIndexSyncedSourceLookup | undefined
+) {
+  const sourcesByAssetId = await loadKtvIndexSources(records, ktvIndexSources);
+  return records.map((record) => serializeCatalogSongRecordWithSources(record, sourcesByAssetId));
+}
+
+async function serializeCatalogSongRecord(
+  record: AdminCatalogSongRecord,
+  ktvIndexSources: KtvIndexSyncedSourceLookup | undefined
+) {
+  const records = await serializeCatalogSongRecords([record], ktvIndexSources);
+  return records[0] ?? serializeCatalogSongRecordWithSources(record, new Map());
+}
+
+async function loadKtvIndexSources(
+  records: readonly AdminCatalogSongRecord[],
+  ktvIndexSources: KtvIndexSyncedSourceLookup | undefined
+): Promise<Map<string, KtvIndexSyncedSourceRecord>> {
+  const assetIds = records.flatMap((record) => record.assets.map((asset) => asset.id));
+  if (!ktvIndexSources || assetIds.length === 0) {
+    return new Map();
+  }
+
+  const sources = await ktvIndexSources.findSyncedSourcesForAssets(assetIds);
+  return new Map(sources.map((source) => [source.assetId, source]));
+}
+
+function serializeCatalogSongRecordWithSources(
+  record: AdminCatalogSongRecord,
+  sourcesByAssetId: ReadonlyMap<string, KtvIndexSyncedSourceRecord>
+) {
   return {
     ...record.song,
-    defaultAsset: record.defaultAsset ? serializeAsset(record.defaultAsset) : null,
-    assets: record.assets.map(serializeAsset)
+    defaultAsset: record.defaultAsset ? serializeAsset(record.defaultAsset, sourcesByAssetId) : null,
+    assets: record.assets.map((asset) => serializeAsset(asset, sourcesByAssetId))
   };
 }
 
-function serializeAsset(asset: Asset) {
-  return asset;
+function serializeAsset(asset: Asset, sourcesByAssetId: ReadonlyMap<string, KtvIndexSyncedSourceRecord> = new Map()) {
+  return {
+    ...asset,
+    ktvIndexSource: sourcesByAssetId.get(asset.id) ?? null
+  };
 }
 
 function serializeEvaluation(evaluation: FormalPairEvaluation) {
@@ -320,6 +395,47 @@ function aggregateValidationStatus(results: SongJsonConsistencyResult[]): SongJs
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function mapKtvIndexSyncedSourceRow(row: KtvIndexSyncedSourceRow): KtvIndexSyncedSourceRecord | null {
+  const rawMeta = isRecord(row.raw_meta) ? row.raw_meta : {};
+  const indexedAssetId = stringValue(rawMeta.indexedAssetId) ?? row.provider_item_id;
+  const indexedSongId = stringValue(rawMeta.indexedSongId);
+  const filePath = stringValue(rawMeta.filePath) ?? row.source_uri;
+  const title = stringValue(rawMeta.title);
+  const artistName = stringValue(rawMeta.primaryArtistName) ?? stringValue(rawMeta.artistName);
+  const category = stringValue(rawMeta.category);
+
+  if (!indexedAssetId || !indexedSongId || !filePath || !title || !artistName || !category) {
+    return null;
+  }
+
+  return {
+    songId: row.song_id,
+    assetId: row.asset_id,
+    indexedSongId,
+    indexedAssetId,
+    filePath,
+    title,
+    artistName,
+    category,
+    parseConfidence: numberValue(rawMeta.parseConfidence)
+  };
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function numberValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 function isSongStatus(value: string): value is SongStatus {

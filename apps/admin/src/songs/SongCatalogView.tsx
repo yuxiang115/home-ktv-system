@@ -1,7 +1,7 @@
 import { languageName, statusText, useI18n, vocalModeName } from "../i18n.js";
 import { SongDetailEditor } from "./SongDetailEditor.js";
 import { languageOptions, songStatusOptions, useSongCatalogRuntime } from "./use-song-catalog-runtime.js";
-import type { KtvIndexDiagnosticsResponse, KtvIndexNasSampleResult } from "@home-ktv/domain";
+import type { KtvIndexDiagnosticsResponse, KtvIndexNasSampleResult, KtvIndexSyncedSourceRecord } from "@home-ktv/domain";
 import type { AdminCatalogAsset, AdminCatalogSong, Language, SongStatus } from "./types.js";
 
 export function SongCatalogView() {
@@ -100,27 +100,30 @@ export function SongCatalogView() {
 
         <section className="catalog-detail-pane" aria-label={t("songs.detailAria")}>
           {selectedSong ? (
-            <SongDetailEditor
-              evaluation={evaluation}
-              isBusy={isBusy}
-              song={selectedSong}
-              validation={validation}
-              onRevalidate={async (songId) => {
-                await revalidateSong(songId);
-              }}
-              onSaveMetadata={async (songId, input) => {
-                await saveMetadata(songId, input);
-              }}
-              onSetDefaultAsset={async (songId, assetId) => {
-                await setDefaultAsset(songId, assetId);
-              }}
-              onUpdateAsset={async (assetId, patch) => {
-                await updateAsset(assetId, patch);
-              }}
-              onValidate={async (songId) => {
-                await validateSong(songId);
-              }}
-            />
+            <>
+              <SongDetailEditor
+                evaluation={evaluation}
+                isBusy={isBusy}
+                song={selectedSong}
+                validation={validation}
+                onRevalidate={async (songId) => {
+                  await revalidateSong(songId);
+                }}
+                onSaveMetadata={async (songId, input) => {
+                  await saveMetadata(songId, input);
+                }}
+                onSetDefaultAsset={async (songId, assetId) => {
+                  await setDefaultAsset(songId, assetId);
+                }}
+                onUpdateAsset={async (assetId, patch) => {
+                  await updateAsset(assetId, patch);
+                }}
+                onValidate={async (songId) => {
+                  await validateSong(songId);
+                }}
+              />
+              <KtvSyncedSourcesPanel song={selectedSong} />
+            </>
           ) : (
             <EmptySongDetail />
           )}
@@ -283,8 +286,66 @@ function sampleStatusText(status: KtvIndexNasSampleResult["status"], t: ReturnTy
   return t(`ktvIndex.sampleStatus.${status}`);
 }
 
+function KtvSyncedSourcesPanel({ song }: { song: AdminCatalogSong }) {
+  const { t } = useI18n();
+  const sources = song.assets
+    .map((asset) => asset.ktvIndexSource ?? null)
+    .filter((source): source is KtvIndexSyncedSourceRecord => source !== null);
+
+  if (sources.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="ktv-synced-sources" aria-label={t("ktvIndex.syncedSources")}>
+      <header>
+        <p className="pane-title">{t("ktvIndex.sectionLabel")}</p>
+        <h2>{t("ktvIndex.syncedSources")}</h2>
+      </header>
+      <div className="ktv-synced-source-list">
+        {sources.map((source) => (
+          <article className="ktv-synced-source-card" key={source.assetId}>
+            <header>
+              <strong>{source.title}</strong>
+              <span className="badge">{source.category}</span>
+            </header>
+            <dl>
+              <div>
+                <dt>ktv_songs.id</dt>
+                <dd>
+                  <code>{source.indexedSongId}</code>
+                </dd>
+              </div>
+              <div>
+                <dt>ktv_song_assets.id</dt>
+                <dd>
+                  <code>{source.indexedAssetId}</code>
+                </dd>
+              </div>
+              <div className="wide">
+                <dt>{t("ktvIndex.sourceFilePath")}</dt>
+                <dd>
+                  <code>{source.filePath}</code>
+                </dd>
+              </div>
+              <div>
+                <dt>{t("ktvIndex.parseConfidence")}</dt>
+                <dd>{formatNullableNumber(source.parseConfidence)}</dd>
+              </div>
+            </dl>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function formatNumber(value: number | null | undefined): string {
   return value == null ? "0" : value.toLocaleString();
+}
+
+function formatNullableNumber(value: number | null | undefined): string {
+  return value == null ? "-" : String(value);
 }
 
 function SongResourceSummary({ song }: { song: AdminCatalogSong }) {
