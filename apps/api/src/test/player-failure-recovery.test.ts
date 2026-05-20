@@ -129,6 +129,7 @@ function createHarness() {
     config: {
       corsAllowedOrigins: [],
       databaseUrl: "",
+      mediaPathMappings: [],
       mediaRoot: "/media-root",
       onlineDemoReadyAssetId: "",
       onlineProviderIds: [],

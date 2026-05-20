@@ -9,6 +9,7 @@ import type {
   SongSearchMatchReason
 } from "@home-ktv/domain";
 import type { QueryExecutor } from "../../db/query-executor.js";
+import type { MediaPathMapping } from "../assets/media-path-mapping.js";
 import { normalizeSearchText } from "../catalog/search-normalization.js";
 import { buildNasSample } from "./ktv-index-diagnostics.js";
 
@@ -31,6 +32,10 @@ export interface GetKtvIndexDiagnosticsInput {
 export interface KtvIndexReadRepository {
   searchIndexedSongs(input: SearchKtvIndexedSongsInput): Promise<SongSearchIndexedResult[]>;
   getDiagnostics(input?: GetKtvIndexDiagnosticsInput): Promise<KtvIndexDiagnosticsResponse>;
+}
+
+export interface KtvIndexReadRepositoryOptions {
+  pathMappings?: readonly MediaPathMapping[];
 }
 
 type KtvTableName = KtvIndexTableAvailability["tableName"];
@@ -95,7 +100,10 @@ interface SampleAssetRow {
 }
 
 export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
-  constructor(private readonly db: QueryExecutor) {}
+  constructor(
+    private readonly db: QueryExecutor,
+    private readonly options: KtvIndexReadRepositoryOptions = {}
+  ) {}
 
   async searchIndexedSongs(input: SearchKtvIndexedSongsInput): Promise<SongSearchIndexedResult[]> {
     const rows = await this.queryIndexedRows(input);
@@ -141,6 +149,7 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
     const nasSample = await buildNasSample({
       assets: sampleAssets.map((asset) => ({ indexedAssetId: asset.id, filePath: asset.file_path })),
       sourceRoot: latestRun?.sourceRoot ?? null,
+      ...(this.options.pathMappings ? { pathMappings: this.options.pathMappings } : {}),
       ...(input.sampleTimeoutMs === undefined ? {} : { timeoutMs: input.sampleTimeoutMs })
     });
 

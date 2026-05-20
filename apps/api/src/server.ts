@@ -102,7 +102,9 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
   const room = createLivingRoom(resolvedConfig);
   const session = createInitialPlaybackSession(room);
   const pool = resolvedConfig.databaseUrl ? (options.poolFactory ?? createPgPool)(resolvedConfig.databaseUrl) : null;
-  const repositories = pool ? createPgRuntimeRepositories(pool) : createInMemoryRepositories(room, session);
+  const repositories = pool
+    ? createPgRuntimeRepositories(pool, { mediaPathMappings: resolvedConfig.mediaPathMappings })
+    : createInMemoryRepositories(room, session);
   const onlineRuntime = createOnlineRuntime({
     config: resolvedConfig,
     pool,
@@ -111,7 +113,10 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
   const assetRepository = repositories.assets;
   const assetGateway = new AssetGateway({
     assetRepository,
-    mediaPathResolver: new MediaPathResolver({ mediaRoot: resolvedConfig.mediaRoot }),
+    mediaPathResolver: new MediaPathResolver({
+      mediaRoot: resolvedConfig.mediaRoot,
+      pathMappings: resolvedConfig.mediaPathMappings
+    }),
     publicBaseUrl: resolvedConfig.publicBaseUrl
   });
   const indexedQueueCommands = pool
@@ -119,7 +124,8 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
         pool,
         config: resolvedConfig,
         assetGateway,
-        createRepositories: createPgRuntimeRepositories
+        createRepositories: (db) =>
+          createPgRuntimeRepositories(db, { mediaPathMappings: resolvedConfig.mediaPathMappings })
       })
     : null;
   const broadcaster = new RoomSnapshotBroadcaster();

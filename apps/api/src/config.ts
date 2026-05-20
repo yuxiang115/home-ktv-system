@@ -1,7 +1,10 @@
+import { parseMediaPathMappings, type MediaPathMapping } from "./modules/assets/media-path-mapping.js";
+
 export interface ApiConfig {
   corsAllowedOrigins: readonly string[];
   databaseUrl: string;
   controllerBaseUrl?: string;
+  mediaPathMappings: readonly MediaPathMapping[];
   mediaRoot: string;
   onlineDemoReadyAssetId: string;
   onlineProviderIds: readonly string[];
@@ -15,8 +18,13 @@ export interface ApiConfig {
 
 export type ApiConfigInput = Omit<
   ApiConfig,
-  "onlineDemoReadyAssetId" | "onlineProviderIds" | "onlineProviderKillSwitchIds" | "scanIntervalMinutes"
+  | "mediaPathMappings"
+  | "onlineDemoReadyAssetId"
+  | "onlineProviderIds"
+  | "onlineProviderKillSwitchIds"
+  | "scanIntervalMinutes"
 > & {
+  mediaPathMappings?: readonly MediaPathMapping[];
   onlineDemoReadyAssetId?: string;
   onlineProviderIds?: readonly string[];
   onlineProviderKillSwitchIds?: readonly string[];
@@ -54,6 +62,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     corsAllowedOrigins: readList(env.CORS_ALLOWED_ORIGINS),
     databaseUrl: readString(env.DATABASE_URL),
     controllerBaseUrl: readString(env.CONTROLLER_BASE_URL),
+    mediaPathMappings: parseMediaPathMappings(env.MEDIA_PATH_MAPPINGS),
     mediaRoot: readString(env.MEDIA_ROOT),
     onlineDemoReadyAssetId: readString(env.ONLINE_DEMO_READY_ASSET_ID),
     onlineProviderIds: readList(env.ONLINE_PROVIDER_IDS),
@@ -69,6 +78,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
 export function normalizeApiConfig(config: ApiConfigInput): ApiConfig {
   return {
     ...config,
+    mediaPathMappings: config.mediaPathMappings ?? [],
     onlineDemoReadyAssetId: config.onlineDemoReadyAssetId ?? "",
     onlineProviderIds: config.onlineProviderIds ?? [],
     onlineProviderKillSwitchIds: config.onlineProviderKillSwitchIds ?? [],

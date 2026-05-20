@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -10,6 +10,7 @@ const LOG_DIR = process.env.KTV_LOG_DIR?.trim() || path.join(ROOT_DIR, "logs", "
 const PID_DIR = path.join(LOG_DIR, "pids");
 const ROOM_SLUG = process.env.TV_ROOM_SLUG?.trim() || "living-room";
 const MEDIA_ROOT = process.env.MEDIA_ROOT?.trim() || path.join(ROOT_DIR, "home-ktv-media");
+const MEDIA_PATH_MAPPINGS = process.env.MEDIA_PATH_MAPPINGS?.trim() || detectDefaultMediaPathMappings();
 const LAN_IP = detectLanIp(process.env.KTV_LAN_IP?.trim());
 const API_BASE_URL = process.env.PUBLIC_BASE_URL?.trim() || `http://${LAN_IP}:4000`;
 const CONTROLLER_BASE_URL = process.env.CONTROLLER_BASE_URL?.trim() || `http://${LAN_IP}:5176`;
@@ -139,6 +140,7 @@ async function startService(service) {
     CONTROLLER_BASE_URL,
     HOST: "0.0.0.0",
     MEDIA_ROOT,
+    MEDIA_PATH_MAPPINGS,
     PORT: String(SERVICES[service].port),
     PUBLIC_BASE_URL: API_BASE_URL,
     TV_ROOM_SLUG: ROOM_SLUG,
@@ -154,6 +156,7 @@ async function startService(service) {
     delete env.CORS_ALLOWED_ORIGINS;
     delete env.HOST;
     delete env.MEDIA_ROOT;
+    delete env.MEDIA_PATH_MAPPINGS;
     delete env.PORT;
     delete env.PUBLIC_BASE_URL;
     delete env.TV_ROOM_SLUG;
@@ -335,6 +338,7 @@ function printUsage(error = false) {
     "Environment overrides:",
     `  KTV_LAN_IP         LAN IP used in URLs, default: auto-detected (${LAN_IP})`,
     `  MEDIA_ROOT         Media root, default: ${MEDIA_ROOT}`,
+    `  MEDIA_PATH_MAPPINGS Path mappings for indexed media, default: ${MEDIA_PATH_MAPPINGS || "(none)"}`,
     `  TV_ROOM_SLUG       Room slug, default: ${ROOM_SLUG}`,
     `  KTV_LOG_DIR        Log directory, default: ${LOG_DIR}`
   ].join("\n");
@@ -347,9 +351,15 @@ function writeHeader(logPath, service) {
   const lines = [
     "",
     `[${timestamp}] starting ${service}`,
-    `LAN_IP=${LAN_IP} API_BASE_URL=${API_BASE_URL} CONTROLLER_BASE_URL=${CONTROLLER_BASE_URL} ROOM_SLUG=${ROOM_SLUG} MEDIA_ROOT=${MEDIA_ROOT}`
+    `LAN_IP=${LAN_IP} API_BASE_URL=${API_BASE_URL} CONTROLLER_BASE_URL=${CONTROLLER_BASE_URL} ROOM_SLUG=${ROOM_SLUG} MEDIA_ROOT=${MEDIA_ROOT} MEDIA_PATH_MAPPINGS=${MEDIA_PATH_MAPPINGS}`
   ].join("\n");
   writeFileSync(logPath, `${lines}\n`, { flag: "a" });
+}
+
+function detectDefaultMediaPathMappings() {
+  const sourceRoot = "/mnt/nas/KTV歌曲";
+  const macMountRoot = "/Volumes/nas/KTV歌曲";
+  return existsSync(macMountRoot) ? `${sourceRoot}=${macMountRoot}` : "";
 }
 
 function detectLanIp(override) {

@@ -83,6 +83,30 @@ describe("PgKtvCatalogSyncService", () => {
     });
   });
 
+  it("maps indexed NAS paths to local readable paths while preserving the raw source metadata", async () => {
+    const db = new FakeKtvCatalogSyncDb();
+    const accessedPaths: string[] = [];
+    const service = new PgKtvCatalogSyncService(db, {
+      pathMappings: [{ from: "/mnt/nas/KTV歌曲", to: "/Volumes/nas/KTV歌曲" }],
+      accessFile: async (filePath) => {
+        accessedPaths.push(filePath);
+      }
+    });
+
+    await service.syncIndexedAsset({ indexedAssetId: "ktv-asset-1" });
+
+    expect(accessedPaths).toEqual(["/Volumes/nas/KTV歌曲/周杰伦-七里香-国语-流行.mkv"]);
+    expect(db.assets.get("asset-ktv-ktv-asset-1")).toMatchObject({
+      filePath: "/Volumes/nas/KTV歌曲/周杰伦-七里香-国语-流行.mkv"
+    });
+    expect(db.sourceRecords[0]).toMatchObject({
+      sourceUri: "/mnt/nas/KTV歌曲/周杰伦-七里香-国语-流行.mkv",
+      rawMeta: expect.objectContaining({
+        filePath: "/mnt/nas/KTV歌曲/周杰伦-七里香-国语-流行.mkv"
+      })
+    });
+  });
+
   it("rejects missing or stale indexed assets with a stable Chinese error", async () => {
     const service = new PgKtvCatalogSyncService(new FakeKtvCatalogSyncDb({ missingAt: new Date("2026-05-20T00:00:00Z") }), {
       checkFileAccess: false
@@ -197,11 +221,11 @@ class FakeKtvCatalogSyncDb implements QueryExecutor {
         songId: values[1],
         displayName: values[2],
         filePath: values[3],
-        compatibilityReasons: values[4],
-        mediaInfoSummary: values[5],
-        mediaInfoProvenance: values[6],
-        trackRoles: values[7],
-        playbackProfile: values[8]
+        compatibilityReasons: parseJsonbParam(values[4]),
+        mediaInfoSummary: parseJsonbParam(values[5]),
+        mediaInfoProvenance: parseJsonbParam(values[6]),
+        trackRoles: parseJsonbParam(values[7]),
+        playbackProfile: parseJsonbParam(values[8])
       });
       return { rows: [] as TRow[] };
     }
@@ -214,7 +238,7 @@ class FakeKtvCatalogSyncDb implements QueryExecutor {
         provider: "ktv-index",
         providerItemId: values[2],
         sourceUri: values[3],
-        rawMeta: values[4]
+        rawMeta: parseJsonbParam(values[4])
       };
       if (existingIndex >= 0) {
         this.sourceRecords[existingIndex] = record;
@@ -234,6 +258,13 @@ class FakeKtvCatalogSyncDb implements QueryExecutor {
 
     return { rows: [] as TRow[] };
   }
+}
+
+function parseJsonbParam(value: unknown): unknown {
+  if (typeof value !== "string") {
+    throw new Error("jsonb parameters must be serialized before reaching pg");
+  }
+  return JSON.parse(value);
 }
 
 function createIndexedAssetRow(input: Partial<FakeIndexedAssetRow> = {}): FakeIndexedAssetRow {

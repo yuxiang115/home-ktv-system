@@ -332,6 +332,7 @@ function createConfig(): ApiConfig {
     corsAllowedOrigins: [],
     databaseUrl: "",
     host: "0.0.0.0",
+    mediaPathMappings: [],
     mediaRoot: "/media-root",
     onlineDemoReadyAssetId: "",
     onlineProviderIds: [],

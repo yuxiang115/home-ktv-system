@@ -2,12 +2,14 @@ import { access } from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
 import type { KtvIndexDiagnosticsResponse, KtvIndexNasSampleResult } from "@home-ktv/domain";
+import { mapMediaPath, type MediaPathMapping } from "../assets/media-path-mapping.js";
 
 export interface BuildNasSampleInput {
   assets: readonly { indexedAssetId: string; filePath: string }[];
   sourceRoot?: string | null;
   timeoutMs?: number;
   accessFile?: (filePath: string) => Promise<void>;
+  pathMappings?: readonly MediaPathMapping[];
 }
 
 const timeoutMarker = Symbol("ktv-nas-sample-timeout");
@@ -18,7 +20,9 @@ export async function buildNasSample(input: BuildNasSampleInput): Promise<KtvInd
   const results: KtvIndexNasSampleResult[] = [];
 
   for (const asset of input.assets) {
-    const unmappedMessage = unmappedReason(asset.filePath, input.sourceRoot);
+    const localFilePath = mapMediaPath(asset.filePath, input.pathMappings);
+    const localSourceRoot = input.sourceRoot ? mapMediaPath(input.sourceRoot, input.pathMappings) : input.sourceRoot;
+    const unmappedMessage = unmappedReason(localFilePath, localSourceRoot);
     if (unmappedMessage) {
       results.push({
         indexedAssetId: asset.indexedAssetId,
@@ -31,7 +35,7 @@ export async function buildNasSample(input: BuildNasSampleInput): Promise<KtvInd
     }
 
     try {
-      await withTimeout(accessFile(asset.filePath), timeoutMs);
+      await withTimeout(accessFile(localFilePath), timeoutMs);
       results.push({
         indexedAssetId: asset.indexedAssetId,
         filePath: asset.filePath,

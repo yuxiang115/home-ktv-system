@@ -8,6 +8,7 @@ import type {
   TrackRoles
 } from "@home-ktv/domain";
 import type { QueryExecutor } from "../../db/query-executor.js";
+import { mapMediaPath, type MediaPathMapping } from "../assets/media-path-mapping.js";
 import { buildNasSample } from "../ktv-index/ktv-index-diagnostics.js";
 import { buildPinyinSearchKeys, normalizeSearchText } from "./search-normalization.js";
 
@@ -39,6 +40,7 @@ export interface PgKtvCatalogSyncServiceOptions {
   checkFileAccess?: boolean;
   sampleTimeoutMs?: number;
   accessFile?: (filePath: string) => Promise<void>;
+  pathMappings?: readonly MediaPathMapping[];
 }
 
 interface KtvIndexedAssetSyncRow {
@@ -151,6 +153,7 @@ export class PgKtvCatalogSyncService {
       assets: [{ indexedAssetId: row.id, filePath: row.file_path }],
       sourceRoot: row.source_root,
       timeoutMs: this.options.sampleTimeoutMs ?? 250,
+      ...(this.options.pathMappings ? { pathMappings: this.options.pathMappings } : {}),
       ...(this.options.accessFile ? { accessFile: this.options.accessFile } : {})
     });
     const result = sample.results[0];
@@ -207,6 +210,7 @@ export class PgKtvCatalogSyncService {
   }
 
   private async upsertAsset(input: { row: KtvIndexedAssetSyncRow; songId: SongId; assetId: AssetId }): Promise<void> {
+    const localFilePath = mapMediaPath(input.row.file_path, this.options.pathMappings);
     const fileSizeBytes = toNumber(input.row.size_bytes ?? 0);
     const container = normalizeExtension(input.row.extension);
     const compatibilityReasons: CompatibilityReason[] = [
@@ -272,12 +276,12 @@ export class PgKtvCatalogSyncService {
         input.assetId,
         input.songId,
         input.row.file_name,
-        input.row.file_path,
-        compatibilityReasons,
-        mediaInfoSummary,
-        mediaInfoProvenance,
-        trackRoles,
-        playbackProfile
+        localFilePath,
+        toJsonbParam(compatibilityReasons),
+        toJsonbParam(mediaInfoSummary),
+        toJsonbParam(mediaInfoProvenance),
+        toJsonbParam(trackRoles),
+        toJsonbParam(playbackProfile)
       ]
     );
   }
@@ -304,13 +308,13 @@ export class PgKtvCatalogSyncService {
       `INSERT INTO source_records (id, asset_id, provider, provider_item_id, source_uri, raw_meta)
        VALUES ($1, $2, 'ktv-index', $3, $4, $5::jsonb)
        ON CONFLICT(id)
-       DO UPDATE SET asset_id = EXCLUDED.asset_id,
+      DO UPDATE SET asset_id = EXCLUDED.asset_id,
                      provider = EXCLUDED.provider,
                      provider_item_id = EXCLUDED.provider_item_id,
                      source_uri = EXCLUDED.source_uri,
                      raw_meta = EXCLUDED.raw_meta,
                      updated_at = now()`,
-      [input.sourceRecordId, input.assetId, input.row.id, input.row.file_path, rawMeta]
+      [input.sourceRecordId, input.assetId, input.row.id, input.row.file_path, toJsonbParam(rawMeta)]
     );
   }
 
@@ -336,4 +340,8 @@ function toNumber(value: number | string): number {
 
 function compact(values: readonly string[]): string[] {
   return values.map((value) => value.trim()).filter((value) => value.length > 0);
+}
+
+function toJsonbParam(value: unknown): string {
+  return JSON.stringify(value);
 }

@@ -1,5 +1,11 @@
 import { stat } from "node:fs/promises";
-import { isAbsolute, resolve, sep } from "node:path";
+import { isAbsolute, resolve } from "node:path";
+import {
+  isPathWithinRoot,
+  mapMediaPath,
+  mediaPathMappingTargets,
+  type MediaPathMapping
+} from "./media-path-mapping.js";
 
 export type MediaPathResolution =
   | { ok: true; filePath: string; sizeBytes: number }
@@ -7,24 +13,35 @@ export type MediaPathResolution =
 
 export interface MediaPathResolverOptions {
   mediaRoot: string;
+  pathMappings?: readonly MediaPathMapping[];
 }
 
 export class MediaPathResolver {
   private readonly mediaRoot: string;
+  private readonly allowedRoots: string[];
+  private readonly pathMappings: readonly MediaPathMapping[];
 
   constructor(options: MediaPathResolverOptions) {
     this.mediaRoot = options.mediaRoot.trim() ? resolve(options.mediaRoot) : "";
+    this.pathMappings = options.pathMappings ?? [];
+    this.allowedRoots = [
+      ...(this.mediaRoot ? [this.mediaRoot] : []),
+      ...mediaPathMappingTargets(this.pathMappings)
+    ];
   }
 
   async resolveAssetFile(filePath: string): Promise<MediaPathResolution> {
-    if (!this.mediaRoot) {
+    if (this.allowedRoots.length === 0) {
       return { ok: false, reason: "media-root-not-configured" };
     }
 
-    const candidatePath = isAbsolute(filePath) ? resolve(filePath) : resolve(this.mediaRoot, filePath);
-    const rootPrefix = this.mediaRoot.endsWith(sep) ? this.mediaRoot : `${this.mediaRoot}${sep}`;
+    const mappedFilePath = mapMediaPath(filePath, this.pathMappings);
+    if (!this.mediaRoot && !isAbsolute(mappedFilePath)) {
+      return { ok: false, reason: "media-root-not-configured" };
+    }
 
-    if (candidatePath !== this.mediaRoot && !candidatePath.startsWith(rootPrefix)) {
+    const candidatePath = isAbsolute(mappedFilePath) ? resolve(mappedFilePath) : resolve(this.mediaRoot, mappedFilePath);
+    if (!this.allowedRoots.some((root) => isPathWithinRoot(candidatePath, root))) {
       return { ok: false, reason: "path-outside-media-root" };
     }
 

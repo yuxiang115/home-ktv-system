@@ -480,6 +480,7 @@ function createConfig() {
   return {
     corsAllowedOrigins: [],
     databaseUrl: "",
+    mediaPathMappings: [],
     mediaRoot: "/media-root",
     onlineDemoReadyAssetId: "",
     onlineProviderIds: [],

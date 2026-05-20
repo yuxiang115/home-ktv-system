@@ -5,6 +5,7 @@ import {
   type AdminCatalogSongRepository,
   type SongRepository
 } from "../modules/catalog/repositories/song-repository.js";
+import type { MediaPathMapping } from "../modules/assets/media-path-mapping.js";
 import {
   PgControlSessionRepository,
   type ControlSessionRepository
@@ -30,7 +31,14 @@ export type RuntimeRepositories = PlayerRouteRepositories & {
   ktvIndex?: KtvIndexReadRepository;
 };
 
-export function createPgRuntimeRepositories(db: QueryExecutor): RuntimeRepositories {
+export interface CreatePgRuntimeRepositoriesOptions {
+  mediaPathMappings?: readonly MediaPathMapping[];
+}
+
+export function createPgRuntimeRepositories(
+  db: QueryExecutor,
+  options: CreatePgRuntimeRepositoriesOptions = {}
+): RuntimeRepositories {
   const playbackSessions = new PgPlaybackSessionRepository(db);
 
   return {
@@ -44,6 +52,8 @@ export function createPgRuntimeRepositories(db: QueryExecutor): RuntimeRepositor
     controlCommands: new PgRoomSessionCommandRepository(db),
     deviceSessions: new PgPlayerDeviceSessionRepository(db),
     playbackEvents: new PgPlaybackEventRepository(db),
-    ktvIndex: new PgKtvIndexReadRepository(db)
+    ktvIndex: new PgKtvIndexReadRepository(db, {
+      ...(options.mediaPathMappings ? { pathMappings: options.mediaPathMappings } : {})
+    })
   };
 }

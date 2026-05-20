@@ -47,6 +47,25 @@ test("status prints pairing-token mobile controller URL when API snapshot is ava
   }
 });
 
+test("help documents the media path mapping passed to the API service", async () => {
+  const logDir = await mkdtemp(path.join(os.tmpdir(), "home-ktv-dev-local-"));
+
+  try {
+    const result = await runNodeScript(["scripts/dev-local.mjs", "help"], {
+      KTV_LOG_DIR: logDir,
+      KTV_LAN_IP: "127.0.0.1",
+      MEDIA_ROOT: path.join(logDir, "media"),
+      MEDIA_PATH_MAPPINGS: "/mnt/nas/KTV歌曲=/Volumes/nas/KTV歌曲"
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /MEDIA_PATH_MAPPINGS Path mappings for indexed media/);
+    assert.match(result.stdout, /\/mnt\/nas\/KTV歌曲=\/Volumes\/nas\/KTV歌曲/);
+  } finally {
+    await rm(logDir, { recursive: true, force: true });
+  }
+});
+
 function runNodeScript(args, env) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, args, {

@@ -15,12 +15,14 @@ describe("runtime online provider configuration", () => {
     const config = loadConfig({
       ONLINE_PROVIDER_IDS: "demo-local, future-provider",
       ONLINE_PROVIDER_KILL_SWITCH_IDS: "future-provider",
-      ONLINE_DEMO_READY_ASSET_ID: "asset-online-ready"
+      ONLINE_DEMO_READY_ASSET_ID: "asset-online-ready",
+      MEDIA_PATH_MAPPINGS: "/mnt/nas/KTV歌曲=/Volumes/nas/KTV歌曲"
     });
 
     expect(config.onlineProviderIds).toEqual(["demo-local", "future-provider"]);
     expect(config.onlineProviderKillSwitchIds).toEqual(["future-provider"]);
     expect(config.onlineDemoReadyAssetId).toBe("asset-online-ready");
+    expect(config.mediaPathMappings).toEqual([{ from: "/mnt/nas/KTV歌曲", to: "/Volumes/nas/KTV歌曲" }]);
   });
 
   it("keeps runtime online providers disabled by default", () => {
@@ -37,6 +39,7 @@ describe("runtime online provider configuration", () => {
     expect(config.onlineProviderIds).toEqual([]);
     expect(config.onlineProviderKillSwitchIds).toEqual([]);
     expect(config.onlineDemoReadyAssetId).toBe("");
+    expect(config.mediaPathMappings).toEqual([]);
   });
 });
 

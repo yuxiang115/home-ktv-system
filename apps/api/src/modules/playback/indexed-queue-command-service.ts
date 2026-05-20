@@ -62,7 +62,9 @@ export class PgIndexedQueueCommandService {
         return rejected(input, "CONTROL_SESSION_REQUIRED");
       }
 
-      const sync = await new PgKtvCatalogSyncService(client).syncIndexedAsset({
+      const sync = await new PgKtvCatalogSyncService(client, {
+        pathMappings: this.options.config.mediaPathMappings
+      }).syncIndexedAsset({
         indexedAssetId: input.indexedAssetId
       });
       const result = await executeRoomCommand({
