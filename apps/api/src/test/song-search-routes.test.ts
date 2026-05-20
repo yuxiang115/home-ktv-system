@@ -1,7 +1,16 @@
 import Fastify from "fastify";
-import type { AssetId, QueueEntry, Room, SongId, SongSearchVersionOption, TrackRoles } from "@home-ktv/domain";
+import type {
+  AssetId,
+  QueueEntry,
+  Room,
+  SongId,
+  SongSearchIndexedResult,
+  SongSearchVersionOption,
+  TrackRoles
+} from "@home-ktv/domain";
 import type { QueryExecutor } from "../db/query-executor.js";
 import type { AssetRow, SongRow } from "../db/schema.js";
+import type { KtvIndexReadRepository } from "../modules/ktv-index/ktv-index-read-repository.js";
 import type {
   AdminCatalogSongRepository,
   SearchFormalSongsInput,
@@ -160,6 +169,86 @@ describe("song search routes", () => {
     expect(emptyResponse.json().online.candidates).toHaveLength(1);
   });
 
+  it("returns indexed search results and passes bounded search params to the KTV index", async () => {
+    const ktvIndex = new FakeKtvIndexReadRepository([
+      createIndexedSearchResult({
+        versions: [
+          {
+            indexedAssetId: "ktv-asset-qilixiang-main",
+            displayName: "七里香 - 周杰伦.mkv",
+            sourceLabel: "KTV索引",
+            extension: ".mkv",
+            sizeBytes: 734003200,
+            category: "流行",
+            queueState: "needs_catalog_sync",
+            canQueue: false,
+            disabledLabel: "需同步入库后可点歌"
+          }
+        ]
+      })
+    ]);
+    const { server } = await createHarness({ ktvIndex });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/rooms/living-room/songs/search?q=%E4%B8%83%E9%87%8C%E9%A6%99&limit=999"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(ktvIndex.searchCalls).toEqual([
+      {
+        query: "七里香",
+        limit: 20,
+        versionsPerSong: 4
+      }
+    ]);
+    expect(response.json().indexed).toEqual({
+      status: "available",
+      message: "找到 KTV 索引结果",
+      results: [
+        {
+          indexedSongId: "ktv-song-qilixiang",
+          title: "七里香",
+          artistName: "周杰伦",
+          category: "流行",
+          sourceLabel: "KTV索引",
+          matchReason: "title",
+          versions: [
+            {
+              indexedAssetId: "ktv-asset-qilixiang-main",
+              displayName: "七里香 - 周杰伦.mkv",
+              sourceLabel: "KTV索引",
+              extension: ".mkv",
+              sizeBytes: 734003200,
+              category: "流行",
+              queueState: "needs_catalog_sync",
+              canQueue: false,
+              disabledLabel: "需同步入库后可点歌"
+            }
+          ]
+        }
+      ]
+    });
+    expect(JSON.stringify(response.json())).not.toContain("/mnt/nas");
+    expect(JSON.stringify(response.json())).not.toContain("file_path");
+  });
+
+  it("returns an unavailable indexed section when no KTV index repository is registered", async () => {
+    const { server } = await createHarness();
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/rooms/living-room/songs/search?q=%E4%B8%83%E9%87%8C%E9%A6%99"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().indexed).toEqual({
+      status: "unavailable",
+      message: "未找到 KTV 索引结果",
+      results: []
+    });
+  });
+
   it("clamps limit to the Phase 4 maximum", async () => {
     const { server, songs } = await createHarness();
 
@@ -283,6 +372,7 @@ async function createHarness(input: {
   searchResults?: SearchFormalSongRecord[];
   queueEntries?: QueueEntry[];
   online?: Pick<CandidateTaskService, "discoverCandidates">;
+  ktvIndex?: Pick<KtvIndexReadRepository, "searchIndexedSongs">;
 } = {}) {
   const server = Fastify({ logger: false });
   const rooms = new FakeRoomRepository(input.room === undefined ? createRoom() : input.room);
@@ -293,7 +383,8 @@ async function createHarness(input: {
     rooms,
     songs,
     queueEntries,
-    ...(input.online ? { online: input.online } : {})
+    ...(input.online ? { online: input.online } : {}),
+    ...(input.ktvIndex ? { ktvIndex: input.ktvIndex } : {})
   });
 
   return { server, rooms, songs, queueEntries };
@@ -319,6 +410,17 @@ class FakeCandidateTaskService implements Pick<CandidateTaskService, "discoverCa
 
   async discoverCandidates() {
     return this.candidates;
+  }
+}
+
+class FakeKtvIndexReadRepository implements Pick<KtvIndexReadRepository, "searchIndexedSongs"> {
+  readonly searchCalls: Parameters<KtvIndexReadRepository["searchIndexedSongs"]>[0][] = [];
+
+  constructor(private readonly results: SongSearchIndexedResult[]) {}
+
+  async searchIndexedSongs(input: Parameters<KtvIndexReadRepository["searchIndexedSongs"]>[0]) {
+    this.searchCalls.push(input);
+    return this.results;
   }
 }
 
@@ -461,6 +563,31 @@ function createVersion(input: Partial<SongSearchVersionOption> = {}): SongSearch
     queueState: "queueable",
     canQueue: true,
     disabledLabel: null,
+    ...input
+  };
+}
+
+function createIndexedSearchResult(input: Partial<SongSearchIndexedResult> = {}): SongSearchIndexedResult {
+  return {
+    indexedSongId: "ktv-song-qilixiang",
+    title: "七里香",
+    artistName: "周杰伦",
+    category: "流行",
+    sourceLabel: "KTV索引",
+    matchReason: "title",
+    versions: [
+      {
+        indexedAssetId: "ktv-asset-qilixiang-main",
+        displayName: "七里香 - 周杰伦.mkv",
+        sourceLabel: "KTV索引",
+        extension: ".mkv",
+        sizeBytes: 734003200,
+        category: "流行",
+        queueState: "needs_catalog_sync",
+        canQueue: false,
+        disabledLabel: "需同步入库后可点歌"
+      }
+    ],
     ...input
   };
 }
