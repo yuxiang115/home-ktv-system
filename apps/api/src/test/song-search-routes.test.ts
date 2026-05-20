@@ -78,6 +78,7 @@ describe("song search routes", () => {
       limit: 20,
       queuedSongIds: ["song-qilixiang"]
     });
+    expect(response.json().local[0]?.versions[0]?.assetId).toBe("asset-main");
     expect(response.json()).toEqual({
       query: "七里香",
       local: [
@@ -235,6 +236,7 @@ describe("song search routes", () => {
       ]
     });
     expect(JSON.stringify(response.json())).not.toContain("/mnt/nas");
+    expect(JSON.stringify(response.json())).not.toContain("filePath");
     expect(JSON.stringify(response.json())).not.toContain("file_path");
   });
 

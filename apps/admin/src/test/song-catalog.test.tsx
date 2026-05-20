@@ -71,11 +71,17 @@ describe("song catalog maintenance", () => {
     await user.click(screen.getByRole("button", { name: "歌曲" }));
 
     expect(await screen.findByRole("heading", { name: "KTV 索引诊断" })).toBeTruthy();
-    expect(screen.getByText("NAS 抽样读取")).toBeTruthy();
-    expect(screen.getByText("搜索预览")).toBeTruthy();
-    expect(screen.getAllByText("未映射").length).toBeGreaterThan(0);
-    expect(screen.getByText("relative/song.mkv")).toBeTruthy();
-    expect(screen.getByText("path outside source root")).toBeTruthy();
+    expect(screen.getByText("正式歌曲")).toBeTruthy();
+    expect(screen.getByLabelText("歌曲状态")).toBeTruthy();
+    expect(screen.getAllByLabelText("语言").length).toBeGreaterThan(0);
+    const diagnostics = screen.getByRole("region", { name: "KTV 索引诊断" });
+    expect(within(diagnostics).getByText("NAS 抽样读取")).toBeTruthy();
+    expect(within(diagnostics).getByText("搜索预览")).toBeTruthy();
+    expect(within(diagnostics).getAllByText("未映射").length).toBeGreaterThan(0);
+    expect(within(diagnostics).getAllByText("1").length).toBeGreaterThan(0);
+    expect(within(diagnostics).getByText("relative/song.mkv")).toBeTruthy();
+    expect(within(diagnostics).getByText("path outside source root")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "KTV" })).toBeNull();
   });
 
   it("keeps legacy song maintenance controls visible alongside real-MV catalog assets", async () => {
