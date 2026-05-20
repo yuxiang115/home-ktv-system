@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: 真实场景接入、部署和验证
-status: executing
-stopped_at: Completed 19-03-PLAN.md
-last_updated: "2026-05-20T12:33:19.109Z"
+status: verifying
+stopped_at: Completed 19-04-PLAN.md
+last_updated: "2026-05-20T13:09:16.137Z"
 last_activity: 2026-05-20
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 7
-  completed_plans: 6
-  percent: 86
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -26,12 +26,12 @@ See: `.planning/PROJECT.md` (updated 2026-05-14)
 ## Current Position
 
 Milestone: v1.3 真实场景接入、部署和验证
-Phase: 19 (search-and-queue-time-catalog-sync) — EXECUTING
+Phase: 19 (search-and-queue-time-catalog-sync) — VERIFYING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-20
 
-Progress: [█████████░] 86%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -77,6 +77,7 @@ Progress: [█████████░] 86%
 | Phase 19 P01 | 10 min | 2 tasks | 11 files |
 | Phase 19 P02 | 11 min | 2 tasks | 4 files |
 | Phase 19 P03 | 12 min | 3 tasks | 6 files |
+| Phase 19 P04 | 29 min | 4 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -158,6 +159,9 @@ Progress: [█████████░] 86%
 - [Phase 19]: PgKtvCatalogSyncService accepts QueryExecutor and does not open its own transaction. — The indexed add-queue command can compose sync and queue mutation inside one transaction in 19-03.
 - [Phase 19]: Indexed add-queue-entry sync and canonical queue append run inside one PostgreSQL transaction. — This prevents partial queue-visible mutations when sync or queue insertion fails.
 - [Phase 19]: KTV-index-synced real MV admission is queue-only and does not claim switching support. — Missing track roles still block switch target creation until runtime capability is proven.
+- [Phase 19]: Queued indexed search state is derived by mapping canonical queued asset ids back to ktv-index source_records. — This keeps Mobile search canonical/path-safe while still reflecting already-queued indexed versions.
+- [Phase 19]: KTV source identity is exposed only in Admin Songs with ktv_songs.id, ktv_song_assets.id, source file path, and parse confidence. — Operators need traceability for synced canonical records; Mobile users do not need filesystem details.
+- [Phase 19]: Realtime and queue regression tests assert canonical queue preview ids and avoid raw NAS/index table leakage. — Phase 19 must prove usable queue behavior without leaking raw KTV index storage details into Mobile-facing snapshots.
 
 ### Pending Todos
 
@@ -172,6 +176,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-20T12:33:19.106Z
-Stopped at: Completed 19-03-PLAN.md
+Last session: 2026-05-20T13:08:10.211Z
+Stopped at: Completed 19-04-PLAN.md
 Resume file: None

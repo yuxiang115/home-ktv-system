@@ -27,7 +27,7 @@ Explicitly out of scope for this roadmap: native Android TV app, mandatory trans
 ## Phases
 
 - [x] **Phase 18: KTV Index Read Model and Diagnostics** - Make the real index queryable, bounded, observable, and visible to Admin/operators. (completed 2026-05-20)
-- [ ] **Phase 19: Search and Queue-Time Catalog Sync** - Let Mobile queue indexed songs by syncing selected assets into canonical `songs/assets`.
+- [x] **Phase 19: Search and Queue-Time Catalog Sync** - Let Mobile queue indexed songs by syncing selected assets into canonical `songs/assets`. (completed 2026-05-20)
 - [ ] **Phase 20: Real Media Path, Streaming, and Playback Target Verification** - Prove synced real assets can resolve paths, stream, and reach TV playback safely.
 - [ ] **Phase 21: Real Deployment Profile and Operator Workflow** - Provide one clear real-mode deployment path with logs, env, health checks, and index refresh commands.
 - [ ] **Phase 22: Real-Scene UAT, Failure States, and Milestone Hardening** - Validate real search-to-playback flows and close failure/recovery evidence.
@@ -65,7 +65,7 @@ Plans:
 - [x] 19-01-PLAN.md - Indexed result contract and Mobile search UI
 - [x] 19-02-PLAN.md - Idempotent indexed-asset catalog sync service
 - [x] 19-03-PLAN.md - Queue command integration and duplicate handling
-- [ ] 19-04-PLAN.md - Queue/realtime regression coverage for synced real songs
+- [x] 19-04-PLAN.md - Queue/realtime regression coverage for synced real songs
 **UI hint**: yes
 
 ### Phase 20: Real Media Path, Streaming, and Playback Target Verification
@@ -128,7 +128,7 @@ Phases execute in numeric order: 18 -> 19 -> 20 -> 21 -> 22
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 18. KTV Index Read Model and Diagnostics | 3/3 | Complete    | 2026-05-20 |
-| 19. Search and Queue-Time Catalog Sync | 3/4 | In Progress|  |
+| 19. Search and Queue-Time Catalog Sync | 4/4 | Complete   | 2026-05-20 |
 | 20. Real Media Path, Streaming, and Playback Target Verification | 0/4 | Blocked on Phase 19 | — |
 | 21. Real Deployment Profile and Operator Workflow | 0/3 | Blocked on Phase 20 | — |
 | 22. Real-Scene UAT, Failure States, and Milestone Hardening | 0/3 | Blocked on Phase 21 | — |
