@@ -107,6 +107,79 @@ describe("PgKtvCatalogSyncService", () => {
     });
   });
 
+  it("writes preprocessed web media metadata when an indexed asset needs a playback copy", async () => {
+    const db = new FakeKtvCatalogSyncDb();
+    const prepareCalls: Array<Record<string, unknown>> = [];
+    const service = new PgKtvCatalogSyncService(db, {
+      checkFileAccess: false,
+      pathMappings: [{ from: "/mnt/nas/KTV歌曲", to: "/Volumes/nas/KTV歌曲" }],
+      prepareMedia: async (input: Record<string, unknown>) => {
+        prepareCalls.push(input);
+        return {
+          filePath: "/media-root/generated/ktv-index/ktv-asset-1.mp4",
+          durationMs: 222_388,
+          compatibilityStatus: "playable",
+          compatibilityReasons: [],
+          mediaInfoSummary: {
+            container: "mov,mp4,m4a,3gp,3g2,mj2",
+            durationMs: 222_388,
+            videoCodec: "h264",
+            resolution: { width: 720, height: 480 },
+            fileSizeBytes: 12_345_678,
+            audioTracks: [
+              { index: 1, id: "stream-1", label: "Audio 1", language: null, codec: "aac", channels: 2 },
+              { index: 2, id: "stream-2", label: "Audio 2", language: null, codec: "aac", channels: 2 }
+            ]
+          },
+          mediaInfoProvenance: {
+            source: "ffprobe",
+            sourceVersion: null,
+            probedAt: "2026-05-20T14:30:00.000Z",
+            importedFrom: "/Volumes/nas/KTV歌曲/周杰伦-七里香-国语-流行.mkv"
+          },
+          trackRoles: {
+            original: { index: 1, id: "stream-1", label: "Audio 1" },
+            instrumental: { index: 2, id: "stream-2", label: "Audio 2" }
+          },
+          playbackProfile: {
+            kind: "single_file_audio_tracks",
+            container: "mov,mp4,m4a,3gp,3g2,mj2",
+            videoCodec: "h264",
+            audioCodecs: ["aac"],
+            requiresAudioTrackSelection: true
+          }
+        };
+      }
+    });
+
+    await service.syncIndexedAsset({ indexedAssetId: "ktv-asset-1" });
+
+    expect(prepareCalls).toEqual([
+      expect.objectContaining({
+        indexedAssetId: "ktv-asset-1",
+        sourceFilePath: "/Volumes/nas/KTV歌曲/周杰伦-七里香-国语-流行.mkv"
+      })
+    ]);
+    expect(db.assets.get("asset-ktv-ktv-asset-1")).toMatchObject({
+      filePath: "/media-root/generated/ktv-index/ktv-asset-1.mp4",
+      mediaInfoSummary: expect.objectContaining({
+        durationMs: 222_388,
+        audioTracks: [
+          expect.objectContaining({ codec: "aac" }),
+          expect.objectContaining({ codec: "aac" })
+        ]
+      }),
+      trackRoles: {
+        original: { index: 1, id: "stream-1", label: "Audio 1" },
+        instrumental: { index: 2, id: "stream-2", label: "Audio 2" }
+      },
+      playbackProfile: expect.objectContaining({
+        audioCodecs: ["aac"],
+        requiresAudioTrackSelection: true
+      })
+    });
+  });
+
   it("rejects missing or stale indexed assets with a stable Chinese error", async () => {
     const service = new PgKtvCatalogSyncService(new FakeKtvCatalogSyncDb({ missingAt: new Date("2026-05-20T00:00:00Z") }), {
       checkFileAccess: false
@@ -221,11 +294,13 @@ class FakeKtvCatalogSyncDb implements QueryExecutor {
         songId: values[1],
         displayName: values[2],
         filePath: values[3],
-        compatibilityReasons: parseJsonbParam(values[4]),
-        mediaInfoSummary: parseJsonbParam(values[5]),
-        mediaInfoProvenance: parseJsonbParam(values[6]),
-        trackRoles: parseJsonbParam(values[7]),
-        playbackProfile: parseJsonbParam(values[8])
+        durationMs: values[4],
+        compatibilityStatus: values[5],
+        compatibilityReasons: parseJsonbParam(values[6]),
+        mediaInfoSummary: parseJsonbParam(values[7]),
+        mediaInfoProvenance: parseJsonbParam(values[8]),
+        trackRoles: parseJsonbParam(values[9]),
+        playbackProfile: parseJsonbParam(values[10])
       });
       return { rows: [] as TRow[] };
     }

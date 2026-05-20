@@ -6,6 +6,11 @@ import {
   KtvCatalogSyncError,
   PgKtvCatalogSyncService
 } from "../catalog/ktv-catalog-sync-service.js";
+import {
+  prepareKtvIndexedMediaForWeb,
+  type PreparedKtvIndexedMedia,
+  type PrepareKtvIndexedMediaInput
+} from "../catalog/ktv-index-media-preprocessor.js";
 import { restoreControlSession } from "../controller/control-session-service.js";
 import {
   executeRoomCommand,
@@ -34,6 +39,7 @@ export class PgIndexedQueueCommandService {
       config: ApiConfig;
       assetGateway: AssetGateway;
       createRepositories?: (db: QueryExecutor) => RuntimeRepositories;
+      prepareKtvIndexedMedia?: (input: PrepareKtvIndexedMediaInput) => Promise<PreparedKtvIndexedMedia>;
     }
   ) {
     this.createRepositories = options.createRepositories ?? createPgRuntimeRepositories;
@@ -63,7 +69,12 @@ export class PgIndexedQueueCommandService {
       }
 
       const sync = await new PgKtvCatalogSyncService(client, {
-        pathMappings: this.options.config.mediaPathMappings
+        pathMappings: this.options.config.mediaPathMappings,
+        prepareMedia: (mediaInput) =>
+          (this.options.prepareKtvIndexedMedia ?? prepareKtvIndexedMediaForWeb)({
+            ...mediaInput,
+            mediaRoot: this.options.config.mediaRoot
+          })
       }).syncIndexedAsset({
         indexedAssetId: input.indexedAssetId
       });

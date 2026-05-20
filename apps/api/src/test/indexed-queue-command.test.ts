@@ -29,6 +29,10 @@ import { InMemoryRoomPairingTokenRepository } from "../modules/rooms/repositorie
 import type { RoomRepository } from "../modules/rooms/repositories/room-repository.js";
 import { registerControlCommandRoutes } from "../routes/control-commands.js";
 import { createPgRuntimeRepositories } from "../runtime/pg-runtime-repositories.js";
+import type {
+  PreparedKtvIndexedMedia,
+  PrepareKtvIndexedMediaInput
+} from "../modules/catalog/ktv-index-media-preprocessor.js";
 
 const now = new Date("2026-05-20T10:00:00.000Z");
 const nowIso = now.toISOString();
@@ -171,6 +175,51 @@ describe("PgIndexedQueueCommandService", () => {
         assetId: "asset-ktv-ktv-asset-1"
       })
     ]);
+  });
+
+  it("prepares indexed media through the web-compatible pipeline before queueing", async () => {
+    const client = new FakeIndexedTransactionClient({
+      row: createIndexedAssetRow({
+        [indexedRowFilePathKey]: "/mnt/nas/KTV歌曲/package.json",
+        source_root: "/mnt/nas/KTV歌曲"
+      })
+    });
+    const prepareCalls: PrepareKtvIndexedMediaInput[] = [];
+    const service = createIndexedQueueCommandService({
+      client,
+      config: {
+        ...createConfig(),
+        mediaPathMappings: [{ from: "/mnt/nas/KTV歌曲", to: process.cwd() }],
+        mediaRoot: "/media-root"
+      },
+      prepareKtvIndexedMedia: async (input) => {
+        prepareCalls.push(input);
+        return createPreparedKtvIndexedMedia();
+      }
+    });
+
+    const result = await service.executeIndexedAddQueueEntry({
+      commandId: "command-indexed-web-media",
+      roomSlug: "living-room",
+      sessionVersion: 1,
+      deviceId: "phone-1",
+      indexedAssetId: "ktv-asset-1",
+      cookieHeader: "ktv_control_session=control-session-1"
+    });
+
+    expect(result.status).toBe("accepted");
+    expect(prepareCalls).toEqual([
+      {
+        indexedAssetId: "ktv-asset-1",
+        sourceFilePath: `${process.cwd()}/package.json`,
+        mediaRoot: "/media-root"
+      }
+    ]);
+    expect(client.assets.get("asset-ktv-ktv-asset-1")).toMatchObject({
+      filePath: "/media-root/generated/ktv-index/ktv-asset-1.mp4",
+      durationMs: 222_388,
+      compatibilityStatus: "playable"
+    });
   });
 
   it("maps stale indexed sources to a stable rejected command result", async () => {
@@ -515,6 +564,8 @@ class FakeQueryExecutor implements QueryExecutor {
 function createIndexedQueueCommandService(input: {
   client: FakeIndexedTransactionClient;
   queueEntries?: InMemoryQueueEntryRepository;
+  config?: ApiConfig;
+  prepareKtvIndexedMedia?: (input: PrepareKtvIndexedMediaInput) => Promise<PreparedKtvIndexedMedia>;
 }): PgIndexedQueueCommandService {
   const queueEntries = input.queueEntries ?? new InMemoryQueueEntryRepository();
 
@@ -524,7 +575,7 @@ function createIndexedQueueCommandService(input: {
         return input.client;
       }
     } as any,
-    config: createConfig(),
+    config: input.config ?? createConfig(),
     assetGateway: createAssetGateway(createAssetRepository([createQueueableSyncedAsset()])),
     createRepositories: () =>
       createRuntimeRepositories({
@@ -537,8 +588,9 @@ function createIndexedQueueCommandService(input: {
             vocalMode: "original"
           })
         ]
-      })
-  });
+      }),
+    prepareKtvIndexedMedia: input.prepareKtvIndexedMedia ?? (async () => createPreparedKtvIndexedMedia())
+  } as ConstructorParameters<typeof PgIndexedQueueCommandService>[0]);
 }
 
 async function createControlCommandServer(input: {
@@ -621,7 +673,9 @@ class FakeIndexedTransactionClient implements QueryExecutor {
         id: values[0],
         songId: values[1],
         displayName: values[2],
-        filePath: values[3]
+        filePath: values[3],
+        durationMs: values[4],
+        compatibilityStatus: values[5]
       });
       return { rows: [] };
     }
@@ -888,6 +942,43 @@ function createConfig(): ApiConfig {
     port: 4000,
     host: "0.0.0.0",
     scanIntervalMinutes: 360
+  };
+}
+
+function createPreparedKtvIndexedMedia(): PreparedKtvIndexedMedia {
+  return {
+    filePath: "/media-root/generated/ktv-index/ktv-asset-1.mp4",
+    durationMs: 222_388,
+    compatibilityStatus: "playable",
+    compatibilityReasons: [],
+    mediaInfoSummary: {
+      container: "mov,mp4,m4a,3gp,3g2,mj2",
+      durationMs: 222_388,
+      videoCodec: "h264",
+      resolution: { width: 720, height: 480 },
+      fileSizeBytes: 12_345_678,
+      audioTracks: [
+        { index: 1, id: "stream-1", label: "Audio 1", language: null, codec: "aac", channels: 2 },
+        { index: 2, id: "stream-2", label: "Audio 2", language: null, codec: "aac", channels: 2 }
+      ]
+    },
+    mediaInfoProvenance: {
+      source: "ffprobe",
+      sourceVersion: null,
+      probedAt: "2026-05-20T14:30:00.000Z",
+      importedFrom: `${process.cwd()}/package.json`
+    },
+    trackRoles: {
+      original: { index: 1, id: "stream-1", label: "Audio 1" },
+      instrumental: { index: 2, id: "stream-2", label: "Audio 2" }
+    },
+    playbackProfile: {
+      kind: "single_file_audio_tracks",
+      container: "mov,mp4,m4a,3gp,3g2,mj2",
+      videoCodec: "h264",
+      audioCodecs: ["aac"],
+      requiresAudioTrackSelection: true
+    }
   };
 }
 

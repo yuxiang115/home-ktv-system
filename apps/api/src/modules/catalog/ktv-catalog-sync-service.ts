@@ -10,6 +10,7 @@ import type {
 import type { QueryExecutor } from "../../db/query-executor.js";
 import { mapMediaPath, type MediaPathMapping } from "../assets/media-path-mapping.js";
 import { buildNasSample } from "../ktv-index/ktv-index-diagnostics.js";
+import type { PreparedKtvIndexedMedia } from "./ktv-index-media-preprocessor.js";
 import { buildPinyinSearchKeys, normalizeSearchText } from "./search-normalization.js";
 
 export interface KtvCatalogSyncResult {
@@ -41,6 +42,7 @@ export interface PgKtvCatalogSyncServiceOptions {
   sampleTimeoutMs?: number;
   accessFile?: (filePath: string) => Promise<void>;
   pathMappings?: readonly MediaPathMapping[];
+  prepareMedia?: (input: { indexedAssetId: string; sourceFilePath: string }) => Promise<PreparedKtvIndexedMedia>;
 }
 
 interface KtvIndexedAssetSyncRow {
@@ -78,6 +80,7 @@ export class PgKtvCatalogSyncService {
     }
 
     await this.assertReadable(row);
+    const preparedMedia = await this.prepareMedia(row);
 
     const indexedSongId = row.song_id;
     const indexedAssetId = row.id;
@@ -87,7 +90,7 @@ export class PgKtvCatalogSyncService {
 
     try {
       await this.upsertSong({ row, songId });
-      await this.upsertAsset({ row, songId, assetId });
+      await this.upsertAsset({ row, songId, assetId, preparedMedia });
       await this.upsertSourceRecord({ row, assetId, sourceRecordId });
       await this.updateDefaultAsset(songId, assetId);
     } catch (error) {
@@ -162,6 +165,60 @@ export class PgKtvCatalogSyncService {
     }
   }
 
+  private async prepareMedia(row: KtvIndexedAssetSyncRow): Promise<PreparedKtvIndexedMedia> {
+    const localFilePath = mapMediaPath(row.file_path, this.options.pathMappings);
+    if (this.options.prepareMedia) {
+      return this.options.prepareMedia({
+        indexedAssetId: row.id,
+        sourceFilePath: localFilePath
+      });
+    }
+
+    const fileSizeBytes = toNumber(row.size_bytes ?? 0);
+    const container = normalizeExtension(row.extension);
+    const compatibilityReasons: CompatibilityReason[] = [
+      {
+        code: "ktv-index-playback-unverified",
+        severity: "warning",
+        message: "KTV indexed asset has not completed playback verification",
+        source: "scanner"
+      }
+    ];
+    const mediaInfoSummary: MediaInfoSummary = {
+      container,
+      durationMs: null,
+      videoCodec: null,
+      resolution: null,
+      fileSizeBytes,
+      audioTracks: []
+    };
+    const mediaInfoProvenance: MediaInfoProvenance = {
+      source: "unknown",
+      sourceVersion: null,
+      probedAt: null,
+      importedFrom: "ktv-index"
+    };
+    const trackRoles: TrackRoles = { original: null, instrumental: null };
+    const playbackProfile: PlaybackProfile = {
+      kind: "single_file_audio_tracks",
+      container,
+      videoCodec: null,
+      audioCodecs: [],
+      requiresAudioTrackSelection: false
+    };
+
+    return {
+      filePath: localFilePath,
+      durationMs: 0,
+      compatibilityStatus: "unknown",
+      compatibilityReasons,
+      mediaInfoSummary,
+      mediaInfoProvenance,
+      trackRoles,
+      playbackProfile
+    };
+  }
+
   private async upsertSong(input: { row: KtvIndexedAssetSyncRow; songId: SongId }): Promise<void> {
     const titleKeys = buildPinyinSearchKeys(input.row.title);
     const artistKeys = buildPinyinSearchKeys(input.row.primary_artist_name);
@@ -209,41 +266,12 @@ export class PgKtvCatalogSyncService {
     );
   }
 
-  private async upsertAsset(input: { row: KtvIndexedAssetSyncRow; songId: SongId; assetId: AssetId }): Promise<void> {
-    const localFilePath = mapMediaPath(input.row.file_path, this.options.pathMappings);
-    const fileSizeBytes = toNumber(input.row.size_bytes ?? 0);
-    const container = normalizeExtension(input.row.extension);
-    const compatibilityReasons: CompatibilityReason[] = [
-      {
-        code: "ktv-index-playback-unverified",
-        severity: "warning",
-        message: "KTV indexed asset has not completed playback verification",
-        source: "scanner"
-      }
-    ];
-    const mediaInfoSummary: MediaInfoSummary = {
-      container,
-      durationMs: null,
-      videoCodec: null,
-      resolution: null,
-      fileSizeBytes,
-      audioTracks: []
-    };
-    const mediaInfoProvenance: MediaInfoProvenance = {
-      source: "unknown",
-      sourceVersion: null,
-      probedAt: null,
-      importedFrom: "ktv-index"
-    };
-    const trackRoles: TrackRoles = { original: null, instrumental: null };
-    const playbackProfile: PlaybackProfile = {
-      kind: "single_file_audio_tracks",
-      container,
-      videoCodec: null,
-      audioCodecs: [],
-      requiresAudioTrackSelection: false
-    };
-
+  private async upsertAsset(input: {
+    row: KtvIndexedAssetSyncRow;
+    songId: SongId;
+    assetId: AssetId;
+    preparedMedia: PreparedKtvIndexedMedia;
+  }): Promise<void> {
     await this.db.query(
       `INSERT INTO assets (
          id, song_id, source_type, asset_kind, display_name, file_path, duration_ms,
@@ -251,8 +279,8 @@ export class PgKtvCatalogSyncService {
          compatibility_status, compatibility_reasons, media_info_summary,
          media_info_provenance, track_roles, playback_profile
        )
-       VALUES ($1, $2, 'local', 'dual-track-video', $3, $4, 0, 'none', 'dual', 'ready', NULL,
-               'review_required', 'unknown', $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb)
+       VALUES ($1, $2, 'local', 'dual-track-video', $3, $4, $5, 'none', 'dual', 'ready', NULL,
+               'review_required', $6, $7::jsonb, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb)
        ON CONFLICT(id)
        DO UPDATE SET song_id = EXCLUDED.song_id,
                      source_type = EXCLUDED.source_type,
@@ -276,12 +304,14 @@ export class PgKtvCatalogSyncService {
         input.assetId,
         input.songId,
         input.row.file_name,
-        localFilePath,
-        toJsonbParam(compatibilityReasons),
-        toJsonbParam(mediaInfoSummary),
-        toJsonbParam(mediaInfoProvenance),
-        toJsonbParam(trackRoles),
-        toJsonbParam(playbackProfile)
+        input.preparedMedia.filePath,
+        input.preparedMedia.durationMs,
+        input.preparedMedia.compatibilityStatus,
+        toJsonbParam(input.preparedMedia.compatibilityReasons),
+        toJsonbParam(input.preparedMedia.mediaInfoSummary),
+        toJsonbParam(input.preparedMedia.mediaInfoProvenance),
+        toJsonbParam(input.preparedMedia.trackRoles),
+        toJsonbParam(input.preparedMedia.playbackProfile)
       ]
     );
   }
