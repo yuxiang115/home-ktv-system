@@ -9,6 +9,7 @@ import type {
   CatalogValidationResult,
   SongMetadataPatch
 } from "../songs/types.js";
+import type { KtvIndexDiagnosticsResponse } from "@home-ktv/domain";
 import type { RoomOnlineTaskActionResponse, RoomStatusResponse, RoomStatusRefreshResponse } from "../rooms/types.js";
 
 const adminDeviceIdStorageKey = "home_ktv_admin_device_id";
@@ -72,6 +73,28 @@ export async function revalidateCatalogSong(songId: string): Promise<CatalogSong
 
 export async function validateCatalogSong(songId: string): Promise<CatalogValidationResult> {
   return fetchAdmin<CatalogValidationResult>(`/admin/catalog/songs/${songId}/validate`);
+}
+
+export async function fetchKtvIndexDiagnostics(
+  input: {
+    query?: string;
+    sampleSize?: number;
+    sampleTimeoutMs?: number;
+  } = {}
+): Promise<KtvIndexDiagnosticsResponse> {
+  const params = new URLSearchParams();
+  const query = input.query?.trim();
+  if (query) {
+    params.set("q", query);
+  }
+  if (input.sampleSize !== undefined) {
+    params.set("sampleSize", String(input.sampleSize));
+  }
+  if (input.sampleTimeoutMs !== undefined) {
+    params.set("sampleTimeoutMs", String(input.sampleTimeoutMs));
+  }
+  const queryString = params.toString();
+  return fetchAdmin<KtvIndexDiagnosticsResponse>(`/admin/ktv-index/diagnostics${queryString ? `?${queryString}` : ""}`);
 }
 
 export async function fetchRoomStatus(roomSlug: string): Promise<RoomStatusResponse> {

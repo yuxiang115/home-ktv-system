@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import type { KtvIndexDiagnosticsResponse } from "@home-ktv/domain";
 import {
+  fetchKtvIndexDiagnostics,
   fetchCatalogSongs,
   revalidateCatalogSong,
   updateCatalogAsset,
@@ -32,6 +34,12 @@ interface UseSongCatalogRuntimeResult {
   selectedSong: AdminCatalogSong | null;
   evaluation: CatalogEvaluation | null;
   validation: CatalogValidationResult | null;
+  ktvIndexQuery: string;
+  setKtvIndexQuery(query: string): void;
+  ktvIndexDiagnostics: KtvIndexDiagnosticsResponse | null;
+  ktvIndexIsLoading: boolean;
+  ktvIndexIsError: boolean;
+  refreshKtvIndexDiagnostics(): Promise<void>;
   saveMetadata(songId: string, input: SongMetadataPatch): Promise<void>;
   setDefaultAsset(songId: string, assetId: string): Promise<void>;
   updateAsset(assetId: string, patch: CatalogAssetPatch): Promise<void>;
@@ -49,6 +57,8 @@ export function useSongCatalogRuntime(): UseSongCatalogRuntimeResult {
   const [selectedSongId, setSelectedSongId] = useState<string | null>(null);
   const [evaluation, setEvaluation] = useState<CatalogEvaluation | null>(null);
   const [validation, setValidation] = useState<CatalogValidationResult | null>(null);
+  const [ktvIndexQuery, setKtvIndexQuery] = useState("");
+  const debouncedKtvIndexQuery = useDebouncedValue(ktvIndexQuery, 250);
 
   const query = useQuery({
     queryKey: ["catalog-songs", status, language],
@@ -60,6 +70,17 @@ export function useSongCatalogRuntime(): UseSongCatalogRuntimeResult {
     retry: false
   });
   const songs = query.data ?? [];
+  const ktvIndexDiagnosticsQueryKey = ["ktv-index-diagnostics", debouncedKtvIndexQuery] as const;
+  const ktvIndexDiagnosticsQuery = useQuery({
+    queryKey: ktvIndexDiagnosticsQueryKey,
+    queryFn: () =>
+      fetchKtvIndexDiagnostics({
+        query: debouncedKtvIndexQuery,
+        sampleSize: 12,
+        sampleTimeoutMs: 250
+      }),
+    retry: false
+  });
 
   useEffect(() => {
     if (songs.length === 0) {
@@ -124,6 +145,14 @@ export function useSongCatalogRuntime(): UseSongCatalogRuntimeResult {
     selectedSong,
     evaluation,
     validation,
+    ktvIndexQuery,
+    setKtvIndexQuery,
+    ktvIndexDiagnostics: ktvIndexDiagnosticsQuery.data ?? null,
+    ktvIndexIsLoading: ktvIndexDiagnosticsQuery.isLoading,
+    ktvIndexIsError: ktvIndexDiagnosticsQuery.isError,
+    async refreshKtvIndexDiagnostics() {
+      await queryClient.invalidateQueries({ queryKey: ktvIndexDiagnosticsQueryKey, exact: true });
+    },
     async saveMetadata(songId, input) {
       await saveMetadataMutation.mutateAsync({ songId, input });
     },
@@ -149,4 +178,15 @@ export function cacheSong(queryClient: QueryClient, song: AdminCatalogSong) {
   queryClient.setQueriesData<AdminCatalogSong[]>({ queryKey: ["catalog-songs"] }, (current) =>
     current?.map((item) => (item.id === song.id ? song : item))
   );
+}
+
+function useDebouncedValue(value: string, delayMs: number): string {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+
+  return debouncedValue;
 }

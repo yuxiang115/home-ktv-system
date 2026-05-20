@@ -1,7 +1,10 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { KtvIndexDiagnosticsResponse } from "@home-ktv/domain";
 import { App } from "../App.js";
+import { useSongCatalogRuntime } from "../songs/use-song-catalog-runtime.js";
 import type { AdminCatalogAsset, AdminCatalogSong } from "../songs/types.js";
 
 type RequestRecord = {
@@ -231,7 +234,45 @@ describe("song catalog maintenance", () => {
     expect(await screen.findByText("SWITCH_PAIR_NOT_VERIFIED")).toBeTruthy();
     expect(screen.queryByText(/force verified|manual override|manualOverride/i)).toBeNull();
   });
+
+  it("loads and refreshes KTV index diagnostics through the Songs runtime", async () => {
+    const user = userEvent.setup();
+    const { requests } = installFetchMock();
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SongCatalogRuntimeProbe />
+      </QueryClientProvider>
+    );
+
+    expect(await screen.findByText("未映射")).toBeTruthy();
+    expect(screen.getByText("relative/song.mkv")).toBeTruthy();
+    expect(screen.getByText("path outside source root")).toBeTruthy();
+
+    const beforeRefresh = requests.filter((request) => request.url.startsWith("/admin/ktv-index/diagnostics")).length;
+    await user.click(screen.getByRole("button", { name: "刷新诊断" }));
+
+    await waitFor(() => {
+      expect(requests.filter((request) => request.url.startsWith("/admin/ktv-index/diagnostics")).length).toBeGreaterThan(beforeRefresh);
+    });
+  });
 });
+
+function SongCatalogRuntimeProbe() {
+  const runtime = useSongCatalogRuntime();
+  const sample = runtime.ktvIndexDiagnostics?.nasSample.results[0] ?? null;
+  return (
+    <section>
+      <button type="button" onClick={() => void runtime.refreshKtvIndexDiagnostics()}>
+        刷新诊断
+      </button>
+      <p>{sample?.status === "unmapped" ? "未映射" : sample?.status}</p>
+      <p>{sample?.filePath}</p>
+      <p>{sample?.message}</p>
+    </section>
+  );
+}
 
 function installFetchMock(
   options: { defaultAssetResponse?: { promise: Promise<Response> }; catalogStatus?: number; songs?: AdminCatalogSong[] } = {}
@@ -258,6 +299,10 @@ function installFetchMock(
         }
         const status = requestUrl.searchParams.get("status");
         return json({ songs: status ? songs.filter((song) => song.status === status) : songs });
+      }
+
+      if (method === "GET" && requestUrl.pathname === "/admin/ktv-index/diagnostics") {
+        return json(createKtvDiagnostics());
       }
 
       const songMatch = requestUrl.pathname.match(/^\/admin\/catalog\/songs\/([^/]+)$/u);
@@ -458,5 +503,72 @@ function createAsset(overrides: Partial<AdminCatalogAsset> = {}): AdminCatalogAs
     createdAt: "2026-04-30T00:00:00.000Z",
     updatedAt: "2026-04-30T00:00:00.000Z",
     ...overrides
+  };
+}
+
+function createKtvDiagnostics(): KtvIndexDiagnosticsResponse {
+  return {
+    tables: [{ tableName: "ktv_song_assets", exists: true }],
+    latestRun: {
+      id: "run-1",
+      sourceRoot: "/mnt/nas/KTV歌曲",
+      sshHost: "nas-host",
+      status: "completed",
+      filesSeen: 2,
+      songsUpserted: 1,
+      assetsUpserted: 2,
+      errorMessage: null,
+      startedAt: "2026-05-20T01:00:00.000Z",
+      finishedAt: "2026-05-20T01:01:00.000Z"
+    },
+    sourceRoot: "/mnt/nas/KTV歌曲",
+    activeAssetCount: 2,
+    missingAssetCount: 0,
+    songCount: 1,
+    artistCount: 1,
+    parseStrategies: [{ parseStrategy: "filename", count: 2 }],
+    lowConfidenceCount: 0,
+    minParseConfidence: 0.98,
+    nasSample: {
+      requested: 2,
+      checked: 2,
+      readable: 1,
+      missing: 0,
+      unreadable: 0,
+      timeout: 0,
+      unmapped: 1,
+      results: [
+        {
+          indexedAssetId: "ktv-unmapped-asset",
+          filePath: "relative/song.mkv",
+          readable: false,
+          status: "unmapped",
+          message: "path outside source root"
+        }
+      ]
+    },
+    preview: [
+      {
+        indexedSongId: "ktv-song-1",
+        title: "七里香",
+        artistName: "周杰伦",
+        category: "流行",
+        sourceLabel: "KTV索引",
+        matchReason: "title",
+        versions: [
+          {
+            indexedAssetId: "ktv-asset-1",
+            displayName: "周杰伦-七里香.mkv",
+            sourceLabel: "KTV索引",
+            extension: ".mkv",
+            sizeBytes: 123456,
+            category: "流行",
+            parseConfidence: 0.98,
+            filePath: "/mnt/nas/KTV歌曲/周杰伦-七里香.mkv",
+            missingAt: null
+          }
+        ]
+      }
+    ]
   };
 }
