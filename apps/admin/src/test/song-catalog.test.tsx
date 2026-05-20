@@ -63,6 +63,21 @@ describe("song catalog maintenance", () => {
     expect(screen.getAllByText((_, element) => element?.textContent === "切换质量: verified").length).toBeGreaterThan(0);
   });
 
+  it("renders KTV index diagnostics inside the Songs workspace", async () => {
+    const user = userEvent.setup();
+    installFetchMock();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "歌曲" }));
+
+    expect(await screen.findByRole("heading", { name: "KTV 索引诊断" })).toBeTruthy();
+    expect(screen.getByText("NAS 抽样读取")).toBeTruthy();
+    expect(screen.getByText("搜索预览")).toBeTruthy();
+    expect(screen.getAllByText("未映射").length).toBeGreaterThan(0);
+    expect(screen.getByText("relative/song.mkv")).toBeTruthy();
+    expect(screen.getByText("path outside source root")).toBeTruthy();
+  });
+
   it("keeps legacy song maintenance controls visible alongside real-MV catalog assets", async () => {
     const user = userEvent.setup();
     installFetchMock({ songs: [...createSongs(), createRealMvSong()] });

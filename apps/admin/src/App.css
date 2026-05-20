@@ -100,7 +100,7 @@ button:disabled {
 
 .admin-shell {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
   min-height: calc(100vh - 46px);
 }
 
@@ -998,6 +998,215 @@ button:disabled {
   min-height: 0;
 }
 
+.ktv-index-diagnostics {
+  background: #ffffff;
+  border-bottom: 1px solid #d7dde2;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px 20px;
+}
+
+.ktv-index-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.ktv-index-header h2 {
+  font-size: 18px;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.ktv-index-metrics,
+.ktv-index-sample-counts {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.ktv-index-metrics {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.ktv-index-sample-counts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 10px;
+}
+
+.ktv-index-metrics div,
+.ktv-index-sample-counts div {
+  background: #fbfcfd;
+  border: 1px solid #e2e7eb;
+  border-radius: 6px;
+  min-width: 0;
+  padding: 8px 9px;
+}
+
+.ktv-index-metrics dt,
+.ktv-index-sample-counts dt {
+  color: #63707b;
+  font-size: 11px;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ktv-index-metrics dd,
+.ktv-index-sample-counts dd {
+  color: #1e252b;
+  font-size: 14px;
+  font-weight: 800;
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.ktv-index-detail-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(190px, 0.8fr) minmax(190px, 0.8fr) minmax(260px, 1.2fr) minmax(320px, 1.6fr);
+  min-width: 0;
+}
+
+.ktv-index-detail-grid > section {
+  min-width: 0;
+}
+
+.ktv-index-detail-grid h3 {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+
+.ktv-index-table {
+  border: 1px solid #d7dde2;
+  border-radius: 6px;
+  display: grid;
+  max-height: 230px;
+  min-width: 0;
+  overflow: auto;
+}
+
+.ktv-index-row {
+  align-items: center;
+  border-top: 1px solid #e2e7eb;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 36px;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.ktv-index-row:first-child {
+  border-top: 0;
+}
+
+.ktv-index-row span,
+.ktv-index-row small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ktv-index-row strong {
+  color: #26323b;
+  font-size: 12px;
+}
+
+.ktv-index-row code,
+.ktv-index-version-row code {
+  color: #52616d;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.ktv-index-sample-row {
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ktv-index-sample-row span {
+  display: grid;
+  gap: 3px;
+}
+
+.ktv-index-preview {
+  display: grid;
+  gap: 8px;
+}
+
+.ktv-index-search-field {
+  color: #43515c;
+  display: grid;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 5px;
+}
+
+.ktv-index-search-field input {
+  background: #ffffff;
+  border: 1px solid #b8c2ca;
+  border-radius: 5px;
+  color: #1e252b;
+  min-height: 34px;
+  padding: 6px 8px;
+}
+
+.ktv-index-preview-list {
+  display: grid;
+  gap: 8px;
+  max-height: 230px;
+  min-width: 0;
+  overflow: auto;
+}
+
+.ktv-index-preview-result {
+  border: 1px solid #d7dde2;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.ktv-index-preview-result header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.ktv-index-preview-result header strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ktv-index-version-row {
+  border-top: 1px solid #e2e7eb;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding-top: 8px;
+}
+
+.ktv-index-version-row span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ktv-index-version-row small {
+  color: #63707b;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .catalog-list-pane {
   background: #ffffff;
   border-right: 1px solid #d7dde2;
@@ -1244,6 +1453,9 @@ button:disabled {
   }
 
   .catalog-filters,
+  .ktv-index-detail-grid,
+  .ktv-index-metrics,
+  .ktv-index-sample-counts,
   .room-status-grid,
   .asset-control-grid,
   .asset-facts {

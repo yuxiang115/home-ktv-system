@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@home-ktv/domain": "workspace:*",
     "@tanstack/react-query": "5.100.6",
     "react": "19.2.5",
     "react-dom": "19.2.5"
