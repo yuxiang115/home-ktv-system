@@ -6,6 +6,7 @@ import { registerAdminKtvIndexRoutes } from "../routes/admin-ktv-index.js";
 describe("admin KTV index routes", () => {
   it("returns bounded raw diagnostics for the requested preview query", async () => {
     const ktvIndex = {
+      searchIndexedSongs: vi.fn(async () => []),
       getDiagnostics: vi.fn(async () => createDiagnosticsFixture())
     };
     const server = Fastify();
