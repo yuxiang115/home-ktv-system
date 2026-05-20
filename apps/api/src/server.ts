@@ -23,6 +23,7 @@ import { PgScanRunRepository } from "./modules/ingest/repositories/scan-run-repo
 import { createScanScheduler, type ScanScheduler, type ScanSchedulerOptions } from "./modules/ingest/scan-scheduler.js";
 import { createOnlineRuntime } from "./modules/online/runtime.js";
 import type { OnlineCandidateProvider } from "./modules/online/provider-registry.js";
+import { PgKtvIndexReadRepository, type KtvIndexReadRepository } from "./modules/ktv-index/ktv-index-read-repository.js";
 import { PgPlayerDeviceSessionRepository, type PlayerDeviceSessionRepository } from "./modules/player/register-player.js";
 import {
   InMemoryControlSessionRepository,
@@ -51,6 +52,7 @@ import { registerHealthRoutes } from "./routes/health.js";
 import { registerCors } from "./routes/cors.js";
 import { registerAdminCatalogRoutes } from "./routes/admin-catalog.js";
 import { registerAdminImportRoutes } from "./routes/admin-imports.js";
+import { registerAdminKtvIndexRoutes } from "./routes/admin-ktv-index.js";
 import { registerAdminRoomsRoutes } from "./routes/admin-rooms.js";
 import { registerAvailableSongsRoutes } from "./routes/available-songs.js";
 import { registerControlCommandRoutes } from "./routes/control-commands.js";
@@ -158,6 +160,9 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
       songsRoot: ingest.paths.songsRoot
     });
   }
+  if (pool && repositories.ktvIndex) {
+    await registerAdminKtvIndexRoutes(server, { ktvIndex: repositories.ktvIndex });
+  }
   await registerAdminRoomsRoutes(server, {
     config: resolvedConfig,
     rooms: repositories.rooms,
@@ -229,6 +234,7 @@ type RuntimeRepositories = PlayerRouteRepositories & {
   songs: SongRepository & AdminCatalogSongRepository;
   controlSessions: ControlSessionRepository;
   controlCommands: RoomSessionCommandRepository;
+  ktvIndex?: KtvIndexReadRepository;
 };
 
 function createPgRepositories(pool: Pool): RuntimeRepositories {
@@ -244,7 +250,8 @@ function createPgRepositories(pool: Pool): RuntimeRepositories {
     controlSessions: new PgControlSessionRepository(pool),
     controlCommands: new PgRoomSessionCommandRepository(pool),
     deviceSessions: new PgPlayerDeviceSessionRepository(pool),
-    playbackEvents: new PgPlaybackEventRepository(pool)
+    playbackEvents: new PgPlaybackEventRepository(pool),
+    ktvIndex: new PgKtvIndexReadRepository(pool)
   };
 }
 
