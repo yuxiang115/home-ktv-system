@@ -26,6 +26,7 @@ function ControllerApp() {
   const current = snapshot?.currentTarget;
   const online = controller.songSearch?.online;
   const indexed = controller.songSearch?.indexed ?? null;
+  const indexedSourceFallbackLabel = "KTV索引";
   const switchTarget = snapshot?.switchTarget;
   const targetVocalMode =
     switchTarget?.vocalMode ??
@@ -205,7 +206,7 @@ function ControllerApp() {
                         <strong>{result.title}</strong>
                         <p>{result.artistName}</p>
                         <div className="result-meta">
-                          <span className="indexed-source">{result.sourceLabel}</span>
+                          <span className="indexed-source">{result.sourceLabel || indexedSourceFallbackLabel}</span>
                           <span>{result.category}</span>
                           <span>{t("search.indexedVersionCount", { count: result.versions.length })}</span>
                         </div>
@@ -217,7 +218,7 @@ function ControllerApp() {
                             <div>
                               <strong>{version.displayName}</strong>
                               <div className="result-meta">
-                                <span>{version.sourceLabel}</span>
+                                <span>{version.sourceLabel || indexedSourceFallbackLabel}</span>
                                 <span>{version.extension}</span>
                                 <span>{version.category}</span>
                                 <span>{version.sizeBytes == null ? t("search.unknownSize") : formatFileSize(version.sizeBytes)}</span>
