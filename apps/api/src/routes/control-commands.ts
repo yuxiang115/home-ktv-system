@@ -6,6 +6,8 @@ import { restoreControlSession, serializeControlSessionCookie } from "../modules
 import type { CandidateTaskService } from "../modules/online/candidate-task-service.js";
 import { buildRoomControlSnapshot, type ControlSnapshotRepositories } from "../modules/rooms/build-control-snapshot.js";
 import { executeRoomCommand } from "../modules/playback/session-command-service.js";
+import type { CommandExecutionResult } from "../modules/playback/session-command-service.js";
+import type { PgIndexedQueueCommandService } from "../modules/playback/indexed-queue-command-service.js";
 import type { RoomSessionCommandRepository } from "../modules/playback/repositories/room-session-command-repository.js";
 import type { RoomSnapshotBroadcaster } from "../modules/realtime/room-snapshot-broadcaster.js";
 
@@ -20,6 +22,7 @@ export interface ControlCommandsRouteDependencies {
   assetGateway: AssetGateway;
   broadcaster?: RoomSnapshotBroadcaster;
   online?: Pick<CandidateTaskService, "listActiveForRoom" | "requestSupplement">;
+  indexedQueueCommands?: Pick<PgIndexedQueueCommandService, "executeIndexedAddQueueEntry">;
 }
 
 interface BaseCommandBody {
@@ -31,6 +34,7 @@ interface BaseCommandBody {
 interface AddQueueEntryBody extends BaseCommandBody {
   songId?: string;
   assetId?: string;
+  indexedAssetId?: string;
 }
 
 interface QueueEntryBody extends BaseCommandBody {
@@ -59,6 +63,18 @@ export async function registerControlCommandRoutes(
   server.post<{ Params: { roomSlug: string }; Body: AddQueueEntryBody }>(
     "/rooms/:roomSlug/commands/add-queue-entry",
     async (request, reply) => {
+      const hasIndexed = hasText(request.body.indexedAssetId);
+      const hasCanonical = hasText(request.body.songId) || hasText(request.body.assetId);
+      if (hasIndexed && hasCanonical) {
+        await reply.code(400).send({ code: "INVALID_QUEUE_SOURCE", message: "点歌来源无效" });
+        return;
+      }
+
+      if (hasIndexed) {
+        await handleIndexedAddQueueEntry(request, reply, dependencies);
+        return;
+      }
+
       await handleCommand(request, reply, dependencies, "add-queue-entry", {
         songId: request.body.songId,
         assetId: request.body.assetId
@@ -175,6 +191,28 @@ async function handleRequestSupplement(
   });
 }
 
+async function handleIndexedAddQueueEntry(
+  request: FastifyRequest<{ Params: { roomSlug: string }; Body: AddQueueEntryBody }>,
+  reply: FastifyReply,
+  dependencies: ControlCommandsRouteDependencies
+): Promise<void> {
+  if (!dependencies.indexedQueueCommands) {
+    await reply.code(503).send({ code: "KTV_INDEX_SYNC_UNAVAILABLE", message: "KTV 索引点歌暂不可用" });
+    return;
+  }
+
+  const result = await dependencies.indexedQueueCommands.executeIndexedAddQueueEntry({
+    commandId: requiredString(request.body.commandId, "commandId"),
+    roomSlug: request.params.roomSlug,
+    sessionVersion: requiredNumber(request.body.sessionVersion, "sessionVersion"),
+    deviceId: requiredString(request.body.deviceId, "deviceId"),
+    indexedAssetId: requiredString(request.body.indexedAssetId, "indexedAssetId"),
+    cookieHeader: request.headers.cookie
+  });
+
+  await sendCommandResult(request.params.roomSlug, reply, dependencies, result);
+}
+
 async function handleCommand(
   request: FastifyRequest<{ Params: { roomSlug: string }; Body: BaseCommandBody }>,
   reply: FastifyReply,
@@ -211,11 +249,20 @@ async function handleCommand(
     config: dependencies.config
   });
 
+  await sendCommandResult(request.params.roomSlug, reply, dependencies, result);
+}
+
+async function sendCommandResult(
+  roomSlug: string,
+  reply: FastifyReply,
+  dependencies: Pick<ControlCommandsRouteDependencies, "broadcaster">,
+  result: CommandExecutionResult
+): Promise<void> {
   if (result.status === "accepted") {
     if (result.controlSessionCookie) {
       reply.header("Set-Cookie", result.controlSessionCookie);
     }
-    dependencies.broadcaster?.broadcastRoomSnapshot(request.params.roomSlug, result.snapshot);
+    dependencies.broadcaster?.broadcastRoomSnapshot(roomSlug, result.snapshot);
     await reply.send({
       status: result.status,
       commandId: result.commandId,
@@ -240,10 +287,14 @@ async function handleCommand(
     return;
   }
 
-  await reply.code(400).send({
+  await reply.code(result.code === "CONTROL_SESSION_REQUIRED" ? 401 : 400).send({
     code: result.code,
     message: result.message ?? null
   });
+}
+
+function hasText(value: unknown): value is string {
+  return typeof value === "string" && value.trim() !== "";
 }
 
 function requiredString(value: unknown, name: string): string {
