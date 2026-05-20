@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: 真实场景接入、部署和验证
-status: Ready to start `$gsd-discuss-phase 18`
+status: ready_for_phase_planning
 stopped_at: Phase 18 context gathered
 last_updated: "2026-05-20T08:20:36.678Z"
-last_activity: 2026-05-14 -- v1.3 requirements and roadmap created; ready for Phase 18 discussion
+last_activity: 2026-05-20 -- Phase 18 context gathered; ready for Phase 18 planning
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
+  total_plans: 17
   completed_plans: 0
   percent: 0
 ---
@@ -28,8 +28,8 @@ See: `.planning/PROJECT.md` (updated 2026-05-14)
 Milestone: v1.3 真实场景接入、部署和验证
 Phase: 18 - KTV Index Read Model and Diagnostics
 Plan: —
-Status: Ready to start `$gsd-discuss-phase 18`
-Last activity: 2026-05-14 -- v1.3 requirements and roadmap created; ready for Phase 18 discussion
+Status: Ready to start `$gsd-plan-phase 18`
+Last activity: 2026-05-20 -- Phase 18 context gathered; ready for Phase 18 planning
 
 Progress: [----------] 0%
 
