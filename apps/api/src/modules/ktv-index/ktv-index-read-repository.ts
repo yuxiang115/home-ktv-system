@@ -10,6 +10,7 @@ import type {
 } from "@home-ktv/domain";
 import type { QueryExecutor } from "../../db/query-executor.js";
 import { normalizeSearchText } from "../catalog/search-normalization.js";
+import { buildNasSample } from "./ktv-index-diagnostics.js";
 
 export interface SearchKtvIndexedSongsInput {
   query: string;
@@ -86,6 +87,11 @@ interface ConfidenceRow {
   min_parse_confidence: number | string | null;
 }
 
+interface SampleAssetRow {
+  id: string;
+  file_path: string;
+}
+
 export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
   constructor(private readonly db: QueryExecutor) {}
 
@@ -126,6 +132,12 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
         versionsPerSong: 4
       })
     ]);
+    const sampleAssets = await this.getSampleAssets(input);
+    const nasSample = await buildNasSample({
+      assets: sampleAssets.map((asset) => ({ indexedAssetId: asset.id, filePath: asset.file_path })),
+      sourceRoot: latestRun?.sourceRoot ?? null,
+      ...(input.sampleTimeoutMs === undefined ? {} : { timeoutMs: input.sampleTimeoutMs })
+    });
 
     return {
       tables,
@@ -138,7 +150,7 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
       parseStrategies,
       lowConfidenceCount: confidence.lowConfidenceCount,
       minParseConfidence: confidence.minParseConfidence,
-      nasSample: emptyNasSample,
+      nasSample,
       preview
     };
   }
@@ -335,6 +347,24 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
   private async searchDiagnosticsPreview(input: SearchKtvIndexedSongsInput): Promise<KtvIndexDiagnosticsPreviewResult[]> {
     const rows = await this.queryIndexedRows(input);
     return mapDiagnosticsPreviewRows(rows);
+  }
+
+  private async getSampleAssets(input: GetKtvIndexDiagnosticsInput): Promise<SampleAssetRow[]> {
+    const sampleSize = Math.min(50, Math.max(0, input.sampleSize ?? 12));
+    if (sampleSize === 0) {
+      return [];
+    }
+
+    const orderBy = input.deterministicSample ? "updated_at DESC" : "random()";
+    const result = await this.db.query<SampleAssetRow>(
+      `SELECT id, file_path
+       FROM ktv_song_assets
+       WHERE missing_at IS NULL
+       ORDER BY ${orderBy}
+       LIMIT $1`,
+      [sampleSize]
+    );
+    return result.rows;
   }
 }
 

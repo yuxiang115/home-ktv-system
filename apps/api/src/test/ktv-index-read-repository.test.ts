@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { QueryExecutor } from "../db/query-executor.js";
+import { buildNasSample } from "../modules/ktv-index/ktv-index-diagnostics.js";
 import { PgKtvIndexReadRepository } from "../modules/ktv-index/ktv-index-read-repository.js";
 
 describe("PgKtvIndexReadRepository", () => {
@@ -108,6 +109,68 @@ describe("PgKtvIndexReadRepository", () => {
   });
 });
 
+describe("buildNasSample", () => {
+  it("classifies unmapped paths before touching the filesystem", async () => {
+    const accessed: string[] = [];
+    const nasSample = await buildNasSample({
+      sourceRoot: "/mnt/nas/KTV歌曲",
+      assets: [
+        { indexedAssetId: "blank", filePath: "" },
+        { indexedAssetId: "relative", filePath: "relative/song.mkv" },
+        { indexedAssetId: "outside", filePath: "/other/root/song.mkv" }
+      ],
+      accessFile: async (filePath) => {
+        accessed.push(filePath);
+      }
+    });
+
+    expect(accessed).toEqual([]);
+    expect(nasSample.unmapped).toBe(3);
+    expect(nasSample.missing).toBe(0);
+    expect(nasSample.unreadable).toBe(0);
+    expect(nasSample.timeout).toBe(0);
+    expect(nasSample.results.map((result) => result.status)).toEqual(["unmapped", "unmapped", "unmapped"]);
+    expect(nasSample.results[0]).toMatchObject({ filePath: "", status: "unmapped", message: "path is blank" });
+    expect(nasSample.results[1]).toMatchObject({
+      filePath: "relative/song.mkv",
+      status: "unmapped",
+      message: "path is not absolute"
+    });
+    expect(nasSample.results[2]).toMatchObject({
+      filePath: "/other/root/song.mkv",
+      status: "unmapped",
+      message: "path outside source root"
+    });
+  });
+
+  it("keeps missing unreadable and timeout counts separate from unmapped", async () => {
+    const nasSample = await buildNasSample({
+      sourceRoot: "/mnt/nas/KTV歌曲",
+      timeoutMs: 50,
+      assets: [
+        { indexedAssetId: "missing", filePath: "/mnt/nas/KTV歌曲/missing.mkv" },
+        { indexedAssetId: "unreadable", filePath: "/mnt/nas/KTV歌曲/unreadable.mkv" },
+        { indexedAssetId: "timeout", filePath: "/mnt/nas/KTV歌曲/timeout.mkv" }
+      ],
+      accessFile: async (filePath) => {
+        if (filePath.includes("missing")) {
+          throw Object.assign(new Error("missing"), { code: "ENOENT" });
+        }
+        if (filePath.includes("unreadable")) {
+          throw new Error("permission denied");
+        }
+        await new Promise(() => {});
+      }
+    });
+
+    expect(nasSample.unmapped).toBe(0);
+    expect(nasSample.missing).toBe(1);
+    expect(nasSample.unreadable).toBe(1);
+    expect(nasSample.timeout).toBe(1);
+    expect(nasSample.results.map((result) => result.status)).toEqual(["missing", "unreadable", "timeout"]);
+  });
+});
+
 interface RecordedQuery {
   text: string;
   values: readonly unknown[];
@@ -169,6 +232,10 @@ class ScriptedKtvIndexDb implements QueryExecutor {
 
     if (text.includes("parse_confidence < 0.75")) {
       return { rows: [{ low_confidence_count: "0", min_parse_confidence: "0.980" }] as TRow[] };
+    }
+
+    if (text.includes("ORDER BY updated_at DESC") || text.includes("ORDER BY random()")) {
+      return { rows: [] as TRow[] };
     }
 
     if (text.includes("WITH matched_songs")) {
