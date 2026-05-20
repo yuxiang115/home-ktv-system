@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: 真实场景接入、部署和验证
 status: executing
-stopped_at: Completed 19-02-PLAN.md
-last_updated: "2026-05-20T12:10:11.153Z"
+stopped_at: Completed 19-03-PLAN.md
+last_updated: "2026-05-20T12:33:19.109Z"
 last_activity: 2026-05-20
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 7
-  completed_plans: 5
-  percent: 0
+  completed_plans: 6
+  percent: 86
 ---
 
 # Project State
@@ -27,11 +27,11 @@ See: `.planning/PROJECT.md` (updated 2026-05-14)
 
 Milestone: v1.3 真实场景接入、部署和验证
 Phase: 19 (search-and-queue-time-catalog-sync) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-05-20
 
-Progress: [----------] 0%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
@@ -76,6 +76,7 @@ Progress: [----------] 0%
 | Phase 18 P03 | 17 min | 3 tasks | 9 files |
 | Phase 19 P01 | 10 min | 2 tasks | 11 files |
 | Phase 19 P02 | 11 min | 2 tasks | 4 files |
+| Phase 19 P03 | 12 min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -155,6 +156,8 @@ Progress: [----------] 0%
 - [Phase 19]: Mobile indexed duplicate confirmation uses a discriminated union for canonical and indexed selections. — Canonical songId/assetId and indexedAssetId have different command payloads and should not be conflated in UI state.
 - [Phase 19]: KTV source identity is persisted in source_records with provider ktv-index and provider_item_id equal to ktv_song_assets.id. — This gives queue-time sync durable traceability without adding ktv_* ids to queue_entries.
 - [Phase 19]: PgKtvCatalogSyncService accepts QueryExecutor and does not open its own transaction. — The indexed add-queue command can compose sync and queue mutation inside one transaction in 19-03.
+- [Phase 19]: Indexed add-queue-entry sync and canonical queue append run inside one PostgreSQL transaction. — This prevents partial queue-visible mutations when sync or queue insertion fails.
+- [Phase 19]: KTV-index-synced real MV admission is queue-only and does not claim switching support. — Missing track roles still block switch target creation until runtime capability is proven.
 
 ### Pending Todos
 
@@ -169,6 +172,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-20T12:09:58.114Z
-Stopped at: Completed 19-02-PLAN.md
+Last session: 2026-05-20T12:33:19.106Z
+Stopped at: Completed 19-03-PLAN.md
 Resume file: None
