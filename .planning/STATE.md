@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: 真实场景接入、部署和验证
 status: executing
-stopped_at: Completed 18-01-PLAN.md
-last_updated: "2026-05-20T09:09:37.657Z"
+stopped_at: Completed 18-02-PLAN.md
+last_updated: "2026-05-20T09:25:16.313Z"
 last_activity: 2026-05-20
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-14)
 
 Milestone: v1.3 真实场景接入、部署和验证
 Phase: 18 (ktv-index-read-model-and-diagnostics) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-05-20
 
@@ -72,6 +72,7 @@ Progress: [----------] 0%
 | Phase 16 P03 | 8 min | 2 tasks | 3 files |
 | Phase 16-policy-seam-android-reservation-and-hardening P04 | 18 min | 2 tasks | 4 files |
 | Phase 18 P01 | 12 min | 3 tasks | 4 files |
+| Phase 18 P02 | 15 min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -141,6 +142,9 @@ Progress: [----------] 0%
 - [Phase 18-01]: Indexed search versions remain nonqueueable in Phase 18 with queueState=needs_catalog_sync. — Queue/playback integration is deferred so ktv_* access remains read-only.
 - [Phase 18-01]: Mobile indexed search omits filePath while Admin diagnostics preview includes it. — NAS paths are diagnostic detail and should not leak into mobile-facing search results.
 - [Phase 18-01]: NAS diagnostics classify unmapped paths separately from missing, unreadable, and timeout. — Deployment path mapping issues need distinct raw evidence before status interpretation.
+- [Phase 18-02]: KTV index diagnostics are rendered inside the existing Songs workspace instead of a new Admin tab. — The operator diagnostic flow belongs with formal catalog maintenance.
+- [Phase 18-02]: Admin can display NAS file paths in diagnostics while Mobile search remains path-safe. — Admin diagnostics are operator-facing and need raw evidence; Mobile users do not need filesystem paths.
+- [Phase 18-02]: Refresh invalidates only the ktv-index-diagnostics query key. — KTV diagnostics should not reload the formal catalog song list.
 
 ### Pending Todos
 
@@ -155,6 +159,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-20T09:09:04.101Z
-Stopped at: Completed 18-01-PLAN.md
+Last session: 2026-05-20T09:25:04.736Z
+Stopped at: Completed 18-02-PLAN.md
 Resume file: None

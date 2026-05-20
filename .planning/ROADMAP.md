@@ -47,7 +47,7 @@ Explicitly out of scope for this roadmap: native Android TV app, mandatory trans
 **Plans**: 3 plans
 Plans:
 - [x] 18-01-PLAN.md - KTV index repository, query contracts, and stats model
-- [ ] 18-02-PLAN.md - API/Admin diagnostics and bounded search preview
+- [x] 18-02-PLAN.md - API/Admin diagnostics and bounded search preview
 - [ ] 18-03-PLAN.md - Search response source labeling and regression coverage
 
 ### Phase 19: Search and Queue-Time Catalog Sync
@@ -127,7 +127,7 @@ Phases execute in numeric order: 18 -> 19 -> 20 -> 21 -> 22
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 18. KTV Index Read Model and Diagnostics | 1/3 | In Progress|  |
+| 18. KTV Index Read Model and Diagnostics | 2/3 | In Progress|  |
 | 19. Search and Queue-Time Catalog Sync | 0/4 | Blocked on Phase 18 | — |
 | 20. Real Media Path, Streaming, and Playback Target Verification | 0/4 | Blocked on Phase 19 | — |
 | 21. Real Deployment Profile and Operator Workflow | 0/3 | Blocked on Phase 20 | — |
