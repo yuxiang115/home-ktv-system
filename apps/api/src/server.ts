@@ -59,7 +59,7 @@ import { registerMediaRoutes } from "./routes/media.js";
 import { registerPlayerRoutes } from "./routes/player.js";
 import { registerRealtimeRoutes } from "./routes/realtime.js";
 import { registerRoomSnapshotRoutes } from "./routes/room-snapshots.js";
-import { registerSongSearchRoutes } from "./routes/song-search.js";
+import { PgIndexedSourceIdentityLookup, registerSongSearchRoutes } from "./routes/song-search.js";
 
 export interface CreateServerOptions {
   onlineProviders?: OnlineCandidateProvider[];
@@ -220,7 +220,8 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     songs: repositories.songs,
     queueEntries: repositories.queueEntries,
     online: onlineRuntime.tasks,
-    ...(repositories.ktvIndex ? { ktvIndex: repositories.ktvIndex } : {})
+    ...(repositories.ktvIndex ? { ktvIndex: repositories.ktvIndex } : {}),
+    ...(pool ? { indexedSources: new PgIndexedSourceIdentityLookup(pool) } : {})
   });
   await registerControlCommandRoutes(server, {
     config: resolvedConfig,

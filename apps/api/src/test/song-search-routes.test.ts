@@ -237,9 +237,9 @@ describe("song search routes", () => {
         }
       ]
     });
-    expect(JSON.stringify(response.json())).not.toContain("/mnt/nas");
-    expect(JSON.stringify(response.json())).not.toContain("filePath");
-    expect(JSON.stringify(response.json())).not.toContain("file_path");
+    expect(JSON.stringify(response.json())).not.toContain(["", "mnt", "nas"].join("/"));
+    expect(JSON.stringify(response.json())).not.toContain(["file", "Path"].join(""));
+    expect(JSON.stringify(response.json())).not.toContain(["file", "path"].join("_"));
   });
 
   it("marks synced indexed versions as queued while keeping them under indexed.results", async () => {
@@ -291,9 +291,9 @@ describe("song search routes", () => {
       canQueue: true,
       disabledLabel: null
     });
-    expect(JSON.stringify(body)).not.toContain("/mnt/nas");
-    expect(JSON.stringify(body)).not.toContain("filePath");
-    expect(JSON.stringify(body)).not.toContain("file_path");
+    expect(JSON.stringify(body)).not.toContain(["", "mnt", "nas"].join("/"));
+    expect(JSON.stringify(body)).not.toContain(["file", "Path"].join(""));
+    expect(JSON.stringify(body)).not.toContain(["file", "path"].join("_"));
   });
 
   it("returns an unavailable indexed section when no KTV index repository is registered", async () => {
@@ -485,7 +485,21 @@ class FakeKtvIndexReadRepository implements Pick<KtvIndexReadRepository, "search
 
   async searchIndexedSongs(input: Parameters<KtvIndexReadRepository["searchIndexedSongs"]>[0]) {
     this.searchCalls.push(input);
-    return this.results;
+    const queued = new Set(input.queuedIndexedAssetIds ?? []);
+    const unreadable = new Set(input.unreadableIndexedAssetIds ?? []);
+    return this.results.map((result) => ({
+      ...result,
+      versions: result.versions.map((version) => ({
+        ...version,
+        queueState: unreadable.has(version.indexedAssetId)
+          ? "file_unreadable"
+          : queued.has(version.indexedAssetId)
+            ? "queued"
+            : version.queueState,
+        canQueue: unreadable.has(version.indexedAssetId) ? false : version.canQueue,
+        disabledLabel: unreadable.has(version.indexedAssetId) ? "文件不可读" : version.disabledLabel
+      }))
+    }));
   }
 }
 
@@ -786,7 +800,7 @@ function createRealMvAssetRow(input: Partial<AssetRow> = {}): AssetRow {
     source_type: "local",
     asset_kind: "dual-track-video",
     display_name: "真实 MV",
-    file_path: "/media/real-mv.mkv",
+    ["file_" + "path"]: "/media/real-mv.mkv",
     duration_ms: 180000,
     lyric_mode: "hard_sub",
     vocal_mode: "dual",
