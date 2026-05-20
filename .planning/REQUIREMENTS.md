@@ -14,10 +14,10 @@
 
 ### Runtime Catalog Sync
 
-- [ ] **SYNC-01**: User can queue a selected KTV indexed asset from Mobile without manually importing or approving it first.
+- [x] **SYNC-01**: User can queue a selected KTV indexed asset from Mobile without manually importing or approving it first.
 - [ ] **SYNC-02**: Queueing a KTV indexed asset idempotently creates or reuses one canonical `songs` row and one canonical `assets` row.
 - [ ] **SYNC-03**: Canonical records created from the KTV index preserve source index identity, file path, title, primary artist, category, extension, size, and parse confidence.
-- [ ] **SYNC-04**: Existing queue operations continue to work for synced real songs: add, duplicate confirmation, promote, delete, undo delete, skip current, and room snapshot refresh.
+- [x] **SYNC-04**: Existing queue operations continue to work for synced real songs: add, duplicate confirmation, promote, delete, undo delete, skip current, and room snapshot refresh.
 
 ### Real Media Path And Playback
 
@@ -86,10 +86,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INDEX-02 | Phase 18 | Complete |
 | INDEX-03 | Phase 18 | Complete |
 | INDEX-04 | Phase 18 | Complete |
-| SYNC-01 | Phase 19 | Pending |
+| SYNC-01 | Phase 19 | Complete |
 | SYNC-02 | Phase 19 | Pending |
 | SYNC-03 | Phase 19 | Pending |
-| SYNC-04 | Phase 19 | Pending |
+| SYNC-04 | Phase 19 | Complete |
 | MEDIA-01 | Phase 20 | Pending |
 | MEDIA-02 | Phase 20 | Pending |
 | MEDIA-03 | Phase 20 | Pending |

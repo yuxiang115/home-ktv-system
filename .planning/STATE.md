@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: 真实场景接入、部署和验证
 status: executing
-stopped_at: Phase 19 planned
-last_updated: "2026-05-20T11:06:23.435Z"
+stopped_at: Completed 19-01-PLAN.md
+last_updated: "2026-05-20T11:59:56.022Z"
 last_activity: 2026-05-20
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 7
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -26,8 +26,8 @@ See: `.planning/PROJECT.md` (updated 2026-05-14)
 ## Current Position
 
 Milestone: v1.3 真实场景接入、部署和验证
-Phase: 19
-Plan: Not started
+Phase: 19 (search-and-queue-time-catalog-sync) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
 Last activity: 2026-05-20
 
@@ -74,6 +74,7 @@ Progress: [----------] 0%
 | Phase 18 P01 | 12 min | 3 tasks | 4 files |
 | Phase 18 P02 | 15 min | 3 tasks | 10 files |
 | Phase 18 P03 | 17 min | 3 tasks | 9 files |
+| Phase 19 P01 | 10 min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -149,6 +150,8 @@ Progress: [----------] 0%
 - [Phase 18-03]: SongSearchResponse.indexed is required. — Mobile should consistently receive local, indexed, and online result sections from the existing search endpoint.
 - [Phase 18-03]: Indexed Mobile versions remain disabled with queueState=needs_catalog_sync. — Phase 19 owns catalog sync before queue insertion.
 - [Phase 18-03]: Mobile indexed search preserves indexedSongId/indexedAssetId but never renders NAS file paths. — Identity is needed for Phase 19, while paths remain Admin-only diagnostics.
+- [Phase 19]: Indexed active assets are queueable at search-contract layer; queue-time sync decides stale or unreadable failures. — This keeps Mobile usable from Phase 19 while preserving server-side validation in later plans.
+- [Phase 19]: Mobile indexed duplicate confirmation uses a discriminated union for canonical and indexed selections. — Canonical songId/assetId and indexedAssetId have different command payloads and should not be conflated in UI state.
 
 ### Pending Todos
 
@@ -163,6 +166,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-20T11:06:23.431Z
-Stopped at: Phase 19 planned
-Resume file: .planning/phases/19-search-and-queue-time-catalog-sync/19-01-PLAN.md
+Last session: 2026-05-20T11:59:29.062Z
+Stopped at: Completed 19-01-PLAN.md
+Resume file: None
