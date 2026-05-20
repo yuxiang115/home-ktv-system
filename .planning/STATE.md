@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: 真实场景接入、部署和验证
 status: executing
-stopped_at: Completed 18-02-PLAN.md
-last_updated: "2026-05-20T09:25:16.313Z"
+stopped_at: Completed 18-03-PLAN.md
+last_updated: "2026-05-20T09:43:02.221Z"
 last_activity: 2026-05-20
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-14)
 
 Milestone: v1.3 真实场景接入、部署和验证
 Phase: 18 (ktv-index-read-model-and-diagnostics) — EXECUTING
-Plan: 3 of 3
+Plan: 2 of 3
 Status: Ready to execute
 Last activity: 2026-05-20
 
@@ -73,6 +73,7 @@ Progress: [----------] 0%
 | Phase 16-policy-seam-android-reservation-and-hardening P04 | 18 min | 2 tasks | 4 files |
 | Phase 18 P01 | 12 min | 3 tasks | 4 files |
 | Phase 18 P02 | 15 min | 3 tasks | 10 files |
+| Phase 18 P03 | 17 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -145,6 +146,9 @@ Progress: [----------] 0%
 - [Phase 18-02]: KTV index diagnostics are rendered inside the existing Songs workspace instead of a new Admin tab. — The operator diagnostic flow belongs with formal catalog maintenance.
 - [Phase 18-02]: Admin can display NAS file paths in diagnostics while Mobile search remains path-safe. — Admin diagnostics are operator-facing and need raw evidence; Mobile users do not need filesystem paths.
 - [Phase 18-02]: Refresh invalidates only the ktv-index-diagnostics query key. — KTV diagnostics should not reload the formal catalog song list.
+- [Phase 18-03]: SongSearchResponse.indexed is required. — Mobile should consistently receive local, indexed, and online result sections from the existing search endpoint.
+- [Phase 18-03]: Indexed Mobile versions remain disabled with queueState=needs_catalog_sync. — Phase 19 owns catalog sync before queue insertion.
+- [Phase 18-03]: Mobile indexed search preserves indexedSongId/indexedAssetId but never renders NAS file paths. — Identity is needed for Phase 19, while paths remain Admin-only diagnostics.
 
 ### Pending Todos
 
@@ -159,6 +163,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-20T09:25:04.736Z
-Stopped at: Completed 18-02-PLAN.md
+Last session: 2026-05-20T09:43:02.217Z
+Stopped at: Completed 18-03-PLAN.md
 Resume file: None

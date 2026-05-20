@@ -26,7 +26,7 @@ Explicitly out of scope for this roadmap: native Android TV app, mandatory trans
 
 ## Phases
 
-- [ ] **Phase 18: KTV Index Read Model and Diagnostics** - Make the real index queryable, bounded, observable, and visible to Admin/operators.
+- [x] **Phase 18: KTV Index Read Model and Diagnostics** - Make the real index queryable, bounded, observable, and visible to Admin/operators. (completed 2026-05-20)
 - [ ] **Phase 19: Search and Queue-Time Catalog Sync** - Let Mobile queue indexed songs by syncing selected assets into canonical `songs/assets`.
 - [ ] **Phase 20: Real Media Path, Streaming, and Playback Target Verification** - Prove synced real assets can resolve paths, stream, and reach TV playback safely.
 - [ ] **Phase 21: Real Deployment Profile and Operator Workflow** - Provide one clear real-mode deployment path with logs, env, health checks, and index refresh commands.
@@ -48,7 +48,7 @@ Explicitly out of scope for this roadmap: native Android TV app, mandatory trans
 Plans:
 - [x] 18-01-PLAN.md - KTV index repository, query contracts, and stats model
 - [x] 18-02-PLAN.md - API/Admin diagnostics and bounded search preview
-- [ ] 18-03-PLAN.md - Search response source labeling and regression coverage
+- [x] 18-03-PLAN.md - Search response source labeling and regression coverage
 
 ### Phase 19: Search and Queue-Time Catalog Sync
 
@@ -127,7 +127,7 @@ Phases execute in numeric order: 18 -> 19 -> 20 -> 21 -> 22
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 18. KTV Index Read Model and Diagnostics | 2/3 | In Progress|  |
+| 18. KTV Index Read Model and Diagnostics | 3/3 | Complete   | 2026-05-20 |
 | 19. Search and Queue-Time Catalog Sync | 0/4 | Blocked on Phase 18 | — |
 | 20. Real Media Path, Streaming, and Playback Target Verification | 0/4 | Blocked on Phase 19 | — |
 | 21. Real Deployment Profile and Operator Workflow | 0/3 | Blocked on Phase 20 | — |
