@@ -474,12 +474,17 @@ async function addQueueEntry(
     return rejected(input.commandId, input.sessionVersion, "SONG_NOT_QUEUEABLE");
   }
 
+  const ktvIndexAdmission = isKtvIndexQueueAdmission(input.payload);
   const resolvedMode = isSingleFileRealMvAsset(selectedAsset)
     ? resolveRealMvQueueVocalMode({ asset: selectedAsset, sessionTargetVocalMode: context.session.targetVocalMode })
     : null;
 
   if (isSingleFileRealMvAsset(selectedAsset)) {
-    if (!resolvedMode || !isQueueableRealMvAsset(selectedAsset, resolvedMode)) {
+    if (ktvIndexAdmission) {
+      if (!isQueueableKtvIndexRealMvAsset(selectedAsset, song.id)) {
+        return rejected(input.commandId, input.sessionVersion, "SONG_NOT_QUEUEABLE");
+      }
+    } else if (!resolvedMode || !isQueueableRealMvAsset(selectedAsset, resolvedMode)) {
       return rejected(input.commandId, input.sessionVersion, "SONG_NOT_QUEUEABLE");
     }
   } else {
@@ -753,6 +758,10 @@ function isSingleFileRealMvAsset(asset: Asset): boolean {
   return asset.playbackProfile?.kind === "single_file_audio_tracks" || asset.assetKind === "dual-track-video";
 }
 
+function isKtvIndexQueueAdmission(payload: Record<string, unknown>): boolean {
+  return payload.queueAdmissionSource === "ktv-index";
+}
+
 function resolveRealMvQueueVocalMode(input: {
   asset: Asset;
   sessionTargetVocalMode: VocalMode | string | null;
@@ -772,6 +781,10 @@ function isQueueableRealMvAsset(asset: Asset, vocalMode: "original" | "instrumen
     asset.compatibilityStatus === "playable" &&
     hasTrackForVocalMode(asset, vocalMode)
   );
+}
+
+function isQueueableKtvIndexRealMvAsset(asset: Asset, songId: string): boolean {
+  return asset.status === "ready" && asset.sourceType !== "online_ephemeral" && asset.songId === songId;
 }
 
 function targetVocalModeForQueueEntry(asset: Asset, queueEntry: QueueEntry): VocalMode {

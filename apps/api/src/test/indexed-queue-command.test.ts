@@ -18,10 +18,12 @@ import { InMemoryControlSessionRepository } from "../modules/controller/reposito
 import type { QueryExecutor } from "../db/query-executor.js";
 import type { ApiConfig } from "../config.js";
 import type { PlayerDeviceSessionRepository } from "../modules/player/register-player.js";
+import { buildSwitchTarget } from "../modules/playback/build-switch-target.js";
 import { PgIndexedQueueCommandService } from "../modules/playback/indexed-queue-command-service.js";
 import { InMemoryQueueEntryRepository } from "../modules/playback/repositories/queue-entry-repository.js";
 import type { PlaybackSessionRepository } from "../modules/playback/repositories/playback-session-repository.js";
 import type { RoomSessionCommandRecord } from "../modules/playback/repositories/room-session-command-repository.js";
+import { executeRoomCommand } from "../modules/playback/session-command-service.js";
 import type { RuntimeRepositories } from "../runtime/pg-runtime-repositories.js";
 import { InMemoryRoomPairingTokenRepository } from "../modules/rooms/repositories/pairing-token-repository.js";
 import type { RoomRepository } from "../modules/rooms/repositories/room-repository.js";
@@ -231,6 +233,84 @@ describe("PgIndexedQueueCommandService", () => {
     ).rejects.toThrow("append failed");
 
     expect(client.transactionStatements).toEqual(["BEGIN", "ROLLBACK"]);
+  });
+});
+
+describe("ktv-index queue admission", () => {
+  it("accepts indexed-synced real MV assets with unknown compatibility and null track roles without storing indexed ids", async () => {
+    const queueEntries = new InMemoryQueueEntryRepository();
+    const repositories = createRuntimeRepositories({
+      queueEntries,
+      songs: [createSyncedSong()],
+      assets: [createKtvIndexSyncedRealMvAsset()]
+    });
+    const assetGateway = createAssetGateway(createAssetRepository([createKtvIndexSyncedRealMvAsset()]));
+
+    const result = await executeRoomCommand({
+      commandId: "command-ktv-index-real-mv-admission",
+      roomSlug: "living-room",
+      sessionVersion: 1,
+      type: "add-queue-entry",
+      payload: {
+        songId: "song-ktv-ktv-song-1",
+        assetId: "asset-ktv-ktv-asset-1",
+        queueAdmissionSource: "ktv-index",
+        indexedAssetId: "ktv-asset-1"
+      },
+      controlSession: createControlSessionInfo(),
+      repositories,
+      assetGateway,
+      config: createConfig(),
+      now
+    });
+
+    expect(result.status).toBe("accepted");
+    const queue = await queueEntries.listEffectiveQueue("living-room");
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({
+      songId: "song-ktv-ktv-song-1",
+      assetId: "asset-ktv-ktv-asset-1"
+    });
+    expect(Object.prototype.hasOwnProperty.call(queue[0], "indexedAssetId")).toBe(false);
+
+    await expect(
+      buildSwitchTarget({
+        roomSlug: "living-room",
+        repositories,
+        assetGateway
+      })
+    ).resolves.toBeNull();
+  });
+
+  it("still rejects equivalent non-KTV real MV assets with null track roles", async () => {
+    const queueEntries = new InMemoryQueueEntryRepository();
+    const repositories = createRuntimeRepositories({
+      queueEntries,
+      songs: [createSyncedSong()],
+      assets: [createKtvIndexSyncedRealMvAsset()]
+    });
+
+    const result = await executeRoomCommand({
+      commandId: "command-non-ktv-real-mv-admission",
+      roomSlug: "living-room",
+      sessionVersion: 1,
+      type: "add-queue-entry",
+      payload: {
+        songId: "song-ktv-ktv-song-1",
+        assetId: "asset-ktv-ktv-asset-1"
+      },
+      controlSession: createControlSessionInfo(),
+      repositories,
+      assetGateway: createAssetGateway(createAssetRepository([createKtvIndexSyncedRealMvAsset()])),
+      config: createConfig(),
+      now
+    });
+
+    expect(result).toMatchObject({
+      status: "rejected",
+      code: "SONG_NOT_QUEUEABLE"
+    });
+    await expect(queueEntries.listEffectiveQueue("living-room")).resolves.toEqual([]);
   });
 });
 
@@ -638,6 +718,18 @@ function createControlSession(): ControlSession {
   };
 }
 
+function createControlSessionInfo() {
+  return {
+    id: "control-session-1",
+    roomId: "living-room",
+    roomSlug: "living-room",
+    deviceId: "phone-1",
+    deviceName: "Mobile Controller",
+    lastSeenAt: nowIso,
+    expiresAt: "2030-01-01T00:00:00.000Z"
+  };
+}
+
 function createSyncedSong(): Song {
   return createSong("song-ktv-ktv-song-1", "七里香", "周杰伦", "asset-ktv-ktv-asset-1");
 }
@@ -673,6 +765,29 @@ function createQueueableSyncedAsset(input: Partial<Asset> = {}): Asset {
     songId: "song-ktv-ktv-song-1",
     vocalMode: "instrumental",
     switchFamily: "family-ktv-1",
+    ...input
+  });
+}
+
+function createKtvIndexSyncedRealMvAsset(input: Partial<Asset> = {}): Asset {
+  return createReadyAsset({
+    id: "asset-ktv-ktv-asset-1",
+    songId: "song-ktv-ktv-song-1",
+    assetKind: "dual-track-video",
+    displayName: "七里香",
+    filePath: "/media-root/package.json",
+    vocalMode: "dual",
+    switchFamily: null,
+    switchQualityStatus: "review_required",
+    compatibilityStatus: "unknown",
+    trackRoles: { original: null, instrumental: null },
+    playbackProfile: {
+      kind: "single_file_audio_tracks",
+      container: "matroska",
+      videoCodec: null,
+      audioCodecs: [],
+      requiresAudioTrackSelection: false
+    },
     ...input
   });
 }
