@@ -777,6 +777,61 @@ describe("mobile controller runtime", () => {
     await flush();
   });
 
+  it("opens duplicate confirmation from a queued indexed search version before sending indexedAssetId", async () => {
+    const user = userEvent.setup();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))],
+      songSearchResponse: (query) => ({
+        query,
+        local: [],
+        indexed: {
+          status: "available",
+          message: "找到 KTV 索引结果",
+          results: [
+            {
+              indexedSongId: "ktv-song-sunny",
+              title: "索引晴天",
+              artistName: "周杰伦",
+              category: "流行",
+              sourceLabel: "KTV索引",
+              matchReason: "title",
+              versions: [
+                {
+                  indexedAssetId: "ktv-asset-sunny-mpg",
+                  displayName: "索引晴天.mpg",
+                  sourceLabel: "KTV索引",
+                  extension: ".mpg",
+                  sizeBytes: 734003200,
+                  category: "流行",
+                  queueState: "queued",
+                  canQueue: true,
+                  disabledLabel: null
+                }
+              ]
+            }
+          ]
+        },
+        online: { status: "disabled", message: "本地未入库，补歌功能后续可用", candidates: [] }
+      })
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    await screen.findByText("索引晴天");
+    await user.click(screen.getByRole("button", { name: "已点" }));
+
+    expect(screen.getByRole("dialog", { name: "重复点歌" })).toBeTruthy();
+    expect(requests.some((request) => request.url === "/rooms/living-room/commands/add-queue-entry")).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "确认加点" }));
+    await flush();
+
+    expect(requests.find((request) => request.url === "/rooms/living-room/commands/add-queue-entry")?.body).toMatchObject({
+      indexedAssetId: "ktv-asset-sunny-mpg"
+    });
+  });
+
   it("keeps disabled indexed KTV states visible with explicit labels", async () => {
     installControllerFetchMock({
       restoreResponses: [json(sessionResponse(roomSnapshot()))],

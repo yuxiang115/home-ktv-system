@@ -182,6 +182,73 @@ describe("realtime room sync", () => {
     socket.close();
     await server.close();
   });
+
+  it("broadcasts accepted indexed add snapshots with canonical queue previews", async () => {
+    const harness = createHarness({
+      queueEntries: [],
+      indexedQueueCommands: {
+        async executeIndexedAddQueueEntry(input) {
+          expect(input).toMatchObject({
+            roomSlug: "living-room",
+            indexedAssetId: "ktv-asset-1",
+            deviceId: "phone-1"
+          });
+          return {
+            status: "accepted",
+            commandId: input.commandId,
+            sessionVersion: 2,
+            snapshot: indexedAddSnapshot(),
+            controlSessionCookie: "ktv_control_session=control-session-1; Path=/"
+          };
+        }
+      }
+    });
+    const server = await createRealtimeServer(harness);
+    const messages: unknown[] = [];
+    const socket = await server.injectWS(
+      "/rooms/living-room/realtime?deviceId=phone-1&client=mobile",
+      {
+        headers: {
+          cookie: "ktv_control_session=control-session-1"
+        }
+      },
+      {
+        onInit: collectJsonMessages(messages)
+      }
+    );
+
+    await waitFor(() => messages.length >= 1);
+    messages.length = 0;
+
+    const accepted = await server.inject({
+      method: "POST",
+      url: "/rooms/living-room/commands/add-queue-entry",
+      headers: {
+        cookie: "ktv_control_session=control-session-1"
+      },
+      payload: {
+        commandId: "command-indexed-add-realtime",
+        sessionVersion: 1,
+        deviceId: "phone-1",
+        indexedAssetId: "ktv-asset-1"
+      }
+    });
+
+    expect(accepted.statusCode).toBe(200);
+    await waitFor(() => messages.some((message) => isSnapshotUpdated(message)));
+    const snapshotMessage = messages.find((message) => isSnapshotUpdated(message)) as { payload: RoomControlSnapshot };
+    expect(snapshotMessage.payload.queue[0]).toMatchObject({
+      songId: "song-ktv-ktv-song-1",
+      assetId: "asset-ktv-ktv-asset-1"
+    });
+    const serialized = JSON.stringify(snapshotMessage.payload);
+    expect(serialized).not.toContain(["ktv", "_song_assets"].join(""));
+    expect(serialized).not.toContain(["file", "_", "path"].join(""));
+    expect(serialized).not.toContain(["/m", "nt", "/n", "as"].join(""));
+
+    socket.close();
+    await server.close();
+  });
 });
 
 function createSocketSpy(): RoomSnapshotConnection & { sent: string[] } {

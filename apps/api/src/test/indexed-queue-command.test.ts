@@ -155,6 +155,15 @@ describe("PgIndexedQueueCommandService", () => {
 
     expect(result.status).toBe("accepted");
     expect(client.transactionStatements).toEqual(["BEGIN", "COMMIT"]);
+    if (result.status !== "accepted") {
+      throw new Error("Expected accepted indexed add command");
+    }
+    expect(result.snapshot.queue).toEqual([
+      expect.objectContaining({
+        songId: "song-ktv-ktv-song-1",
+        assetId: "asset-ktv-ktv-asset-1"
+      })
+    ]);
     await expect(queueEntries.listEffectiveQueue("living-room")).resolves.toEqual([
       expect.objectContaining({
         songId: "song-ktv-ktv-song-1",
@@ -311,6 +320,125 @@ describe("ktv-index queue admission", () => {
       code: "SONG_NOT_QUEUEABLE"
     });
     await expect(queueEntries.listEffectiveQueue("living-room")).resolves.toEqual([]);
+  });
+});
+
+describe("synced indexed queue operations", () => {
+  it("keeps promote, delete, and undo snapshots on canonical KTV ids", async () => {
+    const { repositories, assetGateway } = createSyncedQueueOperationHarness();
+
+    const promoted = await executeRoomCommand({
+      commandId: "command-promote-synced-indexed",
+      roomSlug: "living-room",
+      sessionVersion: 1,
+      type: "promote-queue-entry",
+      payload: { queueEntryId: "queue-second-indexed" },
+      controlSession: createControlSessionInfo(),
+      repositories,
+      assetGateway,
+      config: createConfig(),
+      now
+    });
+
+    expect(promoted.status).toBe("accepted");
+    if (promoted.status !== "accepted") {
+      throw new Error("Expected accepted promote command");
+    }
+    expect(promoted.snapshot.queue.map((entry) => entry.queueEntryId)).toEqual([
+      "queue-current-indexed",
+      "queue-second-indexed",
+      "queue-first-indexed"
+    ]);
+    expect(promoted.snapshot.queue.map((entry) => entry.songId)).toEqual([
+      "song-ktv-ktv-song-current",
+      "song-ktv-ktv-song-2",
+      "song-ktv-ktv-song-1"
+    ]);
+    expect(promoted.snapshot.queue.map((entry) => entry.assetId)).toEqual([
+      "asset-ktv-ktv-asset-current",
+      "asset-ktv-ktv-asset-2",
+      "asset-ktv-ktv-asset-1"
+    ]);
+
+    const deleted = await executeRoomCommand({
+      commandId: "command-delete-synced-indexed",
+      roomSlug: "living-room",
+      sessionVersion: promoted.sessionVersion,
+      type: "delete-queue-entry",
+      payload: { queueEntryId: "queue-first-indexed" },
+      controlSession: createControlSessionInfo(),
+      repositories,
+      assetGateway,
+      config: createConfig(),
+      now
+    });
+
+    expect(deleted.status).toBe("accepted");
+    if (deleted.status !== "accepted") {
+      throw new Error("Expected accepted delete command");
+    }
+    expect(deleted.snapshot.queue.find((entry) => entry.queueEntryId === "queue-first-indexed")).toMatchObject({
+      songId: "song-ktv-ktv-song-1",
+      assetId: "asset-ktv-ktv-asset-1",
+      status: "removed"
+    });
+
+    const undone = await executeRoomCommand({
+      commandId: "command-undo-delete-synced-indexed",
+      roomSlug: "living-room",
+      sessionVersion: deleted.sessionVersion,
+      type: "undo-delete-queue-entry",
+      payload: { queueEntryId: "queue-first-indexed" },
+      controlSession: createControlSessionInfo(),
+      repositories,
+      assetGateway,
+      config: createConfig(),
+      now
+    });
+
+    expect(undone.status).toBe("accepted");
+    if (undone.status !== "accepted") {
+      throw new Error("Expected accepted undo command");
+    }
+    expect(undone.snapshot.queue.map((entry) => entry.queueEntryId)).toEqual([
+      "queue-current-indexed",
+      "queue-second-indexed",
+      "queue-first-indexed"
+    ]);
+    expect(JSON.stringify(undone.snapshot)).not.toContain("indexedAssetId");
+  });
+
+  it("advances skip-current to the next synced indexed canonical entry", async () => {
+    const { repositories, assetGateway } = createSyncedQueueOperationHarness();
+
+    const skipped = await executeRoomCommand({
+      commandId: "command-skip-current-synced-indexed",
+      roomSlug: "living-room",
+      sessionVersion: 1,
+      type: "skip-current",
+      payload: { confirmSkip: true },
+      controlSession: createControlSessionInfo(),
+      repositories,
+      assetGateway,
+      config: createConfig(),
+      now
+    });
+
+    expect(skipped.status).toBe("accepted");
+    if (skipped.status !== "accepted") {
+      throw new Error("Expected accepted skip command");
+    }
+    expect(skipped.snapshot.currentTarget).toMatchObject({
+      queueEntryId: "queue-first-indexed",
+      assetId: "asset-ktv-ktv-asset-1"
+    });
+    expect(skipped.snapshot.queue[0]).toMatchObject({
+      queueEntryId: "queue-first-indexed",
+      songId: "song-ktv-ktv-song-1",
+      assetId: "asset-ktv-ktv-asset-1",
+      status: "loading"
+    });
+    expect(JSON.stringify(skipped.snapshot)).not.toContain("indexedAssetId");
   });
 });
 
