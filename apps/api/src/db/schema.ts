@@ -618,4 +618,8 @@ CREATE INDEX IF NOT EXISTS control_sessions_room_active_idx
 
 CREATE INDEX IF NOT EXISTS control_commands_room_created_idx
   ON control_commands(room_id, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS source_records_ktv_index_asset_uq
+  ON source_records(provider, provider_item_id)
+  WHERE provider = 'ktv-index' AND provider_item_id IS NOT NULL;
 `;
