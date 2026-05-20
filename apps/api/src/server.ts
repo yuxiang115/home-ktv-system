@@ -163,7 +163,7 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     await registerAdminCatalogRoutes(server, {
       songs: ingest.catalogSongs,
       admissionService: ingest.admissionService,
-      ktvIndexSources: new PgKtvIndexSyncedSourceLookup(pool),
+      ...(pool ? { ktvIndexSources: new PgKtvIndexSyncedSourceLookup(pool) } : {}),
       songsRoot: ingest.paths.songsRoot
     });
   }

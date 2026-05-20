@@ -834,7 +834,7 @@ function createRealMvAssetRow(input: Partial<AssetRow> = {}): AssetRow {
     created_at: new Date(now),
     updated_at: new Date(now),
     ...input
-  };
+  } as AssetRow;
 }
 
 function createReviewedTrackRoles(): TrackRoles {

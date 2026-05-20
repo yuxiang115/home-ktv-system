@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import websocket from "@fastify/websocket";
 import type { Asset, PlaybackSession, QueueEntry, Room, Song } from "@home-ktv/domain";
+import type { RoomControlSnapshot } from "@home-ktv/player-contracts";
 import { describe, expect, it, vi } from "vitest";
 import { AssetGateway } from "../modules/assets/asset-gateway.js";
 import { MediaPathResolver } from "../modules/assets/media-path-resolver.js";

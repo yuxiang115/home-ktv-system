@@ -14,7 +14,7 @@ import type {
 } from "@home-ktv/domain";
 import { describe, expect, it, vi } from "vitest";
 import type { CatalogAdmissionService } from "../modules/catalog/admission-service.js";
-import { registerAdminCatalogRoutes } from "../routes/admin-catalog.js";
+import { registerAdminCatalogRoutes, type KtvIndexSyncedSourceLookup } from "../routes/admin-catalog.js";
 
 describe("admin catalog routes", () => {
   it("GET /admin/catalog/songs returns formal songs with status, default asset, and asset summaries", async () => {
@@ -291,9 +291,7 @@ describe("admin catalog routes", () => {
 async function createAdminCatalogHarness(input: {
   serviceRecord?: AdminCatalogSongRecord;
   serviceEvaluation?: { status: "verified" | "review_required" | "rejected"; reason?: string; pairAssetIds: string[] };
-  ktvIndexSources?: {
-    findSyncedSourcesForAssets(assetIds: readonly string[]): Promise<Array<Record<string, unknown>>>;
-  };
+  ktvIndexSources?: KtvIndexSyncedSourceLookup;
   songsRoot?: string;
 } = {}) {
   const server = Fastify({ logger: false });
