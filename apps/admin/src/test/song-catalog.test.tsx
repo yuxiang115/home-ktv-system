@@ -84,6 +84,23 @@ describe("song catalog maintenance", () => {
     expect(screen.queryByRole("button", { name: "KTV" })).toBeNull();
   });
 
+  it("renders KTV synced source identity for canonical catalog assets", async () => {
+    const user = userEvent.setup();
+    installFetchMock({ songs: [createKtvSyncedSong()] });
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "歌曲" }));
+
+    expect(await screen.findByRole("heading", { name: "KTV 同步来源" })).toBeTruthy();
+    expect(screen.getByText("ktv_songs.id")).toBeTruthy();
+    expect(screen.getByText("ktv_song_assets.id")).toBeTruthy();
+    expect(screen.getByText("ktv-asset-1")).toBeTruthy();
+    expect(screen.getByText("文件路径")).toBeTruthy();
+    expect(screen.getByText("/mnt/nas/KTV歌曲/周杰伦/七里香.mkv")).toBeTruthy();
+    expect(screen.getByText("解析置信度")).toBeTruthy();
+    expect(screen.getByText("0.98")).toBeTruthy();
+  });
+
   it("keeps legacy song maintenance controls visible alongside real-MV catalog assets", async () => {
     const user = userEvent.setup();
     installFetchMock({ songs: [...createSongs(), createRealMvSong()] });
@@ -504,6 +521,57 @@ function createRealMvSong(): AdminCatalogSong {
     updatedAt: "2026-04-30T00:00:00.000Z",
     defaultAsset: realMvAsset,
     assets: [realMvAsset]
+  };
+}
+
+function createKtvSyncedSong(): AdminCatalogSong {
+  const syncedAsset = {
+    ...createAsset({
+      id: "asset-ktv-ktv-asset-1",
+      songId: "song-ktv-ktv-song-1",
+      assetKind: "dual-track-video",
+      displayName: "七里香 - KTV 索引",
+      filePath: "songs/mandarin/周杰伦/七里香/七里香.mkv",
+      vocalMode: "dual",
+      switchFamily: null,
+      switchQualityStatus: "review_required"
+    }),
+    ktvIndexSource: {
+      songId: "song-ktv-ktv-song-1",
+      assetId: "asset-ktv-ktv-asset-1",
+      indexedSongId: "ktv-song-1",
+      indexedAssetId: "ktv-asset-1",
+      filePath: "/mnt/nas/KTV歌曲/周杰伦/七里香.mkv",
+      title: "七里香",
+      artistName: "周杰伦",
+      category: "流行",
+      parseConfidence: 0.98
+    }
+  } as AdminCatalogAsset;
+
+  return {
+    id: "song-ktv-ktv-song-1",
+    title: "七里香",
+    normalizedTitle: "七里香",
+    titlePinyin: "",
+    titleInitials: "",
+    artistId: "artist-jay",
+    artistName: "周杰伦",
+    language: "mandarin",
+    status: "ready",
+    genre: ["流行"],
+    tags: ["ktv-index"],
+    aliases: [],
+    searchHints: [],
+    releaseYear: null,
+    canonicalDurationMs: null,
+    searchWeight: 0,
+    defaultAssetId: syncedAsset.id,
+    capabilities: { canSwitchVocalMode: false },
+    createdAt: "2026-04-30T00:00:00.000Z",
+    updatedAt: "2026-04-30T00:00:00.000Z",
+    defaultAsset: syncedAsset,
+    assets: [syncedAsset]
   };
 }
 

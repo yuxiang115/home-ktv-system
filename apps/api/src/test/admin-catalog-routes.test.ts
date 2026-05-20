@@ -57,6 +57,51 @@ describe("admin catalog routes", () => {
     });
   });
 
+  it("GET /admin/catalog/songs includes KTV source identity for synced canonical assets", async () => {
+    const ktvIndexSources = {
+      findSyncedSourcesForAssets: vi.fn(async (_assetIds: readonly string[]) => [
+        {
+          songId: "song-1",
+          assetId: "asset-instrumental",
+          indexedSongId: "ktv-song-1",
+          indexedAssetId: "ktv-asset-1",
+          filePath: "/mnt/nas/KTV歌曲/周杰伦/七里香.mkv",
+          title: "七里香",
+          artistName: "周杰伦",
+          category: "流行",
+          parseConfidence: 0.98
+        }
+      ])
+    };
+    const { server } = await createAdminCatalogHarness({ ktvIndexSources });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/admin/catalog/songs"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(ktvIndexSources.findSyncedSourcesForAssets).toHaveBeenCalledWith(["asset-original", "asset-instrumental"]);
+    expect(response.json()).toMatchObject({
+      songs: [
+        {
+          id: "song-1",
+          assets: expect.arrayContaining([
+            expect.objectContaining({
+              id: "asset-instrumental",
+              ktvIndexSource: {
+                indexedSongId: "ktv-song-1",
+                indexedAssetId: "ktv-asset-1",
+                filePath: "/mnt/nas/KTV歌曲/周杰伦/七里香.mkv",
+                parseConfidence: 0.98
+              }
+            })
+          ])
+        }
+      ]
+    });
+  });
+
   it("PATCH /admin/catalog/songs/:songId updates metadata without changing strict switch state", async () => {
     const { server, songs, admissionService } = await createAdminCatalogHarness();
 
@@ -253,6 +298,9 @@ describe("admin catalog routes", () => {
 async function createAdminCatalogHarness(input: {
   serviceRecord?: AdminCatalogSongRecord;
   serviceEvaluation?: { status: "verified" | "review_required" | "rejected"; reason?: string; pairAssetIds: string[] };
+  ktvIndexSources?: {
+    findSyncedSourcesForAssets(assetIds: readonly string[]): Promise<Array<Record<string, unknown>>>;
+  };
   songsRoot?: string;
 } = {}) {
   const server = Fastify({ logger: false });
@@ -283,8 +331,8 @@ async function createAdminCatalogHarness(input: {
   };
 
   const dependencies = input.songsRoot
-    ? { songs, admissionService, songsRoot: input.songsRoot }
-    : { songs, admissionService };
+    ? { songs, admissionService, songsRoot: input.songsRoot, ...(input.ktvIndexSources ? { ktvIndexSources: input.ktvIndexSources } : {}) }
+    : { songs, admissionService, ...(input.ktvIndexSources ? { ktvIndexSources: input.ktvIndexSources } : {}) };
   await registerAdminCatalogRoutes(server, dependencies);
   return { server, songs, admissionService };
 }
