@@ -26,6 +26,7 @@ import org.videolan.libvlc.util.VLCVideoLayout
 
 class MainActivity : Activity() {
     private lateinit var videoLayout: VLCVideoLayout
+    private lateinit var idleBackgroundImage: ImageView
     private lateinit var bottomPanel: LinearLayout
     private lateinit var idlePairingOverlay: LinearLayout
     private lateinit var idleQrImage: ImageView
@@ -195,6 +196,19 @@ class MainActivity : Activity() {
             ),
         )
 
+        idleBackgroundImage = ImageView(this).apply {
+            setImageResource(R.drawable.home_ktv_idle_background)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            visibility = View.GONE
+        }
+        root.addView(
+            idleBackgroundImage,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+
         buildPairingOverlays(root)
 
         bottomPanel = LinearLayout(this).apply {
@@ -256,7 +270,7 @@ class MainActivity : Activity() {
             setPadding(dp(80), dp(54), dp(86), dp(54))
             background = GradientDrawable(
                 GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(Color.argb(230, 7, 11, 18), Color.argb(180, 7, 11, 18), Color.argb(70, 7, 11, 18)),
+                intArrayOf(Color.argb(135, 7, 11, 18), Color.argb(80, 7, 11, 18), Color.argb(12, 7, 11, 18)),
             )
         }
         root.addView(
@@ -1021,6 +1035,7 @@ class MainActivity : Activity() {
     }
 
     private fun renderPairingOverlay(state: TvPairingOverlayState) {
+        idleBackgroundImage.visibility = if (state.showIdleBackground) View.VISIBLE else View.GONE
         bottomPanel.visibility = if (state.showPlaybackHud) View.VISIBLE else View.GONE
         idlePairingOverlay.visibility = if (state.showIdlePairing) View.VISIBLE else View.GONE
         playingQrPanel.visibility = if (state.showPlayingQr) View.VISIBLE else View.GONE

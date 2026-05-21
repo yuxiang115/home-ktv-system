@@ -12,6 +12,7 @@ class TvPairingOverlayStateTest {
         )
 
         assertEquals(true, state.showIdlePairing)
+        assertEquals(true, state.showIdleBackground)
         assertEquals(false, state.showPlayingQr)
         assertEquals(false, state.showPlaybackHud)
         assertEquals("http://controller.local/controller?room=living-room", state.qrPayload)
@@ -25,6 +26,7 @@ class TvPairingOverlayStateTest {
         )
 
         assertEquals(false, state.showIdlePairing)
+        assertEquals(false, state.showIdleBackground)
         assertEquals(true, state.showPlayingQr)
         assertEquals(true, state.showPlaybackHud)
         assertEquals("http://controller.local/controller?room=living-room", state.qrPayload)
@@ -38,6 +40,7 @@ class TvPairingOverlayStateTest {
         )
 
         assertEquals(false, state.showIdlePairing)
+        assertEquals(false, state.showIdleBackground)
         assertEquals(false, state.showPlayingQr)
         assertEquals(true, state.showPlaybackHud)
         assertEquals(null, state.qrPayload)
