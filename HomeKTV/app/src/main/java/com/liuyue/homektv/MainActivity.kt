@@ -280,7 +280,7 @@ class MainActivity : Activity() {
             return
         }
 
-        val tracks = mediaPlayer.audioTracks.filter { it.id >= 0 }
+        val tracks = currentVlcAudioTracks()
         if (tracks.isEmpty()) {
             setStatus("未发现可切换音轨")
             refreshAudioTrackText()
@@ -293,7 +293,8 @@ class MainActivity : Activity() {
         val nextTrack = tracks[nextIndex]
         val switched = mediaPlayer.setAudioTrack(nextTrack.id)
         if (switched) {
-            setStatus("已切换音轨：${nextTrack.displayName(nextIndex)}")
+            val nextTrackOption = AudioTrackOption(id = nextTrack.id, name = nextTrack.name)
+            setStatus("已切换音轨：${nextTrackOption.displayName(nextIndex)}")
         } else {
             setStatus("音轨切换失败")
         }
@@ -332,20 +333,7 @@ class MainActivity : Activity() {
             return
         }
 
-        val tracks = mediaPlayer.audioTracks.filter { it.id >= 0 }
-        if (tracks.isEmpty()) {
-            audioTrackText.text = "音轨未加载"
-            return
-        }
-
-        val currentTrackId = mediaPlayer.audioTrack
-        val currentIndex = tracks.indexOfFirst { it.id == currentTrackId }
-        val current = tracks.getOrNull(currentIndex.coerceAtLeast(0))
-        audioTrackText.text = if (current != null) {
-            "音轨 ${currentIndex + 1}/${tracks.size} · ${current.displayName(currentIndex)}"
-        } else {
-            "音轨 ${tracks.size} 条"
-        }
+        audioTrackText.text = describeAudioTrackState(currentAudioTrackOptions(), mediaPlayer.audioTrack)
     }
 
     private fun updateProgress() {
@@ -377,9 +365,14 @@ class MainActivity : Activity() {
         return if (scheme == "http" || scheme == "https") toString() else null
     }
 
-    private fun MediaPlayer.TrackDescription.displayName(index: Int): String {
-        val cleanName = name?.trim()?.takeIf { it.isNotEmpty() && it != "Track ${index + 1}" }
-        return cleanName ?: "音轨 ${index + 1}"
+    private fun currentVlcAudioTracks(): List<MediaPlayer.TrackDescription> {
+        val rawTracks: Array<MediaPlayer.TrackDescription>? = mediaPlayer.audioTracks
+        return rawTracks?.filter { it.id >= 0 }.orEmpty()
+    }
+
+    private fun currentAudioTrackOptions(): List<AudioTrackOption>? {
+        val rawTracks: Array<MediaPlayer.TrackDescription>? = mediaPlayer.audioTracks
+        return rawTracks?.map { AudioTrackOption(id = it.id, name = it.name) }
     }
 
     private fun formatDuration(valueMs: Long): String {
