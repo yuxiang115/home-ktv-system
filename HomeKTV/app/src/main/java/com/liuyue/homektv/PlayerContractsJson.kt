@@ -16,6 +16,7 @@ object PlayerContractsJson {
             roomSlug = json.optString("roomSlug", ""),
             sessionVersion = json.optInt("sessionVersion", 0),
             state = json.optString("state", "idle"),
+            pairing = json.optJSONObject("pairing")?.let(::pairingInfoFromJson),
             currentTarget = json.optJSONObject("currentTarget")?.let(::playbackTargetFromJson),
             switchTarget = json.optJSONObject("switchTarget")?.let(::switchTargetFromJson),
             targetVocalMode = json.optNullableString("targetVocalMode"),
@@ -95,6 +96,16 @@ object PlayerContractsJson {
             queueEntryId = json?.optString("queueEntryId", fallbackQueueEntryId) ?: fallbackQueueEntryId,
             songTitle = json?.optString("songTitle", "当前歌曲") ?: "当前歌曲",
             artistName = json?.optString("artistName", "") ?: "",
+        )
+    }
+
+    private fun pairingInfoFromJson(json: JSONObject): PairingInfo {
+        return PairingInfo(
+            roomSlug = json.optString("roomSlug", ""),
+            controllerUrl = json.optString("controllerUrl", ""),
+            qrPayload = json.optString("qrPayload", json.optString("controllerUrl", "")),
+            token = json.optString("token", ""),
+            tokenExpiresAt = json.optString("tokenExpiresAt", ""),
         )
     }
 

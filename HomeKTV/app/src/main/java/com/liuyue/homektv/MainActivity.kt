@@ -3,6 +3,7 @@ package com.liuyue.homektv
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -14,6 +15,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import okhttp3.WebSocket
@@ -24,6 +26,12 @@ import org.videolan.libvlc.util.VLCVideoLayout
 
 class MainActivity : Activity() {
     private lateinit var videoLayout: VLCVideoLayout
+    private lateinit var bottomPanel: LinearLayout
+    private lateinit var idlePairingOverlay: LinearLayout
+    private lateinit var idleQrImage: ImageView
+    private lateinit var idlePromptText: TextView
+    private lateinit var playingQrPanel: LinearLayout
+    private lateinit var playingQrImage: ImageView
     private lateinit var progressText: TextView
     private lateinit var audioTrackText: TextView
     private lateinit var nextSampleButton: Button
@@ -64,6 +72,7 @@ class MainActivity : Activity() {
     private var switchInFlight = false
     private var lastRecoveryVersion: Int? = null
     private var selectedTrackKey: String? = null
+    private var renderedQrPayload: String? = null
     private val sentTelemetryKeys = mutableSetOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -186,10 +195,12 @@ class MainActivity : Activity() {
             ),
         )
 
-        val bottomPanel = LinearLayout(this).apply {
+        buildPairingOverlays(root)
+
+        bottomPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(14), dp(24), dp(16))
-            setBackgroundColor(Color.argb(130, 0, 0, 0))
+            background = roundedBackground(Color.argb(130, 0, 0, 0), dp(8).toFloat())
         }
         root.addView(
             bottomPanel,
@@ -238,6 +249,126 @@ class MainActivity : Activity() {
         setContentView(root)
     }
 
+    private fun buildPairingOverlays(root: FrameLayout) {
+        idlePairingOverlay = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(80), dp(54), dp(86), dp(54))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.argb(230, 7, 11, 18), Color.argb(180, 7, 11, 18), Color.argb(70, 7, 11, 18)),
+            )
+        }
+        root.addView(
+            idlePairingOverlay,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+
+        val leftPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        idlePairingOverlay.addView(
+            leftPanel,
+            LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f),
+        )
+
+        leftPanel.addView(TextView(this).apply {
+            text = "HomeKTV"
+            textSize = 54f
+            setTextColor(Color.WHITE)
+            includeFontPadding = false
+        })
+        leftPanel.addView(TextView(this).apply {
+            text = "今晚开唱"
+            textSize = 24f
+            setTextColor(Color.rgb(222, 226, 235))
+            setPadding(0, dp(14), 0, dp(34))
+            includeFontPadding = false
+        })
+        leftPanel.addView(buildDecorativeBars())
+
+        val qrPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(28), dp(28), dp(28), dp(24))
+            background = roundedBackground(Color.WHITE, dp(8).toFloat())
+        }
+        idlePairingOverlay.addView(
+            qrPanel,
+            LinearLayout.LayoutParams(dp(344), LinearLayout.LayoutParams.WRAP_CONTENT),
+        )
+
+        idleQrImage = ImageView(this).apply {
+            setBackgroundColor(Color.WHITE)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }
+        qrPanel.addView(idleQrImage, LinearLayout.LayoutParams(dp(276), dp(276)))
+
+        idlePromptText = TextView(this).apply {
+            text = "HomeKTV 请扫码点歌"
+            textSize = 22f
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(20, 25, 36))
+            setPadding(0, dp(18), 0, 0)
+            includeFontPadding = false
+        }
+        qrPanel.addView(
+            idlePromptText,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
+        )
+
+        playingQrPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            background = roundedBackground(Color.argb(235, 255, 255, 255), dp(6).toFloat())
+        }
+        root.addView(
+            playingQrPanel,
+            FrameLayout.LayoutParams(dp(112), dp(112), Gravity.TOP or Gravity.END).apply {
+                topMargin = dp(24)
+                rightMargin = dp(24)
+            },
+        )
+
+        playingQrImage = ImageView(this).apply {
+            setBackgroundColor(Color.WHITE)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }
+        playingQrPanel.addView(playingQrImage, LinearLayout.LayoutParams(dp(96), dp(96)))
+    }
+
+    private fun buildDecorativeBars(): LinearLayout {
+        val bars = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.BOTTOM
+        }
+        val colors = listOf(
+            Color.rgb(0, 204, 153),
+            Color.rgb(255, 205, 64),
+            Color.rgb(255, 104, 88),
+            Color.rgb(86, 160, 255),
+            Color.rgb(255, 255, 255),
+        )
+        val heights = listOf(48, 86, 128, 72, 104)
+        for (index in heights.indices) {
+            bars.addView(
+                View(this).apply {
+                    background = roundedBackground(colors[index], dp(5).toFloat())
+                    alpha = if (index == heights.lastIndex) 0.72f else 0.95f
+                },
+                LinearLayout.LayoutParams(dp(14), dp(heights[index])).apply {
+                    rightMargin = dp(12)
+                },
+            )
+        }
+        return bars
+    }
+
     private fun setupPlayer() {
         val options = arrayListOf(
             "--no-drop-late-frames",
@@ -268,6 +399,7 @@ class MainActivity : Activity() {
         roomModeActive = false
         currentSampleIndex = -1
         nextSampleButton.visibility = View.GONE
+        renderPairingOverlay(TvPairingOverlayState.from(roomModeActive = false, snapshot = null))
         playUrl(config.mediaUrl)
     }
 
@@ -283,6 +415,7 @@ class MainActivity : Activity() {
             mediaPlayer.stop()
         }
         nextSampleButton.visibility = View.GONE
+        renderPairingOverlay(TvPairingOverlayState.from(roomModeActive = true, snapshot = latestSnapshot))
 
         val resolved = resolveDeviceId(config)
         deviceId = resolved
@@ -384,6 +517,7 @@ class MainActivity : Activity() {
         if (!roomModeActive) return
         latestSnapshot = snapshot
         logRoomSnapshot(snapshot)
+        renderPairingOverlay(TvPairingOverlayState.from(roomModeActive = true, snapshot = snapshot))
 
         if (snapshot.state == "recovering" && lastRecoveryVersion != snapshot.sessionVersion) {
             lastRecoveryVersion = snapshot.sessionVersion
@@ -419,6 +553,7 @@ class MainActivity : Activity() {
         selectedTrackKey = null
         currentSampleIndex = -1
         nextSampleButton.visibility = View.GONE
+        renderPairingOverlay(TvPairingOverlayState.from(roomModeActive = true, snapshot = latestSnapshot))
         playUrl(target.playbackUrl, target = target)
         sendTelemetryOnce(
             target = target,
@@ -476,6 +611,9 @@ class MainActivity : Activity() {
         currentMediaUrl = null
         progressText.text = "00:00 / --:--"
         audioTrackText.text = "音轨未加载"
+        if (roomModeActive) {
+            renderPairingOverlay(TvPairingOverlayState.from(roomModeActive = true, snapshot = latestSnapshot))
+        }
         setStatus(
             when {
                 snapshot?.conflict == true || snapshot?.state == "conflict" -> "电视连接冲突"
@@ -882,6 +1020,30 @@ class MainActivity : Activity() {
         Log.i(TAG, value)
     }
 
+    private fun renderPairingOverlay(state: TvPairingOverlayState) {
+        bottomPanel.visibility = if (state.showPlaybackHud) View.VISIBLE else View.GONE
+        idlePairingOverlay.visibility = if (state.showIdlePairing) View.VISIBLE else View.GONE
+        playingQrPanel.visibility = if (state.showPlayingQr) View.VISIBLE else View.GONE
+
+        val payload = state.qrPayload
+        if (payload.isNullOrBlank()) {
+            idleQrImage.setImageBitmap(null)
+            playingQrImage.setImageBitmap(null)
+            idlePromptText.text = "HomeKTV 正在准备点歌码"
+            renderedQrPayload = null
+            return
+        }
+
+        idlePromptText.text = "HomeKTV 请扫码点歌"
+        if (renderedQrPayload == payload) {
+            return
+        }
+
+        renderedQrPayload = payload
+        idleQrImage.setImageBitmap(QrCodeBitmap.create(payload, dp(276)))
+        playingQrImage.setImageBitmap(QrCodeBitmap.create(payload, dp(96)))
+    }
+
     private fun launchConfigFromIntent(intent: Intent): LaunchConfig {
         val data = intent.data
         return LaunchConfig.from(
@@ -974,6 +1136,13 @@ class MainActivity : Activity() {
 
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
+    }
+
+    private fun roundedBackground(color: Int, radius: Float): GradientDrawable {
+        return GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = radius
+        }
     }
 
     companion object {

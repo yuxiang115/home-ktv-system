@@ -35,6 +35,14 @@ data class PlaybackTarget(
     val nextQueueEntryPreview: QueueEntryPreview?,
 )
 
+data class PairingInfo(
+    val roomSlug: String,
+    val controllerUrl: String,
+    val qrPayload: String,
+    val token: String,
+    val tokenExpiresAt: String,
+)
+
 data class SwitchTarget(
     val roomId: String,
     val sessionVersion: Int,
@@ -55,6 +63,7 @@ data class RoomSnapshot(
     val roomSlug: String,
     val sessionVersion: Int,
     val state: String,
+    val pairing: PairingInfo? = null,
     val currentTarget: PlaybackTarget?,
     val switchTarget: SwitchTarget?,
     val targetVocalMode: String?,

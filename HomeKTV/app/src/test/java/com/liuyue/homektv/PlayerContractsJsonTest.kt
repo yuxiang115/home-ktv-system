@@ -15,6 +15,7 @@ class PlayerContractsJsonTest {
         assertEquals(7, snapshot.sessionVersion)
         assertEquals("playing", snapshot.state)
         assertEquals("instrumental", snapshot.targetVocalMode)
+        assertEquals("http://192.168.5.64:5176/controller?room=living-room", snapshot.pairing?.qrPayload)
 
         val target = snapshot.currentTarget ?: error("expected current target")
         assertEquals("queue-1", target.queueEntryId)
