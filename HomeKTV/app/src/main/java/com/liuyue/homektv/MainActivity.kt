@@ -7,11 +7,13 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.SurfaceView
 import android.view.View
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -23,8 +25,10 @@ class MainActivity : Activity() {
     private lateinit var surfaceView: SurfaceView
     private lateinit var statusText: TextView
     private lateinit var sourceText: TextView
+    private lateinit var sampleText: TextView
     private lateinit var progressText: TextView
     private lateinit var audioTrackText: TextView
+    private lateinit var nextSampleButton: Button
     private lateinit var libVlc: LibVLC
     private lateinit var mediaPlayer: MediaPlayer
 
@@ -37,6 +41,8 @@ class MainActivity : Activity() {
     }
 
     private var currentMediaUrl: String? = null
+    private var currentApiBaseUrl: String = ""
+    private var currentSampleIndex: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -84,10 +90,24 @@ class MainActivity : Activity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         return when (keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER,
-            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_ENTER -> {
+                if (::nextSampleButton.isInitialized && nextSampleButton.isFocused) {
+                    playNextDemoSample()
+                } else {
+                    togglePlayback()
+                }
+                true
+            }
+
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
             KeyEvent.KEYCODE_SPACE -> {
                 togglePlayback()
+                true
+            }
+
+            KeyEvent.KEYCODE_MEDIA_NEXT,
+            KeyEvent.KEYCODE_BUTTON_R1 -> {
+                playNextDemoSample()
                 true
             }
 
@@ -164,12 +184,20 @@ class MainActivity : Activity() {
         topPanel.addView(statusText)
 
         sourceText = TextView(this).apply {
-            textSize = 15f
+            textSize = 14f
             setTextColor(Color.rgb(210, 214, 220))
             setPadding(0, dp(8), 0, 0)
-            maxLines = 2
+            maxLines = 3
         }
         topPanel.addView(sourceText)
+
+        sampleText = TextView(this).apply {
+            textSize = 17f
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(10), 0, 0)
+            maxLines = 3
+        }
+        topPanel.addView(sampleText)
 
         val bottomPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -199,7 +227,25 @@ class MainActivity : Activity() {
         }
         bottomPanel.addView(audioTrackText)
 
+        nextSampleButton = Button(this).apply {
+            text = "下一首样本"
+            textSize = 18f
+            isAllCaps = false
+            setPadding(dp(22), dp(8), dp(22), dp(8))
+            setOnClickListener { playNextDemoSample() }
+        }
+        bottomPanel.addView(
+            nextSampleButton,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topMargin = dp(12)
+            },
+        )
+
         setContentView(root)
+        nextSampleButton.requestFocus()
     }
 
     private fun setupPlayer() {
@@ -221,24 +267,31 @@ class MainActivity : Activity() {
     }
 
     private fun applyLaunchConfig(config: LaunchConfig) {
+        currentApiBaseUrl = config.apiBaseUrl
         currentMediaUrl = config.mediaUrl
         sourceText.text = "API ${config.apiBaseUrl} · 房间 ${config.roomSlug}"
         if (config.mediaUrl == null) {
-            setStatus("等待媒体 URL")
-            progressText.text = "--:-- / --:--"
-            audioTrackText.text = "音轨未加载"
+            currentSampleIndex = 0
+            playDemoSample(currentSampleIndex)
             return
         }
 
+        currentSampleIndex = -1
+        sampleText.text = "外部 URL"
         playUrl(config.mediaUrl)
     }
 
-    private fun playUrl(url: String) {
+    private fun playUrl(url: String, sample: DemoMediaSample? = null) {
+        currentMediaUrl = url
         setStatus("正在打开媒体")
         sourceText.text = url
         progressText.text = "00:00 / --:--"
         audioTrackText.text = "正在读取音轨"
+        logCurrentPlaybackUrl(url, sample)
 
+        if (mediaPlayer.hasMedia()) {
+            mediaPlayer.stop()
+        }
         val media = Media(libVlc, Uri.parse(url))
         media.setHWDecoderEnabled(true, false)
         media.addOption(":file-caching=1200")
@@ -246,6 +299,30 @@ class MainActivity : Activity() {
         mediaPlayer.setMedia(media)
         media.release()
         mediaPlayer.play()
+    }
+
+    private fun playDemoSample(index: Int) {
+        currentSampleIndex = Math.floorMod(index, DemoSamplePlaylist.samples.size)
+        val sample = DemoSamplePlaylist.samples[currentSampleIndex]
+        val url = sample.rawUrl(currentApiBaseUrl)
+        sampleText.text = "${sample.displayTitle(currentSampleIndex, DemoSamplePlaylist.samples.size)}\n${sample.technicalSummary()}"
+        playUrl(url, sample)
+    }
+
+    private fun playNextDemoSample() {
+        playDemoSample(DemoSamplePlaylist.nextIndex(currentSampleIndex))
+    }
+
+    private fun logCurrentPlaybackUrl(url: String, sample: DemoMediaSample?) {
+        if (sample == null) {
+            Log.i(TAG, "Playing external mediaUrl=$url")
+            return
+        }
+        Log.i(
+            TAG,
+            "Playing demo sample ${currentSampleIndex + 1}/${DemoSamplePlaylist.samples.size}: " +
+                "${sample.title} - ${sample.artist}; asset=${sample.indexedAssetId}; url=$url",
+        )
     }
 
     private fun togglePlayback() {
@@ -400,6 +477,7 @@ class MainActivity : Activity() {
     }
 
     companion object {
+        private const val TAG = "HomeKTV-TV"
         private const val EXTRA_API_BASE_URL = "apiBaseUrl"
         private const val EXTRA_ROOM = "room"
         private const val EXTRA_MEDIA_URL = "mediaUrl"

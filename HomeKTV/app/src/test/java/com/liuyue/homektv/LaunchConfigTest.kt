@@ -13,7 +13,7 @@ class LaunchConfigTest {
             rawMediaUrl = "   ",
         )
 
-        assertEquals("http://127.0.0.1:4000", config.apiBaseUrl)
+        assertEquals("http://192.168.5.64:4000", config.apiBaseUrl)
         assertEquals("living-room", config.roomSlug)
         assertNull(config.mediaUrl)
     }

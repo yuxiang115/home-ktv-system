@@ -6,7 +6,7 @@ data class LaunchConfig(
     val mediaUrl: String?,
 ) {
     companion object {
-        private const val DEFAULT_API_BASE_URL = "http://127.0.0.1:4000"
+        private const val DEFAULT_API_BASE_URL = "http://192.168.5.64:4000"
         private const val DEFAULT_ROOM_SLUG = "living-room"
 
         fun from(
