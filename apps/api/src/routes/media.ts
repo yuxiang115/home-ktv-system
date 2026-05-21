@@ -1,40 +1,79 @@
 import { createReadStream } from "node:fs";
 import type { FastifyInstance, FastifyReply } from "fastify";
-import type { AssetGateway, AssetGatewayResolution } from "../modules/assets/asset-gateway.js";
+import { inferVideoContentType, type AssetGateway, type AssetGatewayResolution } from "../modules/assets/asset-gateway.js";
+import type { MediaPathResolver, MediaPathResolution } from "../modules/assets/media-path-resolver.js";
+import type { QueryExecutor } from "../db/query-executor.js";
 
 export interface MediaRouteContext {
-  assetGateway: AssetGateway;
+  assetGateway: Pick<AssetGateway, "resolveForStreaming">;
+  ktvIndexRawAssets?: KtvIndexRawAssetRepository;
+  mediaPathResolver?: MediaPathResolver;
 }
 
 export async function registerMediaRoutes(fastify: FastifyInstance, context: MediaRouteContext): Promise<void> {
+  fastify.get<{ Params: { indexedAssetId: string } }>(
+    "/media/ktv-index/:indexedAssetId/raw",
+    async (request, reply) => {
+      if (!context.ktvIndexRawAssets || !context.mediaPathResolver) {
+        return reply.status(503).send({ error: "KTV_INDEX_RAW_MEDIA_UNAVAILABLE" });
+      }
+
+      const row = await context.ktvIndexRawAssets.findRawAssetById(request.params.indexedAssetId);
+      if (!row) {
+        return reply.status(404).send({ error: "KTV_INDEX_ASSET_NOT_FOUND" });
+      }
+
+      const resolved = await context.mediaPathResolver.resolveAssetFile(row.filePath);
+      if (!resolved.ok) {
+        return sendRawMediaPathError(reply, resolved);
+      }
+
+      return sendResolvedMedia(reply, {
+        filePath: resolved.filePath,
+        contentLength: resolved.sizeBytes,
+        contentType: inferVideoContentType(row.filePath),
+        rangeHeader: request.headers.range
+      });
+    }
+  );
+
   fastify.get<{ Params: { assetId: string } }>("/media/:assetId", async (request, reply) => {
     const resolution = await context.assetGateway.resolveForStreaming(request.params.assetId);
     if (!resolution.ok) {
       return sendMediaError(reply, resolution);
     }
 
-    const byteRange = parseByteRange(request.headers.range, resolution.contentLength);
-    if (byteRange === "invalid") {
-      return reply
-        .status(416)
-        .header("content-range", `bytes */${resolution.contentLength}`)
-        .send({ error: "MEDIA_RANGE_NOT_SATISFIABLE" });
-    }
-
-    reply.type(resolution.contentType);
-    reply.header("accept-ranges", "bytes");
-
-    if (byteRange) {
-      const contentLength = byteRange.end - byteRange.start + 1;
-      reply.status(206);
-      reply.header("content-range", `bytes ${byteRange.start}-${byteRange.end}/${resolution.contentLength}`);
-      reply.header("content-length", contentLength);
-      return reply.send(createReadStream(resolution.filePath, byteRange));
-    }
-
-    reply.header("content-length", resolution.contentLength);
-    return reply.send(createReadStream(resolution.filePath));
+    return sendResolvedMedia(reply, {
+      filePath: resolution.filePath,
+      contentLength: resolution.contentLength,
+      contentType: resolution.contentType,
+      rangeHeader: request.headers.range
+    });
   });
+}
+
+export interface KtvIndexRawAssetRow {
+  id: string;
+  filePath: string;
+}
+
+export interface KtvIndexRawAssetRepository {
+  findRawAssetById(indexedAssetId: string): Promise<KtvIndexRawAssetRow | null>;
+}
+
+export class PgKtvIndexRawAssetRepository implements KtvIndexRawAssetRepository {
+  constructor(private readonly db: QueryExecutor) {}
+
+  async findRawAssetById(indexedAssetId: string): Promise<KtvIndexRawAssetRow | null> {
+    const result = await this.db.query<KtvIndexRawAssetRow>(
+      `SELECT id, file_path AS "filePath"
+       FROM ktv_song_assets
+       WHERE id = $1 AND missing_at IS NULL
+       LIMIT 1`,
+      [indexedAssetId]
+    );
+    return result.rows[0] ?? null;
+  }
 }
 
 function sendMediaError(
@@ -44,6 +83,53 @@ function sendMediaError(
   return reply.status(resolution.statusCode).send({
     error: resolution.code
   });
+}
+
+function sendRawMediaPathError(
+  reply: FastifyReply,
+  resolution: Extract<MediaPathResolution, { ok: false }>
+): FastifyReply {
+  switch (resolution.reason) {
+    case "media-root-not-configured":
+      return reply.status(503).send({ error: "MEDIA_ROOT_NOT_CONFIGURED" });
+    case "path-outside-media-root":
+      return reply.status(500).send({ error: "MEDIA_PATH_REJECTED" });
+    case "file-not-found":
+    case "not-a-file":
+      return reply.status(404).send({ error: "MEDIA_FILE_NOT_FOUND" });
+  }
+}
+
+function sendResolvedMedia(
+  reply: FastifyReply,
+  input: {
+    filePath: string;
+    contentLength: number;
+    contentType: string;
+    rangeHeader: string | undefined;
+  }
+) {
+  const byteRange = parseByteRange(input.rangeHeader, input.contentLength);
+  if (byteRange === "invalid") {
+    return reply
+      .status(416)
+      .header("content-range", `bytes */${input.contentLength}`)
+      .send({ error: "MEDIA_RANGE_NOT_SATISFIABLE" });
+  }
+
+  reply.type(input.contentType);
+  reply.header("accept-ranges", "bytes");
+
+  if (byteRange) {
+    const contentLength = byteRange.end - byteRange.start + 1;
+    reply.status(206);
+    reply.header("content-range", `bytes ${byteRange.start}-${byteRange.end}/${input.contentLength}`);
+    reply.header("content-length", contentLength);
+    return reply.send(createReadStream(input.filePath, byteRange));
+  }
+
+  reply.header("content-length", input.contentLength);
+  return reply.send(createReadStream(input.filePath));
 }
 
 type ByteRange = { start: number; end: number };

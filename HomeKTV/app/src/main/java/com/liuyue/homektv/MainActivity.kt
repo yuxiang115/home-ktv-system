@@ -1,0 +1,414 @@
+package com.liuyue.homektv
+
+import android.app.Activity
+import android.content.Intent
+import android.graphics.Color
+import android.net.Uri
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.Gravity
+import android.view.KeyEvent
+import android.view.SurfaceView
+import android.view.View
+import android.view.WindowManager
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
+import org.videolan.libvlc.LibVLC
+import org.videolan.libvlc.Media
+import org.videolan.libvlc.MediaPlayer
+
+class MainActivity : Activity() {
+    private lateinit var surfaceView: SurfaceView
+    private lateinit var statusText: TextView
+    private lateinit var sourceText: TextView
+    private lateinit var progressText: TextView
+    private lateinit var audioTrackText: TextView
+    private lateinit var libVlc: LibVLC
+    private lateinit var mediaPlayer: MediaPlayer
+
+    private val progressHandler = Handler(Looper.getMainLooper())
+    private val progressTicker = object : Runnable {
+        override fun run() {
+            updateProgress()
+            progressHandler.postDelayed(this, 1000)
+        }
+    }
+
+    private var currentMediaUrl: String? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        hideSystemUi()
+
+        buildLayout()
+        setupPlayer()
+
+        val config = launchConfigFromIntent(intent)
+        applyLaunchConfig(config)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applyLaunchConfig(launchConfigFromIntent(intent))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        hideSystemUi()
+        progressHandler.post(progressTicker)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        progressHandler.removeCallbacks(progressTicker)
+    }
+
+    override fun onDestroy() {
+        progressHandler.removeCallbacks(progressTicker)
+        if (::mediaPlayer.isInitialized) {
+            mediaPlayer.setEventListener(null)
+            mediaPlayer.stop()
+            mediaPlayer.vlcVout.detachViews()
+            mediaPlayer.release()
+        }
+        if (::libVlc.isInitialized) {
+            libVlc.release()
+        }
+        super.onDestroy()
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        return when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            KeyEvent.KEYCODE_SPACE -> {
+                togglePlayback()
+                true
+            }
+
+            KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                seekBy(-10_000L)
+                true
+            }
+
+            KeyEvent.KEYCODE_DPAD_RIGHT,
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                seekBy(10_000L)
+                true
+            }
+
+            KeyEvent.KEYCODE_DPAD_UP -> {
+                switchAudioTrack(1)
+                true
+            }
+
+            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                switchAudioTrack(-1)
+                true
+            }
+
+            else -> super.onKeyDown(keyCode, event)
+        }
+    }
+
+    private fun buildLayout() {
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            keepScreenOn = true
+        }
+
+        surfaceView = SurfaceView(this).apply {
+            keepScreenOn = true
+        }
+        root.addView(
+            surfaceView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+
+        val topPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(28), dp(22), dp(28), dp(18))
+            setBackgroundColor(Color.argb(170, 0, 0, 0))
+        }
+        root.addView(
+            topPanel,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP,
+            ),
+        )
+
+        val titleText = TextView(this).apply {
+            text = "HomeKTV Android TV"
+            textSize = 28f
+            setTextColor(Color.WHITE)
+            includeFontPadding = false
+        }
+        topPanel.addView(titleText)
+
+        statusText = TextView(this).apply {
+            textSize = 19f
+            setTextColor(Color.rgb(51, 209, 122))
+            setPadding(0, dp(10), 0, 0)
+        }
+        topPanel.addView(statusText)
+
+        sourceText = TextView(this).apply {
+            textSize = 15f
+            setTextColor(Color.rgb(210, 214, 220))
+            setPadding(0, dp(8), 0, 0)
+            maxLines = 2
+        }
+        topPanel.addView(sourceText)
+
+        val bottomPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(28), dp(16), dp(28), dp(18))
+            setBackgroundColor(Color.argb(170, 0, 0, 0))
+        }
+        root.addView(
+            bottomPanel,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM,
+            ),
+        )
+
+        progressText = TextView(this).apply {
+            textSize = 26f
+            setTextColor(Color.WHITE)
+            includeFontPadding = false
+        }
+        bottomPanel.addView(progressText)
+
+        audioTrackText = TextView(this).apply {
+            textSize = 18f
+            setTextColor(Color.rgb(210, 214, 220))
+            setPadding(0, dp(8), 0, 0)
+        }
+        bottomPanel.addView(audioTrackText)
+
+        setContentView(root)
+    }
+
+    private fun setupPlayer() {
+        val options = arrayListOf(
+            "--no-drop-late-frames",
+            "--no-skip-frames",
+            "--file-caching=1200",
+            "--network-caching=1200",
+        )
+        libVlc = LibVLC(this, options)
+        mediaPlayer = MediaPlayer(libVlc)
+        mediaPlayer.vlcVout.setVideoView(surfaceView)
+        mediaPlayer.vlcVout.attachViews()
+        mediaPlayer.setEventListener { event ->
+            runOnUiThread {
+                handlePlayerEvent(event)
+            }
+        }
+    }
+
+    private fun applyLaunchConfig(config: LaunchConfig) {
+        currentMediaUrl = config.mediaUrl
+        sourceText.text = "API ${config.apiBaseUrl} · 房间 ${config.roomSlug}"
+        if (config.mediaUrl == null) {
+            setStatus("等待媒体 URL")
+            progressText.text = "--:-- / --:--"
+            audioTrackText.text = "音轨未加载"
+            return
+        }
+
+        playUrl(config.mediaUrl)
+    }
+
+    private fun playUrl(url: String) {
+        setStatus("正在打开媒体")
+        sourceText.text = url
+        progressText.text = "00:00 / --:--"
+        audioTrackText.text = "正在读取音轨"
+
+        val media = Media(libVlc, Uri.parse(url))
+        media.setHWDecoderEnabled(true, false)
+        media.addOption(":file-caching=1200")
+        media.addOption(":network-caching=1200")
+        mediaPlayer.setMedia(media)
+        media.release()
+        mediaPlayer.play()
+    }
+
+    private fun togglePlayback() {
+        if (!::mediaPlayer.isInitialized || currentMediaUrl == null) {
+            setStatus("未加载媒体")
+            return
+        }
+
+        if (mediaPlayer.isPlaying) {
+            mediaPlayer.pause()
+            setStatus("已暂停")
+        } else {
+            mediaPlayer.play()
+            setStatus("正在播放")
+        }
+    }
+
+    private fun seekBy(deltaMs: Long) {
+        if (!::mediaPlayer.isInitialized || currentMediaUrl == null) return
+        val length = mediaPlayer.length
+        val current = mediaPlayer.time
+        val next = (current + deltaMs).coerceAtLeast(0L).let { value ->
+            if (length > 0) value.coerceAtMost(length) else value
+        }
+        mediaPlayer.setTime(next, true)
+        updateProgress()
+    }
+
+    private fun switchAudioTrack(delta: Int) {
+        if (!::mediaPlayer.isInitialized || currentMediaUrl == null) {
+            setStatus("未加载媒体")
+            return
+        }
+
+        val tracks = mediaPlayer.audioTracks.filter { it.id >= 0 }
+        if (tracks.isEmpty()) {
+            setStatus("未发现可切换音轨")
+            refreshAudioTrackText()
+            return
+        }
+
+        val currentTrackId = mediaPlayer.audioTrack
+        val currentIndex = tracks.indexOfFirst { it.id == currentTrackId }.let { if (it >= 0) it else 0 }
+        val nextIndex = Math.floorMod(currentIndex + delta, tracks.size)
+        val nextTrack = tracks[nextIndex]
+        val switched = mediaPlayer.setAudioTrack(nextTrack.id)
+        if (switched) {
+            setStatus("已切换音轨：${nextTrack.displayName(nextIndex)}")
+        } else {
+            setStatus("音轨切换失败")
+        }
+        refreshAudioTrackText()
+    }
+
+    private fun handlePlayerEvent(event: MediaPlayer.Event) {
+        when (event.type) {
+            MediaPlayer.Event.Opening -> setStatus("正在打开媒体")
+            MediaPlayer.Event.Buffering -> setStatus("缓冲中 ${event.buffering.toInt()}%")
+            MediaPlayer.Event.Playing -> {
+                setStatus("正在播放")
+                refreshAudioTrackText()
+                updateProgress()
+            }
+
+            MediaPlayer.Event.Paused -> setStatus("已暂停")
+            MediaPlayer.Event.Stopped -> setStatus("已停止")
+            MediaPlayer.Event.EndReached -> {
+                setStatus("播放结束")
+                updateProgress()
+            }
+
+            MediaPlayer.Event.EncounteredError -> setStatus("播放失败")
+            MediaPlayer.Event.TimeChanged,
+            MediaPlayer.Event.LengthChanged -> updateProgress()
+            MediaPlayer.Event.ESAdded,
+            MediaPlayer.Event.ESDeleted,
+            MediaPlayer.Event.ESSelected -> refreshAudioTrackText()
+        }
+    }
+
+    private fun refreshAudioTrackText() {
+        if (!::mediaPlayer.isInitialized) {
+            audioTrackText.text = "音轨未加载"
+            return
+        }
+
+        val tracks = mediaPlayer.audioTracks.filter { it.id >= 0 }
+        if (tracks.isEmpty()) {
+            audioTrackText.text = "音轨未加载"
+            return
+        }
+
+        val currentTrackId = mediaPlayer.audioTrack
+        val currentIndex = tracks.indexOfFirst { it.id == currentTrackId }
+        val current = tracks.getOrNull(currentIndex.coerceAtLeast(0))
+        audioTrackText.text = if (current != null) {
+            "音轨 ${currentIndex + 1}/${tracks.size} · ${current.displayName(currentIndex)}"
+        } else {
+            "音轨 ${tracks.size} 条"
+        }
+    }
+
+    private fun updateProgress() {
+        if (!::mediaPlayer.isInitialized) {
+            progressText.text = "--:-- / --:--"
+            return
+        }
+
+        progressText.text = "${formatDuration(mediaPlayer.time)} / ${formatDuration(mediaPlayer.length)}"
+    }
+
+    private fun setStatus(value: String) {
+        statusText.text = value
+    }
+
+    private fun launchConfigFromIntent(intent: Intent): LaunchConfig {
+        val data = intent.data
+        return LaunchConfig.from(
+            rawApiBaseUrl = intent.getStringExtra(EXTRA_API_BASE_URL) ?: data?.getQueryParameter(EXTRA_API_BASE_URL),
+            rawRoom = intent.getStringExtra(EXTRA_ROOM) ?: data?.getQueryParameter(EXTRA_ROOM),
+            rawMediaUrl = intent.getStringExtra(EXTRA_MEDIA_URL)
+                ?: data?.getQueryParameter(EXTRA_MEDIA_URL)
+                ?: data?.asDirectMediaUrl(),
+        )
+    }
+
+    private fun Uri.asDirectMediaUrl(): String? {
+        val scheme = scheme?.lowercase()
+        return if (scheme == "http" || scheme == "https") toString() else null
+    }
+
+    private fun MediaPlayer.TrackDescription.displayName(index: Int): String {
+        val cleanName = name?.trim()?.takeIf { it.isNotEmpty() && it != "Track ${index + 1}" }
+        return cleanName ?: "音轨 ${index + 1}"
+    }
+
+    private fun formatDuration(valueMs: Long): String {
+        if (valueMs <= 0L) return "--:--"
+        val totalSeconds = valueMs / 1000L
+        val minutes = totalSeconds / 60L
+        val seconds = totalSeconds % 60L
+        return "%02d:%02d".format(minutes, seconds)
+    }
+
+    private fun hideSystemUi() {
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            )
+    }
+
+    private fun dp(value: Int): Int {
+        return (value * resources.displayMetrics.density).toInt()
+    }
+
+    companion object {
+        private const val EXTRA_API_BASE_URL = "apiBaseUrl"
+        private const val EXTRA_ROOM = "room"
+        private const val EXTRA_MEDIA_URL = "mediaUrl"
+    }
+}

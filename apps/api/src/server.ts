@@ -55,7 +55,7 @@ import { registerAdminRoomsRoutes } from "./routes/admin-rooms.js";
 import { registerAvailableSongsRoutes } from "./routes/available-songs.js";
 import { registerControlCommandRoutes } from "./routes/control-commands.js";
 import { registerControlSessionRoutes } from "./routes/control-sessions.js";
-import { registerMediaRoutes } from "./routes/media.js";
+import { PgKtvIndexRawAssetRepository, registerMediaRoutes } from "./routes/media.js";
 import { registerPlayerRoutes } from "./routes/player.js";
 import { registerRealtimeRoutes } from "./routes/realtime.js";
 import { registerRoomSnapshotRoutes } from "./routes/room-snapshots.js";
@@ -111,12 +111,13 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     providers: options.onlineProviders ?? []
   });
   const assetRepository = repositories.assets;
+  const mediaPathResolver = new MediaPathResolver({
+    mediaRoot: resolvedConfig.mediaRoot,
+    pathMappings: resolvedConfig.mediaPathMappings
+  });
   const assetGateway = new AssetGateway({
     assetRepository,
-    mediaPathResolver: new MediaPathResolver({
-      mediaRoot: resolvedConfig.mediaRoot,
-      pathMappings: resolvedConfig.mediaPathMappings
-    }),
+    mediaPathResolver,
     publicBaseUrl: resolvedConfig.publicBaseUrl
   });
   const indexedQueueCommands = pool
@@ -158,7 +159,15 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     session,
     snapshotEventName: protocolMessageNames.snapshotUpdated
   });
-  await registerMediaRoutes(server, { assetGateway });
+  await registerMediaRoutes(server, {
+    assetGateway,
+    ...(pool
+      ? {
+          ktvIndexRawAssets: new PgKtvIndexRawAssetRepository(pool),
+          mediaPathResolver
+        }
+      : {})
+  });
   if (ingest) {
     await registerAdminImportRoutes(server, {
       importCandidates: ingest.importCandidates,
