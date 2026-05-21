@@ -10,7 +10,6 @@ import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
-import android.view.SurfaceView
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
@@ -21,9 +20,10 @@ import okhttp3.WebSocket
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
+import org.videolan.libvlc.util.VLCVideoLayout
 
 class MainActivity : Activity() {
-    private lateinit var surfaceView: SurfaceView
+    private lateinit var videoLayout: VLCVideoLayout
     private lateinit var statusText: TextView
     private lateinit var sourceText: TextView
     private lateinit var songText: TextView
@@ -109,7 +109,7 @@ class MainActivity : Activity() {
         if (::mediaPlayer.isInitialized) {
             mediaPlayer.setEventListener(null)
             mediaPlayer.stop()
-            mediaPlayer.vlcVout.detachViews()
+            mediaPlayer.detachViews()
             mediaPlayer.release()
         }
         if (::libVlc.isInitialized) {
@@ -178,11 +178,11 @@ class MainActivity : Activity() {
             keepScreenOn = true
         }
 
-        surfaceView = SurfaceView(this).apply {
+        videoLayout = VLCVideoLayout(this).apply {
             keepScreenOn = true
         }
         root.addView(
-            surfaceView,
+            videoLayout,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -292,8 +292,8 @@ class MainActivity : Activity() {
         )
         libVlc = LibVLC(this, options)
         mediaPlayer = MediaPlayer(libVlc)
-        mediaPlayer.vlcVout.setVideoView(surfaceView)
-        mediaPlayer.vlcVout.attachViews()
+        mediaPlayer.attachViews(videoLayout, null, false, false)
+        mediaPlayer.setVideoScale(VideoSurfacePolicy.defaultScaleType)
         mediaPlayer.setEventListener { event ->
             runOnUiThread {
                 handlePlayerEvent(event)
@@ -513,6 +513,8 @@ class MainActivity : Activity() {
         media.addOption(":network-caching=1200")
         mediaPlayer.setMedia(media)
         media.release()
+        mediaPlayer.setVideoScale(VideoSurfacePolicy.defaultScaleType)
+        mediaPlayer.updateVideoSurfaces()
         val startPosition = target?.resumePositionMs?.coerceAtLeast(0L) ?: 0L
         mediaPlayer.play()
         if (startPosition > 0L) {
