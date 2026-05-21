@@ -29,7 +29,21 @@ class AudioTrackUiStateTest {
     }
 
     @Test
-    fun choosesTrackByNumericHexIdFirst() {
+    fun prefixesKnownVocalModeForDuplicateTrackLabels() {
+        val label = describeAudioTrackState(
+            rawTracks = listOf(
+                AudioTrackOption(id = 1, name = "SoundHandler"),
+                AudioTrackOption(id = 2, name = "SoundHandler"),
+            ),
+            currentTrackId = 1,
+            vocalMode = "original",
+        )
+
+        assertEquals("原唱 · 音轨 1/2 · SoundHandler", label)
+    }
+
+    @Test
+    fun choosesTrackByProbeIndexBeforeRuntimeId() {
         val track = chooseAudioTrackForRef(
             tracks = listOf(
                 AudioTrackOption(id = 1, name = "Track A"),
@@ -38,7 +52,27 @@ class AudioTrackUiStateTest {
             trackRef = TrackRef(index = 1, id = "0x2", label = "Original"),
         )
 
-        assertEquals(2, track?.id)
+        assertEquals(1, track?.id)
+    }
+
+    @Test
+    fun mapsTwoProbeTracksToDifferentRuntimeTracksWhenIdsOverlap() {
+        val tracks = listOf(
+            AudioTrackOption(id = 1, name = "SoundHandler"),
+            AudioTrackOption(id = 2, name = "SoundHandler"),
+        )
+
+        val original = chooseAudioTrackForRef(
+            tracks = tracks,
+            trackRef = TrackRef(index = 1, id = "0x2", label = "SoundHandler"),
+        )
+        val instrumental = chooseAudioTrackForRef(
+            tracks = tracks,
+            trackRef = TrackRef(index = 2, id = "0x3", label = "SoundHandler"),
+        )
+
+        assertEquals(1, original?.id)
+        assertEquals(2, instrumental?.id)
     }
 
     @Test

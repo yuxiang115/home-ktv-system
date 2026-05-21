@@ -1008,7 +1008,11 @@ class MainActivity : Activity() {
             return
         }
 
-        audioTrackText.text = describeAudioTrackState(currentAudioTrackOptions(), mediaPlayer.audioTrack)
+        audioTrackText.text = describeAudioTrackState(
+            rawTracks = currentAudioTrackOptions(),
+            currentTrackId = mediaPlayer.audioTrack,
+            vocalMode = activeTarget?.vocalMode,
+        )
     }
 
     private fun updateProgress() {
