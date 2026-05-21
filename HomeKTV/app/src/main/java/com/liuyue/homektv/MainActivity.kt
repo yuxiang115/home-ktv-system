@@ -24,9 +24,6 @@ import org.videolan.libvlc.util.VLCVideoLayout
 
 class MainActivity : Activity() {
     private lateinit var videoLayout: VLCVideoLayout
-    private lateinit var statusText: TextView
-    private lateinit var sourceText: TextView
-    private lateinit var songText: TextView
     private lateinit var progressText: TextView
     private lateinit var audioTrackText: TextView
     private lateinit var nextSampleButton: Button
@@ -189,63 +186,21 @@ class MainActivity : Activity() {
             ),
         )
 
-        val topPanel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(28), dp(22), dp(28), dp(18))
-            setBackgroundColor(Color.argb(170, 0, 0, 0))
-        }
-        root.addView(
-            topPanel,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP,
-            ),
-        )
-
-        val titleText = TextView(this).apply {
-            text = "HomeKTV Android TV"
-            textSize = 28f
-            setTextColor(Color.WHITE)
-            includeFontPadding = false
-        }
-        topPanel.addView(titleText)
-
-        statusText = TextView(this).apply {
-            textSize = 19f
-            setTextColor(Color.rgb(51, 209, 122))
-            setPadding(0, dp(10), 0, 0)
-        }
-        topPanel.addView(statusText)
-
-        sourceText = TextView(this).apply {
-            textSize = 14f
-            setTextColor(Color.rgb(210, 214, 220))
-            setPadding(0, dp(8), 0, 0)
-            maxLines = 4
-        }
-        topPanel.addView(sourceText)
-
-        songText = TextView(this).apply {
-            textSize = 22f
-            setTextColor(Color.WHITE)
-            setPadding(0, dp(12), 0, 0)
-            maxLines = 4
-        }
-        topPanel.addView(songText)
-
         val bottomPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(28), dp(16), dp(28), dp(18))
-            setBackgroundColor(Color.argb(170, 0, 0, 0))
+            setPadding(dp(24), dp(14), dp(24), dp(16))
+            setBackgroundColor(Color.argb(130, 0, 0, 0))
         }
         root.addView(
             bottomPanel,
             FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM,
-            ),
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM or Gravity.START,
+            ).apply {
+                leftMargin = dp(24)
+                bottomMargin = dp(22)
+            },
         )
 
         progressText = TextView(this).apply {
@@ -313,8 +268,6 @@ class MainActivity : Activity() {
         roomModeActive = false
         currentSampleIndex = -1
         nextSampleButton.visibility = View.GONE
-        songText.text = "外部媒体"
-        sourceText.text = config.mediaUrl
         playUrl(config.mediaUrl)
     }
 
@@ -335,8 +288,6 @@ class MainActivity : Activity() {
         deviceId = resolved
         playerClient = PlayerApiClient(config.apiBaseUrl)
         setStatus("正在注册电视")
-        sourceText.text = "API ${config.apiBaseUrl} · 房间 ${config.roomSlug} · 设备 $deviceId"
-        songText.text = "等待点歌"
         progressText.text = "00:00 / --:--"
         audioTrackText.text = "音轨未加载"
 
@@ -432,8 +383,7 @@ class MainActivity : Activity() {
     private fun applyRoomSnapshot(snapshot: RoomSnapshot) {
         if (!roomModeActive) return
         latestSnapshot = snapshot
-        updateRoomSourceText(snapshot)
-        updateRoomSongText(snapshot)
+        logRoomSnapshot(snapshot)
 
         if (snapshot.state == "recovering" && lastRecoveryVersion != snapshot.sessionVersion) {
             lastRecoveryVersion = snapshot.sessionVersion
@@ -449,32 +399,19 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun updateRoomSourceText(snapshot: RoomSnapshot) {
-        val media = snapshot.currentTarget?.playbackUrl
-        sourceText.text = buildString {
-            append("API ${config.apiBaseUrl} · 房间 ${config.roomSlug} · 版本 ${snapshot.sessionVersion}")
-            append("\n设备 $deviceId")
-            if (media != null) {
-                append("\n媒体 $media")
-            }
-        }
-    }
-
-    private fun updateRoomSongText(snapshot: RoomSnapshot) {
+    private fun logRoomSnapshot(snapshot: RoomSnapshot) {
         val target = snapshot.currentTarget
         if (target == null) {
-            songText.text = if (snapshot.conflict) "电视连接冲突" else "等待点歌"
+            Log.i(TAG, "Room snapshot ${snapshot.sessionVersion}: no current target, state=${snapshot.state}")
             return
         }
 
-        val next = target.nextQueueEntryPreview
-        songText.text = buildString {
-            append("${target.currentQueueEntryPreview.songTitle} · ${target.currentQueueEntryPreview.artistName}")
-            append("\n模式 ${target.vocalMode.displayVocalMode()} · 队列 ${target.queueEntryId}")
-            if (next != null) {
-                append("\n下一首 ${next.songTitle} · ${next.artistName}")
-            }
-        }
+        Log.i(
+            TAG,
+            "Room snapshot ${snapshot.sessionVersion}: " +
+                "${target.currentQueueEntryPreview.songTitle} - ${target.currentQueueEntryPreview.artistName}; " +
+                "mode=${target.vocalMode}; queue=${target.queueEntryId}; next=${target.nextQueueEntryPreview?.songTitle.orEmpty()}",
+        )
     }
 
     private fun playTarget(target: PlaybackTarget) {
@@ -482,7 +419,6 @@ class MainActivity : Activity() {
         selectedTrackKey = null
         currentSampleIndex = -1
         nextSampleButton.visibility = View.GONE
-        updateRoomSongText(latestSnapshot ?: return)
         playUrl(target.playbackUrl, target = target)
         sendTelemetryOnce(
             target = target,
@@ -495,11 +431,6 @@ class MainActivity : Activity() {
     private fun playUrl(url: String, sample: DemoMediaSample? = null, target: PlaybackTarget? = null) {
         currentMediaUrl = url
         setStatus("正在打开媒体")
-        sourceText.text = when {
-            target != null -> sourceText.text
-            sample != null -> url
-            else -> url
-        }
         progressText.text = "00:00 / --:--"
         audioTrackText.text = "正在读取音轨"
         logCurrentPlaybackUrl(url, sample, target)
@@ -528,9 +459,7 @@ class MainActivity : Activity() {
         currentSampleIndex = Math.floorMod(index, DemoSamplePlaylist.samples.size)
         val sample = DemoSamplePlaylist.samples[currentSampleIndex]
         val url = sample.rawUrl(currentApiBaseUrl)
-        nextSampleButton.visibility = View.VISIBLE
-        nextSampleButton.requestFocus()
-        songText.text = "${sample.displayTitle(currentSampleIndex, DemoSamplePlaylist.samples.size)}\n${sample.technicalSummary()}"
+        nextSampleButton.visibility = View.GONE
         playUrl(url, sample)
     }
 
@@ -950,7 +879,7 @@ class MainActivity : Activity() {
     }
 
     private fun setStatus(value: String) {
-        statusText.text = value
+        Log.i(TAG, value)
     }
 
     private fun launchConfigFromIntent(intent: Intent): LaunchConfig {
