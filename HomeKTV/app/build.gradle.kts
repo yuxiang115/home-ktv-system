@@ -36,7 +36,9 @@ android {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.videolan.android:libvlc-all:3.7.0")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

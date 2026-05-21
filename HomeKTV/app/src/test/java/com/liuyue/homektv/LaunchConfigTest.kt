@@ -24,10 +24,14 @@ class LaunchConfigTest {
             rawApiBaseUrl = " http://192.168.5.64:4000/ ",
             rawRoom = " living-room ",
             rawMediaUrl = " http://192.168.5.64:4000/media/raw/sample.mkv ",
+            rawDeviceId = " android-tv-existing ",
+            rawDeviceName = " 客厅电视 ",
         )
 
         assertEquals("http://192.168.5.64:4000", config.apiBaseUrl)
         assertEquals("living-room", config.roomSlug)
         assertEquals("http://192.168.5.64:4000/media/raw/sample.mkv", config.mediaUrl)
+        assertEquals("android-tv-existing", config.deviceId)
+        assertEquals("客厅电视", config.deviceName)
     }
 }
