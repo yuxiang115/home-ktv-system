@@ -68,5 +68,19 @@ services:
     ports:
       - "${CONTROLLER_PORT:-5176}:80"
 
+  tv-web:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.web
+      args:
+        APP_FILTER: "@home-ktv/tv-web"
+        APP_DIR: "apps/tv-web"
+        VITE_API_BASE_URL: ${PUBLIC_BASE_URL:-http://127.0.0.1:4000}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${TV_WEB_PORT:-5173}:80"
+
 volumes:
   postgres-data:

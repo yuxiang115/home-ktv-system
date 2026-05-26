@@ -18,7 +18,7 @@ bash deploy/docker/ktv.sh logs api
 bash deploy/docker/ktv.sh stop
 ```
 
-`deploy/docker/.env` 从 `deploy/env/server.env.example` 生成。`PUBLIC_BASE_URL` 和 `CONTROLLER_BASE_URL` 必须是手机和 Android TV 可访问的服务器地址。
+`deploy/docker/.env` 从 `deploy/env/server.env.example` 生成。`PUBLIC_BASE_URL` 和 `CONTROLLER_BASE_URL` 必须是手机、Web TV 和 Android TV 可访问的服务器地址。
 
 真实 NAS 曲库需要重点检查：
 
@@ -28,3 +28,13 @@ DOCKER_MEDIA_PATH_MAPPINGS=/mnt/nas/KTV歌曲=/nas/KTV歌曲
 ```
 
 容器内 API 会使用 `DOCKER_DATABASE_URL` 连接 Compose 内的 PostgreSQL。源码部署才使用 `DATABASE_URL`。
+
+当前 Compose 会启动：
+
+```text
+api         4000
+admin       5174
+controller  5176
+tv-web      5173
+postgres    5432
+```

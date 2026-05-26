@@ -19,7 +19,7 @@ bash deploy/docker/ktv.sh status
 ```bash
 PUBLIC_BASE_URL=http://<server-ip>:4000
 CONTROLLER_BASE_URL=http://<server-ip>:5176
-CORS_ALLOWED_ORIGINS=http://<server-ip>:5174,http://<server-ip>:5176
+CORS_ALLOWED_ORIGINS=http://<server-ip>:5174,http://<server-ip>:5176,http://<server-ip>:5173
 KTV_NAS_HOST_PATH=/mnt/nas/KTV歌曲
 ```
 
@@ -43,6 +43,7 @@ postgres    PostgreSQL 数据库
 api         Fastify API，端口 4000
 admin       Nginx 托管后台，端口 5174
 controller  Nginx 托管手机控制器，端口 5176
+tv-web      Nginx 托管 Web TV 调试端，端口 5173
 ```
 
 API 容器启动时会先执行数据库迁移，再启动 `apps/api/dist/server.js`，避免线上运行时出现数据库字段缺失。
