@@ -14,10 +14,9 @@ export interface PlayingScreenProps {
 
 export function PlayingScreen({ displayState, snapshot, playbackPositionMs, durationMs }: PlayingScreenProps) {
   const target = snapshot.currentTarget;
-  const nextSong = target?.nextQueueEntryPreview;
   const modeLabel = modeLabelFor(target?.vocalMode ?? "unknown");
   const clock = formatPlaybackClock(playbackPositionMs, durationMs);
-  const nextSongLabel = nextSong ? `${nextSong.songTitle} - ${nextSong.artistName}` : "暂无下一首";
+  const audioTrackLabel = audioTrackLabelFor(target?.selectedTrackRef ?? null);
 
   return (
     <section style={styles.screen}>
@@ -27,28 +26,13 @@ export function PlayingScreen({ displayState, snapshot, playbackPositionMs, dura
         </div>
         <PairingQr pairing={snapshot.pairing} variant="corner" />
       </div>
-      <div style={styles.nowPlaying}>
-        <p style={styles.kicker}>当前播放</p>
-        <h1 style={styles.title}>{target?.currentQueueEntryPreview.songTitle ?? displayState.heading}</h1>
-        <p style={styles.artist}>{target?.currentQueueEntryPreview.artistName ?? displayState.detail}</p>
-      </div>
-      <footer style={styles.footer}>
-        <div style={styles.footerMetric}>
-          <span style={styles.metricLabel}>模式</span>
-          <span style={{ ...styles.metricValue, ...modeAccent(target?.vocalMode ?? "unknown") }}>{modeLabel}</span>
-        </div>
-        <div style={styles.footerMetric}>
-          <span style={styles.metricLabel}>状态</span>
-          <span style={{ ...styles.metricValue, ...stateAccent(displayState.tone) }}>{displayState.stateLabel}</span>
-        </div>
-        <div style={styles.footerMetricTime}>
-          <span style={styles.metricLabel}>时间</span>
-          <span style={styles.timeValue}>{clock}</span>
-        </div>
-        <div style={styles.footerMetricWide}>
-          <span style={styles.metricLabel}>下一首</span>
-          <span style={styles.nextValue}>{nextSongLabel}</span>
-        </div>
+      <footer aria-label="播放状态" style={styles.footer}>
+        <span style={styles.timeValue}>{clock}</span>
+        <span style={styles.metaLine}>
+          <span style={{ ...styles.modePill, ...modeAccent(target?.vocalMode ?? "unknown") }}>{modeLabel}</span>
+          <span style={styles.audioTrackText}>{audioTrackLabel}</span>
+          <span style={{ ...styles.stateText, ...stateAccent(displayState.tone) }}>{displayState.stateLabel}</span>
+        </span>
       </footer>
       {displayState.firstPlayPrompt.visible ? (
         <div role="status" style={styles.firstPlayPrompt}>
@@ -78,26 +62,38 @@ function modeLabelFor(vocalMode: string): string {
   return "未识别";
 }
 
+function audioTrackLabelFor(trackRef: NonNullable<RoomSnapshot["currentTarget"]>["selectedTrackRef"] | null): string {
+  if (!trackRef) {
+    return "音轨待确认";
+  }
+
+  const displayIndex = Number.isFinite(trackRef.index) ? trackRef.index + 1 : null;
+  const label = trackRef.label.trim();
+  if (displayIndex !== null && label) {
+    return `音轨 ${displayIndex} · ${label}`;
+  }
+
+  if (displayIndex !== null) {
+    return `音轨 ${displayIndex}`;
+  }
+
+  return label || "音轨待确认";
+}
+
 function modeAccent(vocalMode: string): CSSProperties {
   if (vocalMode === "original") {
     return {
-      background: "rgba(52, 211, 153, 0.16)",
-      borderColor: "rgba(52, 211, 153, 0.38)",
       color: tvTheme.colors.success
     };
   }
 
   if (vocalMode === "instrumental") {
     return {
-      background: "rgba(34, 211, 238, 0.14)",
-      borderColor: "rgba(34, 211, 238, 0.36)",
       color: tvTheme.colors.accent
     };
   }
 
   return {
-    background: "rgba(148, 163, 184, 0.12)",
-    borderColor: tvTheme.colors.border,
     color: tvTheme.colors.text
   };
 }
@@ -105,41 +101,30 @@ function modeAccent(vocalMode: string): CSSProperties {
 function stateAccent(tone: TvDisplayState["tone"]): CSSProperties {
   if (tone === "danger") {
     return {
-      background: "rgba(248, 113, 113, 0.16)",
-      borderColor: "rgba(248, 113, 113, 0.38)",
       color: tvTheme.colors.danger
     };
   }
 
   if (tone === "warning") {
     return {
-      background: "rgba(251, 191, 36, 0.16)",
-      borderColor: "rgba(251, 191, 36, 0.4)",
       color: tvTheme.colors.warning
     };
   }
 
   if (tone === "ready") {
     return {
-      background: "rgba(52, 211, 153, 0.16)",
-      borderColor: "rgba(52, 211, 153, 0.38)",
       color: tvTheme.colors.success
     };
   }
 
   return {
-    background: "rgba(148, 163, 184, 0.12)",
-    borderColor: tvTheme.colors.border,
     color: tvTheme.colors.text
   };
 }
 
 const styles = {
   screen: {
-    display: "grid",
-    gridTemplateRows: "auto 1fr auto",
     minHeight: "100vh",
-    padding: "48px 64px",
     position: "relative"
   },
   topRail: {
@@ -147,127 +132,62 @@ const styles = {
     display: "flex",
     gap: 24,
     justifyContent: "space-between",
-    minHeight: 156,
-    minWidth: 0
+    left: 24,
+    minWidth: 0,
+    position: "absolute",
+    right: 24,
+    top: 24,
+    zIndex: 3
   },
   statusSlot: {
     minWidth: 0
   },
-  nowPlaying: {
-    alignSelf: "center",
-    maxWidth: 1120,
-    minWidth: 0
-  },
-  kicker: {
-    color: tvTheme.colors.accent,
-    fontSize: 28,
-    fontWeight: 900,
-    letterSpacing: 0,
-    margin: "0 0 22px",
-    textTransform: "none"
-  },
-  title: {
-    color: tvTheme.colors.text,
-    fontFamily: tvTheme.fonts.heading,
-    fontSize: 108,
-    fontWeight: 950,
-    letterSpacing: 0,
-    lineHeight: 0.96,
-    margin: 0,
-    maxWidth: 1120,
-    overflowWrap: "anywhere"
-  },
-  artist: {
-    color: tvTheme.colors.textMuted,
-    fontSize: 40,
-    fontWeight: 800,
-    lineHeight: 1.15,
-    margin: "28px 0 0",
-    overflowWrap: "anywhere"
-  },
   footer: {
-    alignItems: "stretch",
-    backdropFilter: "blur(18px)",
-    background: tvTheme.colors.surface,
+    backdropFilter: "blur(16px)",
+    background: "rgba(0, 0, 0, 0.5)",
     border: `1px solid ${tvTheme.colors.border}`,
     borderRadius: tvTheme.radii.panel,
+    bottom: 22,
     boxShadow: "0 18px 64px rgba(0, 0, 0, 0.32)",
     color: tvTheme.colors.text,
     display: "grid",
-    gap: 16,
-    gridTemplateColumns: "minmax(96px, auto) minmax(104px, auto) minmax(190px, auto) minmax(0, 1fr)",
+    gap: 8,
+    left: 24,
+    maxWidth: "min(720px, calc(100vw - 48px))",
     minWidth: 0,
-    padding: "20px 24px"
-  },
-  footerMetric: {
-    display: "grid",
-    gap: 8,
-    minWidth: 0
-  },
-  footerMetricTime: {
-    display: "grid",
-    gap: 8,
-    minWidth: 190
-  },
-  footerMetricWide: {
-    display: "grid",
-    gap: 8,
-    minWidth: 0
-  },
-  metricLabel: {
-    color: tvTheme.colors.textWeak,
-    fontSize: 18,
-    fontWeight: 850,
-    letterSpacing: 0,
-    textTransform: "none"
-  },
-  metricValue: {
-    alignItems: "center",
-    border: `1px solid ${tvTheme.colors.border}`,
-    borderRadius: tvTheme.radii.panel,
-    display: "inline-flex",
-    fontSize: 26,
-    fontWeight: 900,
-    justifyContent: "center",
-    lineHeight: 1,
-    minHeight: 60,
-    minWidth: 92,
-    padding: "12px 18px",
-    textAlign: "center",
-    width: "fit-content",
-    overflowWrap: "anywhere"
+    padding: "14px 20px 15px",
+    position: "absolute",
+    zIndex: 3
   },
   timeValue: {
-    alignItems: "center",
-    border: `1px solid ${tvTheme.colors.border}`,
-    borderRadius: 8,
     color: tvTheme.colors.text,
-    display: "inline-flex",
-    fontSize: 28,
+    display: "block",
+    fontSize: 32,
     fontWeight: 950,
-    justifyContent: "center",
     lineHeight: 1,
-    minHeight: 60,
-    minWidth: 190,
-    padding: "12px 18px",
     whiteSpace: "nowrap"
   },
-  nextValue: {
+  metaLine: {
     alignItems: "center",
-    border: `1px solid ${tvTheme.colors.border}`,
-    borderRadius: 8,
-    color: tvTheme.colors.text,
-    display: "inline-flex",
-    fontSize: 26,
-    fontWeight: 900,
-    justifyContent: "flex-start",
-    lineHeight: 1,
-    minHeight: 60,
+    color: tvTheme.colors.textMuted,
+    display: "flex",
+    flexWrap: "wrap",
+    fontSize: 18,
+    fontWeight: 760,
+    gap: 10,
+    lineHeight: 1.2,
     minWidth: 0,
-    overflow: "hidden",
-    padding: "12px 18px",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap"
+    overflowWrap: "anywhere"
+  },
+  modePill: {
+    fontWeight: 900
+  },
+  audioTrackText: {
+    color: tvTheme.colors.textMuted,
+    minWidth: 0
+  },
+  stateText: {
+    fontWeight: 850
   },
   firstPlayPrompt: {
     backdropFilter: "blur(18px)",

@@ -38,3 +38,12 @@ controller  5176
 tv-web      5173
 postgres    5432
 ```
+
+lxc-dev 测试环境的公网入口：
+
+```text
+https://ktv-api.shaolongfei.com/health
+https://ktv-admin.shaolongfei.com/
+https://ktv-controller.shaolongfei.com/controller?room=living-room
+https://ktv-tv.shaolongfei.com/?apiBaseUrl=https://ktv-api.shaolongfei.com&roomSlug=living-room&deviceName=Web%20TV
+```

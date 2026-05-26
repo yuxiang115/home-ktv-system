@@ -30,9 +30,7 @@ export function PairingQr({ pairing, variant }: PairingQrProps) {
           <span key={index} style={active ? styles.dotActive : styles.dot} />
         ))}
       </div>
-      <figcaption style={isLarge ? styles.largeCaption : styles.cornerCaption}>
-        {isLarge ? "手机扫码点歌" : pairing.roomSlug}
-      </figcaption>
+      {isLarge ? <figcaption style={styles.largeCaption}>HomeKTV 请扫码点歌</figcaption> : null}
     </figure>
   );
 }
@@ -69,27 +67,25 @@ function qrStyle(isLarge: boolean, moduleSize: number): CSSProperties {
 const styles = {
   largeFrame: {
     backdropFilter: "blur(18px)",
-    background: tvTheme.colors.surface,
-    border: `1px solid ${tvTheme.colors.border}`,
+    background: "rgba(255, 255, 255, 0.94)",
+    border: "1px solid rgba(255, 255, 255, 0.72)",
     borderRadius: tvTheme.radii.panel,
-    boxShadow: "0 24px 80px rgba(0, 0, 0, 0.38), 0 0 36px rgba(34, 211, 238, 0.08)",
+    boxShadow: "0 28px 90px rgba(0, 0, 0, 0.46), 0 0 42px rgba(34, 211, 238, 0.10)",
     display: "grid",
-    gap: 28,
+    gap: 22,
     justifyItems: "center",
     margin: 0,
-    padding: 28
+    padding: "28px 28px 24px"
   },
   cornerFrame: {
-    backdropFilter: "blur(16px)",
-    background: "rgba(15, 23, 42, 0.62)",
-    border: `1px solid ${tvTheme.colors.border}`,
-    borderRadius: tvTheme.radii.panel,
-    boxShadow: "0 16px 48px rgba(0, 0, 0, 0.34)",
+    background: "rgba(255, 255, 255, 0.94)",
+    border: "1px solid rgba(255, 255, 255, 0.7)",
+    borderRadius: 6,
+    boxShadow: "0 18px 54px rgba(0, 0, 0, 0.4)",
     display: "grid",
-    gap: 8,
     justifyItems: "center",
     margin: 0,
-    padding: 10
+    padding: 8
   },
   largeQr: {
     width: "min(34vw, 380px)",
@@ -103,11 +99,10 @@ const styles = {
     padding: 0
   },
   cornerQr: {
-    width: 132,
+    width: 96,
     aspectRatio: "1",
     background: tvTheme.colors.text,
-    border: `5px solid ${tvTheme.colors.text}`,
-    boxShadow: "0 14px 38px rgba(0, 0, 0, 0.34)",
+    border: `4px solid ${tvTheme.colors.text}`,
     display: "grid",
     gap: 0,
     padding: 0
@@ -119,15 +114,11 @@ const styles = {
     background: "#020617"
   },
   largeCaption: {
-    color: tvTheme.colors.text,
-    fontSize: 30,
-    fontWeight: 800
-  },
-  cornerCaption: {
-    color: tvTheme.colors.textMuted,
-    fontSize: 16,
-    fontWeight: 800,
-    letterSpacing: 0.4,
-    textTransform: "none"
+    color: "#111827",
+    fontSize: 24,
+    fontWeight: 850,
+    letterSpacing: 0,
+    lineHeight: 1.15,
+    textAlign: "center"
   }
 } satisfies Record<string, CSSProperties>;

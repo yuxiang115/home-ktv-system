@@ -12,12 +12,16 @@ export function App() {
   const activeVideoRef = useRef<HTMLVideoElement>(null);
   const standbyVideoRef = useRef<HTMLVideoElement>(null);
   const runtime = useTvPlaybackRuntime({ activeVideoRef, standbyVideoRef });
+  const isPlaybackScreen =
+    runtime.roomState.status === "ready" &&
+    Boolean(runtime.snapshot?.currentTarget) &&
+    (runtime.snapshot?.state === "playing" || runtime.snapshot?.state === "loading" || runtime.snapshot?.state === "recovering");
 
   return (
     <main style={styles.shell}>
       <video ref={activeVideoRef} onEnded={runtime.handleVideoEnded} playsInline preload="auto" style={styles.video} />
       <video ref={standbyVideoRef} onEnded={runtime.handleVideoEnded} playsInline preload="auto" style={styles.video} />
-      <div style={styles.atmosphere} />
+      <div style={isPlaybackScreen ? styles.playbackShade : styles.atmosphere} />
       <div style={styles.content}>
         {renderScreen(
           runtime.roomState.status,
@@ -100,6 +104,12 @@ const styles = {
     backgroundSize: "48px 48px, 48px 48px, 100% 100%",
     inset: 0,
     opacity: 0.5,
+    pointerEvents: "none",
+    position: "absolute"
+  },
+  playbackShade: {
+    background: "linear-gradient(180deg, rgba(0, 0, 0, 0.18) 0%, transparent 32%, transparent 66%, rgba(0, 0, 0, 0.26) 100%)",
+    inset: 0,
     pointerEvents: "none",
     position: "absolute"
   },

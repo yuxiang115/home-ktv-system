@@ -24,8 +24,10 @@ describe("PlayingScreen", () => {
 
     expect(screen.getByText("播放中")).toBeTruthy();
     expect(screen.getByText("伴唱")).toBeTruthy();
+    expect(screen.getByText("音轨 2 · Instrumental")).toBeTruthy();
     expect(screen.getByText("00:12 / 03:00")).toBeTruthy();
-    expect(screen.getByText("下一首 - 歌手")).toBeTruthy();
+    expect(screen.getByLabelText("corner pairing QR")).toBeTruthy();
+    expect(screen.queryByText("七里香")).toBeNull();
   });
 
   it("uses the approved success color for active playback state", () => {
@@ -67,7 +69,7 @@ describe("PlayingScreen", () => {
     expect(screen.getByText(/浏览器需要一次点击授权播放声音/)).toBeTruthy();
   });
 
-  it("keeps long song titles readable alongside the time text", () => {
+  it("keeps the playback HUD readable without placing titles over the MV", () => {
     const longTitle = "这是一个非常非常长的中文歌名用来验证电视端不会重叠也不会把时间挤出屏幕 Long English Title Segment";
     const roomSnapshot = snapshot({
       currentTarget: {
@@ -88,6 +90,7 @@ describe("PlayingScreen", () => {
         playbackUrl: "http://ktv.local/media/asset-instrumental",
         resumePositionMs: 12_345,
         vocalMode: "instrumental",
+        selectedTrackRef: { index: 1, id: "0x1101", label: "Instrumental" },
         switchFamily: "family-main"
       }
     });
@@ -106,8 +109,9 @@ describe("PlayingScreen", () => {
       />
     );
 
-    expect(screen.getByText(longTitle)).toBeTruthy();
+    expect(screen.queryByText(longTitle)).toBeNull();
     expect(screen.getAllByText("00:12 / 03:00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("音轨 2 · Instrumental").length).toBeGreaterThan(0);
   });
 });
 
@@ -138,6 +142,7 @@ function snapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot {
       playbackUrl: "http://ktv.local/media/asset-instrumental",
       resumePositionMs: 12_345,
       vocalMode: "instrumental",
+      selectedTrackRef: { index: 1, id: "0x1101", label: "Instrumental" },
       switchFamily: "family-main",
       nextQueueEntryPreview: {
         queueEntryId: "queue-next",

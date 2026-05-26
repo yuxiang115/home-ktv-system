@@ -1,6 +1,6 @@
 # Docker Compose 部署
 
-Docker 部署适合服务器通过 Git 拉取代码后运行。它会启动 PostgreSQL、API、Admin 和 Controller。
+Docker 部署适合服务器通过 Git 拉取代码后运行。它会启动 PostgreSQL、API、Admin、Controller 和 Web TV。
 
 ## 第一次部署
 
@@ -21,6 +21,29 @@ PUBLIC_BASE_URL=http://<server-ip>:4000
 CONTROLLER_BASE_URL=http://<server-ip>:5176
 CORS_ALLOWED_ORIGINS=http://<server-ip>:5174,http://<server-ip>:5176,http://<server-ip>:5173
 KTV_NAS_HOST_PATH=/mnt/nas/KTV歌曲
+```
+
+## lxc-dev 当前部署
+
+当前测试部署运行在 `lxc-dev`，公网入口由 `lxc-network` 上的 Caddy 反代：
+
+```text
+API:        https://ktv-api.shaolongfei.com
+Admin:      https://ktv-admin.shaolongfei.com
+Controller: https://ktv-controller.shaolongfei.com/controller?room=living-room
+Web TV:     https://ktv-tv.shaolongfei.com/?apiBaseUrl=https://ktv-api.shaolongfei.com&roomSlug=living-room&deviceName=Web%20TV
+```
+
+`lxc-dev` 需要能读到 NAS 曲库。当前通过 PVE bind mount 将宿主机 `/hdd-pool/nas` 只读挂载到容器 `/mnt/nas`：
+
+```bash
+pct set 102 -mp0 /hdd-pool/nas,mp=/mnt/nas,ro=1
+```
+
+容器内应能看到：
+
+```bash
+ls /mnt/nas/KTV歌曲
 ```
 
 ## 常用命令
@@ -82,4 +105,5 @@ curl http://<server-ip>:4000/health
 ```text
 http://<server-ip>:5174/
 http://<server-ip>:5176/controller?room=living-room
+http://<server-ip>:5173/?apiBaseUrl=http://<server-ip>:4000&roomSlug=living-room&deviceName=Web%20TV
 ```

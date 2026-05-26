@@ -28,9 +28,9 @@ describe("tv screen states", () => {
       />
     );
 
-    expect(screen.getByText("扫码点歌")).toBeTruthy();
-    expect(screen.getByText("手机扫码点歌")).toBeTruthy();
-    expect(screen.getByLabelText("large pairing QR").parentElement?.style.background).toBe(tvTheme.colors.surface);
+    expect(screen.getByText("今晚开唱")).toBeTruthy();
+    expect(screen.getByText("HomeKTV 请扫码点歌")).toBeTruthy();
+    expect(screen.getByLabelText("large pairing QR").parentElement?.style.background).toBe("rgba(255, 255, 255, 0.94)");
   });
 
   it("renders the conflict screen with the active device name", () => {
@@ -231,6 +231,7 @@ function snapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot {
       playbackUrl: "http://ktv.local/media/asset-instrumental",
       resumePositionMs: 12_345,
       vocalMode: "instrumental",
+      selectedTrackRef: { index: 1, id: "0x1101", label: "Instrumental" },
       switchFamily: "family-main",
       nextQueueEntryPreview: null
     },
