@@ -101,6 +101,8 @@ Web TV debug:      http://192.168.5.64:5173/
 
 ## Android TV 部署
 
+Android TV 是正式 TV 播放端。`apps/tv-player` 仍可用于 Web 调试，但真实 MV 播放、音轨切换和电视体验以 Android TV + libVLC 为准。
+
 构建 APK：
 
 ```bash
@@ -151,16 +153,35 @@ home-ktv-media/generated/ktv-index/
 
 这些生成文件是运行时产物，不提交到 git。
 
-## 验证清单
+## 基线自动验证
+
+在做 Android TV、控制器、后端播放链路或部署脚本改动后，先运行：
+
+```bash
+pnpm -F @home-ktv/api typecheck
+pnpm -F @home-ktv/mobile-controller typecheck
+
+cd HomeKTV
+./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon
+cd ..
+```
+
+## 真实 Android TV 基线验证
 
 1. `http://192.168.5.64:4000/health` 返回 JSON。
-2. 后台 `Room` 页面能看到 TV 在线。
-3. TV 空闲页显示二维码。
-4. 手机扫码进入控制器。
-5. 手机搜索歌曲并点歌。
-6. TV 开始播放。
-7. 切歌可用。
-8. 原唱/伴唱切换后，TV 左下角模式和音轨编号变化。
+2. `pnpm dev:local status` 显示 API、Admin、Mobile controller 正常运行。
+3. 安装并启动 Android TV APK，`apiBaseUrl` 使用电脑局域网 IP。
+4. Android TV 空闲页显示二维码。
+5. 后台 `Room` 页面能看到 TV 在线。
+6. 手机扫码进入控制器，右上角显示电视在线。
+7. 手机搜索一首真实歌曲并点歌。
+8. Android TV 开始播放真实 MV，左下角显示时间和音轨信息。
+9. 手机执行切歌，TV 切到下一首或回到空闲状态。
+10. 手机对队列里的歌曲执行顶歌、删除，Mobile/Admin/TV 状态不需要刷新网页即可更新。
+11. 使用一首确认有双音轨的歌曲，点击原唱/伴唱切换；TV 左下角模式或音轨编号应变化。
+12. 拖动手机控制器音量，Android TV 当前播放音量应变化；切到下一首后音量保持房间当前值。
+13. 关闭手机页面，再扫码或打开控制器 URL，队列和当前播放状态能恢复。
+14. Web TV 只作为调试端验证页面和协议，不作为真实 MV 播放兼容性的最终判断。
 
 ## 常见问题
 

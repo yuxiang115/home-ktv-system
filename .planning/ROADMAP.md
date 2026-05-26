@@ -51,8 +51,8 @@ Explicitly out of scope for this roadmap: multi-room, accounts, scoring, realtim
   3. Known browser autoplay and Web TV limitations are explicitly separated from Android TV product behavior.
 **Plans**: 2 plans
 Plans:
-- [ ] 20-01-PLAN.md - Baseline UAT checklist and deployment verification commands
-- [ ] 20-02-PLAN.md - Current flow notes and known limitation register
+- [x] 20-01-PLAN.md - Baseline UAT checklist and deployment verification commands
+- [x] 20-02-PLAN.md - Current flow notes and known limitation register
 
 ### Phase 21: Android TV Startup Configuration and Persistence
 
@@ -164,7 +164,7 @@ Phases execute in numeric order: 20 -> 21 -> 22 -> 23 -> 24 -> 25 -> 26
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 20. Android TV Baseline UAT and Current Flow Freeze | 0/2 | Ready | — |
+| 20. Android TV Baseline UAT and Current Flow Freeze | 2/2 | Verifying | — |
 | 21. Android TV Startup Configuration and Persistence | 0/3 | Blocked on Phase 20 | — |
 | 22. APK Release, Signing, and Install Workflow | 0/2 | Blocked on Phase 21 | — |
 | 23. Playback Resilience and Diagnostics | 0/4 | Blocked on Phase 22 | — |

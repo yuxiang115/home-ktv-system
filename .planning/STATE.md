@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Android TV 产品化与流程简化
-status: planning
-stopped_at: Created v1.4 roadmap
-last_updated: "2026-05-26T21:40:00+08:00"
+status: verifying
+stopped_at: Completed Phase 20 docs; awaiting baseline UAT
+last_updated: "2026-05-26T22:25:00+08:00"
 last_activity: 2026-05-26
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 21
-  completed_plans: 0
-  percent: 0
+  completed_plans: 2
+  percent: 10
 ---
 
 # Project State
@@ -26,12 +26,12 @@ See: `.planning/PROJECT.md`
 ## Current Position
 
 Milestone: v1.4 Android TV 产品化与流程简化
-Phase: 20 (android-tv-baseline-uat-and-current-flow-freeze) — READY
-Plan: 0 of 2
-Status: Ready to plan/execute Phase 20
+Phase: 20 (android-tv-baseline-uat-and-current-flow-freeze) — VERIFYING
+Plan: 2 of 2
+Status: Phase docs complete — awaiting user UAT
 Last activity: 2026-05-26
 
-Progress: [----------] 0%
+Progress: [█---------] 10%
 
 ## Performance Metrics
 
@@ -57,7 +57,7 @@ Progress: [----------] 0%
 
 ### Pending Todos
 
-- Create Phase 20 plans and baseline UAT checklist.
+- Ask the user to execute Phase 20 Android TV baseline UAT from `docs/deployment.md`.
 - Run current verification commands after the latest volume-control work is deployed.
 - Keep unrelated dirty/untracked files out of commits unless explicitly scoped.
 
@@ -70,5 +70,5 @@ Progress: [----------] 0%
 ## Session Continuity
 
 Last session: 2026-05-26
-Stopped at: Created v1.4 roadmap
+Stopped at: Completed Phase 20 docs; awaiting baseline UAT
 Resume file: None
