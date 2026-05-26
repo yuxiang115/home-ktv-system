@@ -63,6 +63,7 @@ data class RoomSnapshot(
     val roomSlug: String,
     val sessionVersion: Int,
     val state: String,
+    val volumePercent: Int = 100,
     val pairing: PairingInfo? = null,
     val currentTarget: PlaybackTarget?,
     val switchTarget: SwitchTarget?,

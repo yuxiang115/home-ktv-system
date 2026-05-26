@@ -45,10 +45,12 @@ describe("session engine contracts", () => {
     expect(controllerCommandNames.promoteQueueEntry).toBe("controller.command.promote_queue_entry");
     expect(controllerCommandNames.skipCurrent).toBe("controller.command.skip_current");
     expect(controllerCommandNames.switchVocalMode).toBe("controller.command.switch_vocal_mode");
+    expect(controllerCommandNames.setVolume).toBe("controller.command.set_volume");
     expect(roomEventNames.controlSnapshotUpdated).toBe("room.control.snapshot.updated");
     expect(protocolMessageNames["controller.command.add_queue_entry"]).toBe(
       "controller.command.add_queue_entry"
     );
+    expect(protocolMessageNames["controller.command.set_volume"]).toBe("controller.command.set_volume");
   });
 
   it("promoteAfterCurrent places the selected queued entry after the current entry", () => {

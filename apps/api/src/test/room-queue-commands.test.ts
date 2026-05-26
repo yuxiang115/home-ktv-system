@@ -25,6 +25,47 @@ const now = new Date("2026-05-01T10:00:00.000Z");
 type RoomCommandResult = Awaited<ReturnType<typeof executeRoomCommand>>;
 
 describe("room queue commands", () => {
+  it("accepts room volume updates without starting queue playback", async () => {
+    const harness = createHarness({ queueEntries: [] });
+
+    const updated = expectAccepted(
+      await executeRoomCommand({
+        commandId: "command-volume",
+        roomSlug: harness.room.slug,
+        sessionVersion: 1,
+        type: "set-volume",
+        payload: { volumePercent: 65 },
+        controlSession: harness.controlSession,
+        repositories: harness.repositories,
+        assetGateway: harness.assetGateway,
+        config: harness.config,
+        now
+      })
+    );
+
+    expect(updated.sessionVersion).toBe(2);
+    expect(updated.snapshot.volumePercent).toBe(65);
+    expect(updated.snapshot.currentTarget).toBeNull();
+    expect(harness.playbackSession.session.volumePercent).toBe(65);
+
+    const rejected = expectRejected(
+      await executeRoomCommand({
+        commandId: "command-volume-invalid",
+        roomSlug: harness.room.slug,
+        sessionVersion: updated.sessionVersion,
+        type: "set-volume",
+        payload: { volumePercent: 101 },
+        controlSession: harness.controlSession,
+        repositories: harness.repositories,
+        assetGateway: harness.assetGateway,
+        config: harness.config,
+        now
+      })
+    );
+
+    expect(rejected.code).toBe("INVALID_VOLUME");
+  });
+
   it("accepts add, delete, undo, promote, and skip validation with command idempotency", async () => {
     const harness = createHarness({
       queueEntries: [createQueueEntry("queue-current", 1, "playing"), createQueueEntry("queue-queued", 2, "queued")]
@@ -723,6 +764,7 @@ function createHarness(options: { queueEntries: readonly QueueEntry[]; targetVoc
     targetVocalMode: options.targetVocalMode ?? "instrumental",
     playerState: options.queueEntries.some((entry) => entry.status === "playing") ? "playing" : "idle",
     playerPositionMs: 0,
+    volumePercent: 100,
     mediaStartedAt: null,
     version: 1,
     updatedAt: now.toISOString()
@@ -780,6 +822,7 @@ function createHarness(options: { queueEntries: readonly QueueEntry[]; targetVoc
     assetRepository,
     songRepository,
     roomRepository,
+    playbackSession,
     assetGateway,
     config,
     controlSession,
@@ -855,6 +898,20 @@ class FakePlaybackSessionRepository implements PlaybackSessionRepository {
       ...this.session,
       targetVocalMode: input.targetVocalMode,
       playerPositionMs: input.playerPositionMs ?? this.session.playerPositionMs,
+      version: this.session.version + 1,
+      updatedAt: new Date(now.getTime() + this.session.version * 1000).toISOString()
+    };
+    return { ...this.session };
+  }
+
+  async setVolume(input: Parameters<NonNullable<PlaybackSessionRepository["setVolume"]>>[0]): Promise<PlaybackSession | null> {
+    if (input.roomId !== this.session.roomId) {
+      return null;
+    }
+
+    this.session = {
+      ...this.session,
+      volumePercent: input.volumePercent,
       version: this.session.version + 1,
       updatedAt: new Date(now.getTime() + this.session.version * 1000).toISOString()
     };

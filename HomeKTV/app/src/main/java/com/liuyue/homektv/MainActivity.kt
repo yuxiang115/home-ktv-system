@@ -73,6 +73,7 @@ class MainActivity : Activity() {
     private var switchInFlight = false
     private var lastRecoveryVersion: Int? = null
     private var selectedTrackKey: String? = null
+    private var desiredVolumePercent = 100
     private var renderedQrPayload: String? = null
     private val sentTelemetryKeys = mutableSetOf<String>()
 
@@ -394,6 +395,7 @@ class MainActivity : Activity() {
         mediaPlayer = MediaPlayer(libVlc)
         mediaPlayer.attachViews(videoLayout, null, false, false)
         mediaPlayer.setVideoScale(VideoSurfacePolicy.defaultScaleType)
+        applyPlayerVolume(desiredVolumePercent)
         mediaPlayer.setEventListener { event ->
             runOnUiThread {
                 handlePlayerEvent(event)
@@ -531,6 +533,7 @@ class MainActivity : Activity() {
         if (!roomModeActive) return
         latestSnapshot = snapshot
         logRoomSnapshot(snapshot)
+        applyPlayerVolume(snapshot.volumePercent)
         renderPairingOverlay(TvPairingOverlayState.from(roomModeActive = true, snapshot = snapshot))
 
         if (snapshot.state == "recovering" && lastRecoveryVersion != snapshot.sessionVersion) {
@@ -558,7 +561,8 @@ class MainActivity : Activity() {
             TAG,
             "Room snapshot ${snapshot.sessionVersion}: " +
                 "${target.currentQueueEntryPreview.songTitle} - ${target.currentQueueEntryPreview.artistName}; " +
-                "mode=${target.vocalMode}; queue=${target.queueEntryId}; next=${target.nextQueueEntryPreview?.songTitle.orEmpty()}",
+                "mode=${target.vocalMode}; volume=${snapshot.volumePercent}; " +
+                "queue=${target.queueEntryId}; next=${target.nextQueueEntryPreview?.songTitle.orEmpty()}",
         )
     }
 
@@ -594,6 +598,7 @@ class MainActivity : Activity() {
         mediaPlayer.setMedia(media)
         media.release()
         mediaPlayer.setVideoScale(VideoSurfacePolicy.defaultScaleType)
+        applyPlayerVolume(desiredVolumePercent)
         mediaPlayer.updateVideoSurfaces()
         val startPosition = target?.resumePositionMs?.coerceAtLeast(0L) ?: 0L
         mediaPlayer.play()
@@ -853,6 +858,14 @@ class MainActivity : Activity() {
             setStatus("音轨切换失败")
         }
         refreshAudioTrackText()
+    }
+
+    private fun applyPlayerVolume(volumePercent: Int) {
+        val clamped = volumePercent.coerceIn(0, 100)
+        desiredVolumePercent = clamped
+        if (::mediaPlayer.isInitialized) {
+            mediaPlayer.setVolume(clamped)
+        }
     }
 
     private fun sendTelemetryOnce(

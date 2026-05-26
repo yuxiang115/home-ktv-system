@@ -143,6 +143,7 @@ export interface RoomSnapshot {
   roomSlug: string;
   sessionVersion: number;
   state: RoomSnapshotState;
+  volumePercent?: number;
   pairing: PairingInfo;
   currentTarget: PlaybackTarget | null;
   switchTarget: SwitchTarget | null;
@@ -158,6 +159,7 @@ export interface RoomControlSnapshot {
   roomSlug: string;
   sessionVersion: number;
   state: RoomSnapshotState;
+  volumePercent?: number;
   pairing: PairingInfo;
   tvPresence: TvPresence;
   controllers: ControllerPresenceSummary;

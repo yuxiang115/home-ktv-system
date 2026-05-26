@@ -36,6 +36,7 @@ function ControllerApp() {
   const currentModeLabel = vocalModeName(current?.vocalMode ?? "unknown", t);
   const playbackLabel = snapshot ? playbackStateName(snapshot?.state, t) : t("current.connecting");
   const noticeMessage = snapshot?.notice?.message;
+  const volumePercent = controller.volumePercent;
 
   return (
     <main className="app-shell" aria-label={t("app.aria")}>
@@ -72,6 +73,23 @@ function ControllerApp() {
         <div className="mode-summary" aria-label={t("current.modeAria")}>
           <span className="mode-summary-label">{t("current.currentMode")}</span>
           <span className={`mode-summary-value ${current?.vocalMode ?? "unknown"}`}>{currentModeLabel}</span>
+        </div>
+        <div className="volume-control">
+          <div className="volume-control__header">
+            <span className="volume-control__label">{t("volume.label")}</span>
+            <span className="volume-control__value">{t("volume.value", { value: volumePercent })}</span>
+          </div>
+          <input
+            aria-label={t("volume.aria")}
+            className="volume-slider"
+            type="range"
+            min="0"
+            max="100"
+            step="5"
+            value={volumePercent}
+            disabled={!snapshot}
+            onChange={(event) => controller.setVolumePercent(Number(event.currentTarget.value))}
+          />
         </div>
         <div className="command-row">
           <button className="primary-button" type="button" disabled={!current} onClick={() => void controller.switchVocalMode()}>

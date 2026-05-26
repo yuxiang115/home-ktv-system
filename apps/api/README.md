@@ -5,7 +5,7 @@
 ## 职责
 
 - 管理房间、配对 token、控制器会话和 TV 在线状态。
-- 接收手机控制器命令：点歌、顶歌、切歌、原唱/伴唱切换。
+- 接收手机控制器命令：点歌、顶歌、切歌、原唱/伴唱切换、音量调整。
 - 为 TV 端生成 `room snapshot`、`playback target` 和媒体播放 URL。
 - 通过 `/media/:assetId` 把本地或 NAS 媒体文件以 HTTP Range 方式提供给 TV。
 - 接入 PostgreSQL 曲库、真实 KTV 索引和导入任务。
@@ -60,6 +60,7 @@ GET  /rooms/:roomSlug/realtime
 POST /rooms/:roomSlug/commands/add-queue-entry
 POST /rooms/:roomSlug/commands/skip-current
 POST /rooms/:roomSlug/commands/switch-vocal-mode
+POST /rooms/:roomSlug/commands/set-volume
 POST /player/bootstrap
 POST /player/heartbeat
 POST /player/telemetry

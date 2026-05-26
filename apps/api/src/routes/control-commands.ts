@@ -49,6 +49,10 @@ interface SwitchVocalModeBody extends BaseCommandBody {
   playbackPositionMs?: number;
 }
 
+interface SetVolumeBody extends BaseCommandBody {
+  volumePercent?: number;
+}
+
 interface RequestSupplementBody extends BaseCommandBody {
   provider?: string;
   providerCandidateId?: string;
@@ -123,6 +127,15 @@ export async function registerControlCommandRoutes(
     async (request, reply) => {
       await handleCommand(request, reply, dependencies, "switch-vocal-mode", {
         playbackPositionMs: request.body.playbackPositionMs
+      });
+    }
+  );
+
+  server.post<{ Params: { roomSlug: string }; Body: SetVolumeBody }>(
+    "/rooms/:roomSlug/commands/set-volume",
+    async (request, reply) => {
+      await handleCommand(request, reply, dependencies, "set-volume", {
+        volumePercent: request.body.volumePercent
       });
     }
   );

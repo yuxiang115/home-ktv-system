@@ -20,7 +20,8 @@ export const controllerCommandNames = {
   undoDeleteQueueEntry: "controller.command.undo_delete_queue_entry",
   promoteQueueEntry: "controller.command.promote_queue_entry",
   skipCurrent: "controller.command.skip_current",
-  switchVocalMode: "controller.command.switch_vocal_mode"
+  switchVocalMode: "controller.command.switch_vocal_mode",
+  setVolume: "controller.command.set_volume"
 } as const;
 
 export const roomEventNames = {
@@ -47,6 +48,7 @@ export const protocolMessageNames = {
   "controller.command.promote_queue_entry": "controller.command.promote_queue_entry",
   "controller.command.skip_current": "controller.command.skip_current",
   "controller.command.switch_vocal_mode": "controller.command.switch_vocal_mode",
+  "controller.command.set_volume": "controller.command.set_volume",
   "room.snapshot.updated": "room.snapshot.updated",
   "room.control.snapshot.updated": "room.control.snapshot.updated"
 } as const;

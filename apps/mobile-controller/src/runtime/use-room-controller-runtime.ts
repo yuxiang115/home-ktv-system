@@ -11,6 +11,7 @@ import {
   restoreControlSession,
   requestSupplement,
   searchSongs,
+  setVolume,
   skipCurrent,
   switchVocalMode,
   undoDeleteQueueEntry
@@ -37,6 +38,7 @@ export interface RoomControllerState {
   songSearchQuery: string;
   songSearchStatus: "idle" | "loading" | "success" | "error";
   snapshot: RoomControlSnapshot | null;
+  volumePercent: number;
   addSongVersion(songId: string, assetId: string): Promise<void>;
   cancelDuplicateAdd(): void;
   confirmSkip(): Promise<void>;
@@ -48,6 +50,7 @@ export interface RoomControllerState {
   requestSupplement(provider: string, providerCandidateId: string): Promise<void>;
   requestSkip(): void;
   setSongSearchQuery(query: string): void;
+  setVolumePercent(volumePercent: number): void;
   submitSongSearch(): void;
   switchVocalMode(): Promise<void>;
   undoDelete(queueEntryId: string): Promise<void>;
@@ -68,11 +71,13 @@ export function useRoomControllerRuntime(): RoomControllerState {
   const [pendingIndexedAssetId, setPendingIndexedAssetId] = useState<string | null>(null);
   const [pendingUndo, setPendingUndo] = useState<{ queueEntryId: string; undoExpiresAt: string } | null>(null);
   const [pendingSupplementKeys, setPendingSupplementKeys] = useState<readonly string[]>([]);
+  const [pendingVolumePercent, setPendingVolumePercent] = useState<number | null>(null);
   const snapshotRef = useRef<RoomControlSnapshot | null>(null);
   const songSearchQueryRef = useRef("");
   const searchRequestIdRef = useRef(0);
   const searchAbortRef = useRef<AbortController | null>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const volumeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -82,6 +87,13 @@ export function useRoomControllerRuntime(): RoomControllerState {
     if (searchDebounceRef.current) {
       clearTimeout(searchDebounceRef.current);
       searchDebounceRef.current = null;
+    }
+  }, []);
+
+  const clearVolumeDebounce = useCallback(() => {
+    if (volumeDebounceRef.current) {
+      clearTimeout(volumeDebounceRef.current);
+      volumeDebounceRef.current = null;
     }
   }, []);
 
@@ -251,9 +263,16 @@ export function useRoomControllerRuntime(): RoomControllerState {
       stopSessionRefresh();
       websocket?.close();
       clearSearchDebounce();
+      clearVolumeDebounce();
       searchAbortRef.current?.abort();
     };
-  }, [clearSearchDebounce, deviceId, initial.pairingToken, initial.roomSlug, runSongSearch]);
+  }, [clearSearchDebounce, clearVolumeDebounce, deviceId, initial.pairingToken, initial.roomSlug, runSongSearch]);
+
+  useEffect(() => {
+    if (pendingVolumePercent != null && snapshot?.volumePercent === pendingVolumePercent) {
+      setPendingVolumePercent(null);
+    }
+  }, [pendingVolumePercent, snapshot?.volumePercent]);
 
   const runCommand = useCallback(
     async (command: (input: { roomSlug: string; deviceId: string; sessionVersion: number }) => Promise<any>) => {
@@ -343,6 +362,22 @@ export function useRoomControllerRuntime(): RoomControllerState {
     void runSongSearch(songSearchQueryRef.current);
   }, [runSongSearch]);
 
+  const commitVolumePercent = useCallback(
+    async (volumePercent: number) => {
+      try {
+        const response = await runCommand((input) => setVolume({ ...input, volumePercent }));
+        if (!response?.snapshot || response.snapshot.volumePercent !== volumePercent) {
+          setPendingVolumePercent(null);
+        }
+        setErrorMessage(null);
+      } catch (error) {
+        setPendingVolumePercent(null);
+        setErrorMessage(errorMessageFrom(error, "音量调整失败"));
+      }
+    },
+    [runCommand]
+  );
+
   return {
     connectionStatus,
     deviceId,
@@ -357,6 +392,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
     songSearchQuery,
     songSearchStatus,
     snapshot,
+    volumePercent: pendingVolumePercent ?? snapshot?.volumePercent ?? 100,
     addSongVersion,
     cancelDuplicateAdd: () => setDuplicateConfirm(null),
     cancelSkip: () => setSkipConfirmOpen(false),
@@ -408,6 +444,14 @@ export function useRoomControllerRuntime(): RoomControllerState {
         void runSongSearch(query);
       }, 250);
     },
+    setVolumePercent: (volumePercent) => {
+      const normalized = normalizeVolumePercent(volumePercent);
+      setPendingVolumePercent(normalized);
+      clearVolumeDebounce();
+      volumeDebounceRef.current = setTimeout(() => {
+        void commitVolumePercent(normalized);
+      }, 180);
+    },
     submitSongSearch,
     switchVocalMode: async () => {
       try {
@@ -429,6 +473,13 @@ export function useRoomControllerRuntime(): RoomControllerState {
       await runCommand((input) => undoDeleteQueueEntry({ ...input, queueEntryId }));
     }
   };
+}
+
+function normalizeVolumePercent(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 100;
+  }
+  return Math.max(0, Math.min(100, Math.trunc(value)));
 }
 
 function readRuntimeParams(): { roomSlug: string; pairingToken: string | null } {

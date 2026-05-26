@@ -150,6 +150,12 @@ export async function switchVocalMode(input: CommandBaseInput & { playbackPositi
   });
 }
 
+export async function setVolume(input: CommandBaseInput & { volumePercent: number }) {
+  return sendCommand(input, "set-volume", {
+    volumePercent: input.volumePercent
+  });
+}
+
 export async function requestSupplement(input: CommandBaseInput & {
   provider: string;
   providerCandidateId: string;

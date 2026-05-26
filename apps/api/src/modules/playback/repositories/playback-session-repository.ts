@@ -30,11 +30,17 @@ export interface RequestSwitchTargetInput {
   playerPositionMs?: number;
 }
 
+export interface SetVolumeInput {
+  roomId: RoomId;
+  volumePercent: number;
+}
+
 export interface PlaybackSessionRepository {
   findByRoomId(roomId: RoomId): Promise<PlaybackSession | null>;
   startQueueEntry(input: StartQueueEntryInput): Promise<PlaybackSession | null>;
   setIdle(roomId: RoomId): Promise<PlaybackSession | null>;
   requestSwitchTarget(input: RequestSwitchTargetInput): Promise<PlaybackSession | null>;
+  setVolume?(input: SetVolumeInput): Promise<PlaybackSession | null>;
   bumpVersion?(roomId: RoomId): Promise<PlaybackSession | null>;
 }
 
@@ -54,7 +60,9 @@ export interface UpdatePlaybackFactsInput {
   targetVocalMode?: VocalMode;
 }
 
-function mapPlaybackSessionRow(row: PlaybackSessionRow): PlaybackSession {
+type PlaybackSessionRowWithVolume = PlaybackSessionRow & { volume_percent?: number | null };
+
+function mapPlaybackSessionRow(row: PlaybackSessionRowWithVolume): PlaybackSession {
   return {
     roomId: row.room_id as RoomId,
     currentQueueEntryId: row.current_queue_entry_id as QueueEntryId | null,
@@ -63,6 +71,7 @@ function mapPlaybackSessionRow(row: PlaybackSessionRow): PlaybackSession {
     targetVocalMode: row.target_vocal_mode as VocalMode,
     playerState: row.player_state as PlayerState,
     playerPositionMs: row.player_position_ms,
+    volumePercent: row.volume_percent ?? 100,
     mediaStartedAt: row.media_started_at?.toISOString() ?? null,
     version: row.version,
     updatedAt: row.updated_at.toISOString()
@@ -73,10 +82,10 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
   constructor(private readonly db: QueryExecutor) {}
 
   async findByRoomId(roomId: RoomId): Promise<PlaybackSession | null> {
-    const result = await this.db.query<PlaybackSessionRow>(
+    const result = await this.db.query<PlaybackSessionRowWithVolume>(
       `SELECT room_id, current_queue_entry_id, active_asset_id, target_vocal_mode,
               player_state, player_position_ms, next_queue_entry_id, version,
-              media_started_at, updated_at
+              volume_percent, media_started_at, updated_at
        FROM playback_sessions
        WHERE room_id = $1
        LIMIT 1`,
@@ -88,7 +97,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
   }
 
   async startQueueEntry(input: StartQueueEntryInput): Promise<PlaybackSession | null> {
-    const result = await this.db.query<PlaybackSessionRow>(
+    const result = await this.db.query<PlaybackSessionRowWithVolume>(
       `UPDATE playback_sessions
        SET current_queue_entry_id = $2,
            active_asset_id = $3,
@@ -105,7 +114,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
        WHERE room_id = $1
        RETURNING room_id, current_queue_entry_id, active_asset_id, target_vocal_mode,
                  player_state, player_position_ms, next_queue_entry_id, version,
-                 media_started_at, updated_at`,
+                 volume_percent, media_started_at, updated_at`,
       [
         input.roomId,
         input.queueEntryId,
@@ -123,7 +132,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
   }
 
   async setIdle(roomId: RoomId): Promise<PlaybackSession | null> {
-    const result = await this.db.query<PlaybackSessionRow>(
+    const result = await this.db.query<PlaybackSessionRowWithVolume>(
       `UPDATE playback_sessions
        SET current_queue_entry_id = NULL,
            active_asset_id = NULL,
@@ -136,7 +145,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
        WHERE room_id = $1
        RETURNING room_id, current_queue_entry_id, active_asset_id, target_vocal_mode,
                  player_state, player_position_ms, next_queue_entry_id, version,
-                 media_started_at, updated_at`,
+                 volume_percent, media_started_at, updated_at`,
       [roomId]
     );
 
@@ -145,7 +154,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
   }
 
   async requestSwitchTarget(input: RequestSwitchTargetInput): Promise<PlaybackSession | null> {
-    const result = await this.db.query<PlaybackSessionRow>(
+    const result = await this.db.query<PlaybackSessionRowWithVolume>(
       `UPDATE playback_sessions
        SET target_vocal_mode = $2,
            player_position_ms = COALESCE($3, player_position_ms),
@@ -154,7 +163,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
        WHERE room_id = $1
        RETURNING room_id, current_queue_entry_id, active_asset_id, target_vocal_mode,
                  player_state, player_position_ms, next_queue_entry_id, version,
-                 media_started_at, updated_at`,
+                 volume_percent, media_started_at, updated_at`,
       [input.roomId, input.targetVocalMode, input.playerPositionMs ?? null]
     );
 
@@ -162,15 +171,32 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
     return row ? mapPlaybackSessionRow(row) : null;
   }
 
+  async setVolume(input: SetVolumeInput): Promise<PlaybackSession | null> {
+    const result = await this.db.query<PlaybackSessionRowWithVolume>(
+      `UPDATE playback_sessions
+       SET volume_percent = $2,
+           version = version + 1,
+           updated_at = now()
+       WHERE room_id = $1
+       RETURNING room_id, current_queue_entry_id, active_asset_id, target_vocal_mode,
+                 player_state, player_position_ms, next_queue_entry_id, version,
+                 volume_percent, media_started_at, updated_at`,
+      [input.roomId, input.volumePercent]
+    );
+
+    const row = result.rows[0];
+    return row ? mapPlaybackSessionRow(row) : null;
+  }
+
   async bumpVersion(roomId: RoomId): Promise<PlaybackSession | null> {
-    const result = await this.db.query<PlaybackSessionRow>(
+    const result = await this.db.query<PlaybackSessionRowWithVolume>(
       `UPDATE playback_sessions
        SET version = version + 1,
            updated_at = now()
        WHERE room_id = $1
        RETURNING room_id, current_queue_entry_id, active_asset_id, target_vocal_mode,
                  player_state, player_position_ms, next_queue_entry_id, version,
-                 media_started_at, updated_at`,
+                 volume_percent, media_started_at, updated_at`,
       [roomId]
     );
 
@@ -179,7 +205,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
   }
 
   async updatePlayerPosition(input: UpdatePlayerPositionInput): Promise<PlaybackSession | null> {
-    const result = await this.db.query<PlaybackSessionRow>(
+    const result = await this.db.query<PlaybackSessionRowWithVolume>(
       `UPDATE playback_sessions
        SET player_position_ms = $2,
            player_state = COALESCE($3, player_state),
@@ -188,7 +214,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
          AND ($4::text IS NULL OR current_queue_entry_id = $4)
        RETURNING room_id, current_queue_entry_id, active_asset_id, target_vocal_mode,
                  player_state, player_position_ms, next_queue_entry_id, version,
-                 media_started_at, updated_at`,
+                 volume_percent, media_started_at, updated_at`,
       [input.roomId, input.playerPositionMs, input.playerState ?? null, input.currentQueueEntryId]
     );
 
@@ -197,7 +223,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
   }
 
   async updatePlaybackFacts(input: UpdatePlaybackFactsInput): Promise<PlaybackSession | null> {
-    const result = await this.db.query<PlaybackSessionRow>(
+    const result = await this.db.query<PlaybackSessionRowWithVolume>(
       `UPDATE playback_sessions
        SET active_asset_id = COALESCE($3, active_asset_id),
            target_vocal_mode = COALESCE($6, target_vocal_mode),
@@ -213,7 +239,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
          AND current_queue_entry_id = $2
        RETURNING room_id, current_queue_entry_id, active_asset_id, target_vocal_mode,
                  player_state, player_position_ms, next_queue_entry_id, version,
-                 media_started_at, updated_at`,
+                 volume_percent, media_started_at, updated_at`,
       [
         input.roomId,
         input.queueEntryId,

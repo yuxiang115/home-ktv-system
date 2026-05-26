@@ -46,6 +46,7 @@ export type ControlCommandType =
   | "promote-queue-entry"
   | "skip-current"
   | "switch-vocal-mode"
+  | "set-volume"
   | "player-ended";
 export type ControlCommandResultStatus = "accepted" | "duplicate" | "conflict" | "rejected";
 export type ImportScanRunId = EntityId;
@@ -450,6 +451,7 @@ export interface PlaybackSession {
   targetVocalMode: VocalMode;
   playerState: PlayerState;
   playerPositionMs: number;
+  volumePercent?: number;
   mediaStartedAt: string | null;
   version: number;
   updatedAt: string;

@@ -9,6 +9,7 @@ import {
   getOrCreateDeviceId,
   promoteQueueEntry,
   requestSupplement,
+  setVolume,
   skipCurrent,
   switchVocalMode,
   undoDeleteQueueEntry
@@ -81,6 +82,7 @@ describe("mobile controller API client", () => {
     await promoteQueueEntry({ ...base, queueEntryId: "queue-2" });
     await skipCurrent({ ...base, confirmSkip: true });
     await switchVocalMode({ ...base, playbackPositionMs: 1234 });
+    await setVolume({ ...base, volumePercent: 65 });
     await requestSupplement({
       ...base,
       provider: "demo-provider",
@@ -94,6 +96,7 @@ describe("mobile controller API client", () => {
       "/rooms/living-room/commands/promote-queue-entry",
       "/rooms/living-room/commands/skip-current",
       "/rooms/living-room/commands/switch-vocal-mode",
+      "/rooms/living-room/commands/set-volume",
       "/rooms/living-room/commands/request-supplement"
     ]);
     for (const request of requests) {
@@ -558,6 +561,36 @@ describe("mobile controller runtime", () => {
     const modeSummary = screen.getByLabelText("current-vocal-mode");
     expect(modeSummary.textContent).toContain("当前模式");
     expect(modeSummary.textContent).toContain("伴唱");
+  });
+
+  it("renders one room volume slider and sends set-volume after adjustment", async () => {
+    vi.useFakeTimers();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot({ volumePercent: 70 })))],
+      commandResponses: {
+        "/rooms/living-room/commands/set-volume": json({
+          status: "accepted",
+          snapshot: roomSnapshot({ sessionVersion: 2, volumePercent: 65 })
+        })
+      }
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    await flush();
+    expect(screen.getByText("电视在线")).toBeTruthy();
+    expect(screen.getByText("音量")).toBeTruthy();
+    expect(screen.getByText("70%")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("音量"), { target: { value: "65" } });
+    expect(screen.getByText("65%")).toBeTruthy();
+    await vi.advanceTimersByTimeAsync(220);
+    await flush();
+
+    expect(requests.find((request) => request.url === "/rooms/living-room/commands/set-volume")?.body).toMatchObject({
+      volumePercent: 65
+    });
   });
 
   it("does not expose raw playback or vocal enum labels in the Chinese controller", async () => {
@@ -1570,6 +1603,7 @@ function roomSnapshot(options: {
   queueStatus?: "queued" | "removed";
   queueUndoExpiresAt?: string | null;
   sessionVersion?: number;
+  volumePercent?: number;
 } = {}): RoomControlSnapshot {
   const queueStatus = options.queueStatus ?? "queued";
   return {
@@ -1578,6 +1612,7 @@ function roomSnapshot(options: {
     roomSlug: "living-room",
     sessionVersion: options.sessionVersion ?? 1,
     state: "playing",
+    volumePercent: options.volumePercent ?? 100,
     pairing: {
       roomSlug: "living-room",
       controllerUrl: "http://ktv.local/controller?room=living-room",

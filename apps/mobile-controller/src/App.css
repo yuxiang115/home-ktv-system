@@ -363,6 +363,52 @@ button:not(:disabled):hover {
   border-color: var(--ktv-border);
 }
 
+.volume-control {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(34, 211, 238, 0.2);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: rgba(2, 6, 23, 0.42);
+}
+
+.volume-control__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.volume-control__label {
+  color: var(--ktv-muted);
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.volume-control__value {
+  min-width: 54px;
+  color: var(--ktv-accent);
+  font-size: 1rem;
+  font-weight: 950;
+  text-align: right;
+}
+
+.volume-slider {
+  width: 100%;
+  accent-color: var(--ktv-accent);
+  cursor: pointer;
+}
+
+.volume-slider:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.volume-slider:focus-visible {
+  outline: 2px solid var(--ktv-accent);
+  outline-offset: 4px;
+}
+
 .queue-list,
 .song-list {
   display: grid;

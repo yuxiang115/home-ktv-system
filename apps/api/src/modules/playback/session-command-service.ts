@@ -445,6 +445,8 @@ async function executeMutatingCommand(
       return runAdvanceCommand(input, context, "skipped");
     case "switch-vocal-mode":
       return switchVocalMode(input, context);
+    case "set-volume":
+      return setVolume(input, context);
     case "player-ended":
       return rejected(input.commandId, input.sessionVersion, "PLAYER_ENDED_IS_TELEMETRY_ONLY");
   }
@@ -654,6 +656,37 @@ async function switchVocalMode(
   };
 }
 
+async function setVolume(
+  input: ExecuteRoomCommandInput,
+  context: QueueMutationContext
+): Promise<CommandExecutionResult> {
+  const volumePercent = normalizeVolumePercent(input.payload.volumePercent);
+  if (volumePercent == null) {
+    return rejected(input.commandId, input.sessionVersion, "INVALID_VOLUME");
+  }
+
+  if (!input.repositories.playbackSessions.setVolume) {
+    return rejected(input.commandId, input.sessionVersion, "VOLUME_CONTROL_UNAVAILABLE");
+  }
+
+  const updatedSession = await input.repositories.playbackSessions.setVolume({
+    roomId: context.room.id,
+    volumePercent
+  });
+  if (!updatedSession) {
+    return rejected(input.commandId, input.sessionVersion, "PLAYBACK_SESSION_NOT_FOUND");
+  }
+
+  const snapshot = await finishAcceptedSnapshotCommand(input, context, updatedSession.version);
+  return {
+    status: "accepted",
+    commandId: input.commandId,
+    sessionVersion: snapshot.sessionVersion,
+    snapshot: snapshot.snapshot,
+    controlSessionCookie: snapshot.controlSessionCookie
+  };
+}
+
 async function runAdvanceCommand(
   input: ExecuteRoomCommandInput,
   context: QueueMutationContext,
@@ -678,6 +711,30 @@ async function runAdvanceCommand(
     commandId: input.commandId,
     sessionVersion: result.sessionVersion,
     snapshot: result.snapshot,
+    controlSessionCookie
+  };
+}
+
+async function finishAcceptedSnapshotCommand(
+  input: ExecuteRoomCommandInput,
+  context: QueueMutationContext,
+  fallbackSessionVersion: number
+): Promise<{ snapshot: RoomControlSnapshot; sessionVersion: number; controlSessionCookie?: string | undefined }> {
+  const snapshot = await buildRoomControlSnapshot({
+    roomSlug: context.room.slug,
+    config: input.config,
+    repositories: input.repositories,
+    assetGateway: input.assetGateway,
+    now: context.now
+  });
+  if (!snapshot) {
+    throw new Error("ROOM_NOT_FOUND");
+  }
+
+  const controlSessionCookie = await touchAcceptedControlSession(input, context.now);
+  return {
+    snapshot,
+    sessionVersion: snapshot.sessionVersion ?? fallbackSessionVersion,
     controlSessionCookie
   };
 }
@@ -853,6 +910,14 @@ function rejected(commandId: string, sessionVersion: number, code: string, messa
     code,
     message
   };
+}
+
+function normalizeVolumePercent(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  const volumePercent = Math.trunc(value);
+  return volumePercent >= 0 && volumePercent <= 100 ? volumePercent : null;
 }
 
 function toControlSession(session: ControlSessionInfo): ControlSession {

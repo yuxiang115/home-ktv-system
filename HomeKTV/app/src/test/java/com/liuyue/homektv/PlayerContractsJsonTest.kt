@@ -14,6 +14,7 @@ class PlayerContractsJsonTest {
         assertEquals("living-room", snapshot.roomSlug)
         assertEquals(7, snapshot.sessionVersion)
         assertEquals("playing", snapshot.state)
+        assertEquals(72, snapshot.volumePercent)
         assertEquals("instrumental", snapshot.targetVocalMode)
         assertEquals("http://192.168.5.64:5176/controller?room=living-room", snapshot.pairing?.qrPayload)
 
@@ -69,6 +70,7 @@ class PlayerContractsJsonTest {
               "roomSlug": "living-room",
               "sessionVersion": 7,
               "state": "playing",
+              "volumePercent": 72,
               "pairing": {
                 "roomSlug": "living-room",
                 "controllerUrl": "http://192.168.5.64:5176/controller?room=living-room",

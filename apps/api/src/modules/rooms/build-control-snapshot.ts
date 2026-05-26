@@ -131,6 +131,7 @@ export async function buildRoomControlSnapshot(input: BuildRoomControlSnapshotIn
     roomSlug: baseSnapshot.roomSlug,
     sessionVersion: session?.version ?? baseSnapshot.sessionVersion,
     state: baseSnapshot.state,
+    volumePercent: baseSnapshot.volumePercent ?? 100,
     pairing: baseSnapshot.pairing,
     tvPresence: activeTvPlayer
       ? {
