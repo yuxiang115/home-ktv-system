@@ -9,7 +9,7 @@ export interface IdleScreenProps {
   pairing: PairingInfo;
 }
 
-export function IdleScreen({ displayState, pairing }: IdleScreenProps) {
+export function IdleScreen({ pairing }: IdleScreenProps) {
   return (
     <section style={styles.screen}>
       <div style={styles.backdrop} />
@@ -18,7 +18,6 @@ export function IdleScreen({ displayState, pairing }: IdleScreenProps) {
         <h1 aria-label="今晚开唱" style={styles.title}>
           今晚开唱
         </h1>
-        <p style={styles.detail}>{displayState.detail}</p>
         <div aria-hidden="true" style={styles.decorativeBars}>
           <span style={{ ...styles.bar, ...styles.barOne }} />
           <span style={{ ...styles.bar, ...styles.barTwo }} />
@@ -84,15 +83,6 @@ const styles = {
     letterSpacing: 0,
     lineHeight: 1.06,
     margin: "20px 0 0",
-    overflowWrap: "anywhere"
-  },
-  detail: {
-    color: "rgba(226, 232, 240, 0.9)",
-    fontSize: 26,
-    fontWeight: 760,
-    lineHeight: 1.24,
-    margin: "18px 0 0",
-    maxWidth: 620,
     overflowWrap: "anywhere"
   },
   decorativeBars: {
