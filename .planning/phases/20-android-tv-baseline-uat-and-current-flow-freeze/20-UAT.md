@@ -14,20 +14,21 @@ number: 1
 name: Android TV Real Playback Baseline
 expected: |
   请按 `docs/deployment.md` 的“真实 Android TV 基线验证”执行。预期结果：
-  1. API health 正常。
-  2. Android TV 空闲页显示二维码。
-  3. 手机扫码进入控制器后显示电视在线。
-  4. 搜索真实歌曲可以点歌。
-  5. Android TV 开始播放真实 MV。
-  6. 切歌、顶歌、删除、音量控制可用。
-  7. 使用一首确认有双音轨的歌曲时，原唱/伴唱切换后 TV 左下角模式或音轨编号变化。
-  8. 关闭手机页面再重新扫码/打开控制器，队列和当前播放状态能恢复。
+  1. 数据库迁移已应用。
+  2. API health 正常。
+  3. Android TV 空闲页显示二维码。
+  4. 手机扫码进入控制器后显示电视在线。
+  5. 搜索真实歌曲可以点歌。
+  6. Android TV 开始播放真实 MV。
+  7. 切歌、顶歌、删除、音量控制可用。
+  8. 使用一首确认有双音轨的歌曲时，原唱/伴唱切换后 TV 左下角模式或音轨编号变化。
+  9. 关闭手机页面再重新扫码/打开控制器，队列和当前播放状态能恢复。
 awaiting: user response
 
 ## Tests
 
 ### 1. Android TV Real Playback Baseline
-expected: 真实 Android TV 主链路按部署文档通过，覆盖扫码、搜索、点歌、播放、切歌、队列操作、音量、音轨切换和控制器重进。
+expected: 真实 Android TV 主链路按部署文档通过，覆盖数据库迁移、扫码、搜索、点歌、播放、切歌、队列操作、音量、音轨切换和控制器重进。
 result: [pending]
 
 ### 2. Automated Verification Commands

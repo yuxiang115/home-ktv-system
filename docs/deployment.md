@@ -155,9 +155,11 @@ home-ktv-media/generated/ktv-index/
 
 ## 基线自动验证
 
-在做 Android TV、控制器、后端播放链路或部署脚本改动后，先运行：
+在做 Android TV、控制器、后端播放链路或部署脚本改动后，先确认数据库迁移已应用，再运行验证命令：
 
 ```bash
+DATABASE_URL=postgres://ktv:ktv@127.0.0.1:5432/home_ktv pnpm db:migrate
+
 pnpm -F @home-ktv/api typecheck
 pnpm -F @home-ktv/mobile-controller typecheck
 
@@ -168,20 +170,21 @@ cd ..
 
 ## 真实 Android TV 基线验证
 
-1. `http://192.168.5.64:4000/health` 返回 JSON。
-2. `pnpm dev:local status` 显示 API、Admin、Mobile controller 正常运行。
-3. 安装并启动 Android TV APK，`apiBaseUrl` 使用电脑局域网 IP。
-4. Android TV 空闲页显示二维码。
-5. 后台 `Room` 页面能看到 TV 在线。
-6. 手机扫码进入控制器，右上角显示电视在线。
-7. 手机搜索一首真实歌曲并点歌。
-8. Android TV 开始播放真实 MV，左下角显示时间和音轨信息。
-9. 手机执行切歌，TV 切到下一首或回到空闲状态。
-10. 手机对队列里的歌曲执行顶歌、删除，Mobile/Admin/TV 状态不需要刷新网页即可更新。
-11. 使用一首确认有双音轨的歌曲，点击原唱/伴唱切换；TV 左下角模式或音轨编号应变化。
-12. 拖动手机控制器音量，Android TV 当前播放音量应变化；切到下一首后音量保持房间当前值。
-13. 关闭手机页面，再扫码或打开控制器 URL，队列和当前播放状态能恢复。
-14. Web TV 只作为调试端验证页面和协议，不作为真实 MV 播放兼容性的最终判断。
+1. 运行 `DATABASE_URL=postgres://ktv:ktv@127.0.0.1:5432/home_ktv pnpm db:migrate`。
+2. `http://192.168.5.64:4000/health` 返回 JSON。
+3. `pnpm dev:local status` 显示 API、Admin、Mobile controller 正常运行。
+4. 安装并启动 Android TV APK，`apiBaseUrl` 使用电脑局域网 IP。
+5. Android TV 空闲页显示二维码。
+6. 后台 `Room` 页面能看到 TV 在线。
+7. 手机扫码进入控制器，右上角显示电视在线。
+8. 手机搜索一首真实歌曲并点歌。
+9. Android TV 开始播放真实 MV，左下角显示时间和音轨信息。
+10. 手机执行切歌，TV 切到下一首或回到空闲状态。
+11. 手机对队列里的歌曲执行顶歌、删除，Mobile/Admin/TV 状态不需要刷新网页即可更新。
+12. 使用一首确认有双音轨的歌曲，点击原唱/伴唱切换；TV 左下角模式或音轨编号应变化。
+13. 拖动手机控制器音量，Android TV 当前播放音量应变化；切到下一首后音量保持房间当前值。
+14. 关闭手机页面，再扫码或打开控制器 URL，队列和当前播放状态能恢复。
+15. Web TV 只作为调试端验证页面和协议，不作为真实 MV 播放兼容性的最终判断。
 
 ## 常见问题
 
