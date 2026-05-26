@@ -697,11 +697,12 @@
 
 推荐的应用拆分：
 
-- `apps/tv-player`
-- `apps/mobile-controller`
 - `apps/api`
-- `apps/worker`
-- `packages/shared`
+- `apps/admin`
+- `apps/controller`
+- `apps/tv-web`
+- `clients/android-tv`
+- `packages/domain`
 - `packages/protocol`
 
 ## 第一版最小可用范围（MVP）
@@ -4208,12 +4209,12 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 第一版只定义两类设备：
 
-- `tv-player`
-- `mobile-controller`
+- `tv`
+- `controller`
 
 角色边界：
 
-### `tv-player`
+### `tv`
 
 职责：
 
@@ -4226,7 +4227,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 - 它不是临时访客设备
 - 它更像房间基础设施的一部分
 
-### `mobile-controller`
+### `controller`
 
 职责：
 
@@ -4339,7 +4340,7 @@ https://ktv.shaolongfei.com/controller/living-room?token=xxxx
 ### 电视端首次部署
 
 1. 电视打开固定播放器地址
-2. 服务端识别这是 `tv-player`
+2. 服务端识别这是 TV 设备
 3. 若该播放器尚未登记，生成 `deviceId`
 4. 绑定到 `living-room`
 5. 后续用 `deviceId` 做稳定识别
@@ -4445,7 +4446,7 @@ https://ktv.shaolongfei.com/controller/living-room?token=xxxx
 
 建议策略：
 
-1. 每个房间默认只有一个 `active tv-player`
+1. 每个房间默认只有一个 active TV
 2. 新 TV Player 连接时：
    - 若当前没有活动播放器，则接管
    - 若已有活动播放器在线，则进入 `conflict` 提示态
@@ -5317,7 +5318,7 @@ HTTP 第一版建议统一使用：
 
 - 查看当前房间状态
 - 查看 `PlaybackSession`
-- 查看当前 `active tv-player`
+- 查看当前 active TV
 - 查看最近心跳时间
 - 查看当前队列
 - 查看最近 `PlaybackEvent`
@@ -5822,10 +5823,11 @@ HTTP 第一版建议统一使用：
 
 即：
 
-- `backend`
-- `tv-player`
-- `mobile-controller`
-- `admin`
+- `apps/api`
+- `apps/admin`
+- `apps/controller`
+- `clients/android-tv`
+- `apps/tv-web` 调试端
 
 其中：
 

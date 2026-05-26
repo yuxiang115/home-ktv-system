@@ -1,6 +1,6 @@
-# HomeKTV Mobile Controller
+# HomeKTV Controller
 
-`apps/mobile-controller` 是手机扫码后的点歌控制器。
+`apps/controller` 是手机扫码后的点歌控制器。
 
 ## 职责
 
@@ -33,9 +33,9 @@ VITE_API_BASE_URL=http://192.168.5.64:4000
 从项目根目录运行：
 
 ```bash
-pnpm -F @home-ktv/mobile-controller dev
-pnpm -F @home-ktv/mobile-controller test
-pnpm -F @home-ktv/mobile-controller typecheck
+pnpm -F @home-ktv/controller dev
+pnpm -F @home-ktv/controller test
+pnpm -F @home-ktv/controller typecheck
 ```
 
 推荐本地启动：

@@ -1,6 +1,6 @@
 # HomeKTV Web TV Player
 
-`apps/tv-player` 是 Web 版 TV 播放端，当前主要用于浏览器调试和历史兼容。正式电视播放以 [HomeKTV Android TV](../../HomeKTV/README.md) 为准。
+`apps/tv-web` 是 Web 版 TV 播放端，当前主要用于浏览器调试和历史兼容。正式电视播放以 [Android TV](../../clients/android-tv/README.md) 为准。
 
 ## 职责
 
@@ -28,8 +28,8 @@ VITE_API_BASE_URL=http://192.168.5.64:4000
 从项目根目录运行：
 
 ```bash
-pnpm -F @home-ktv/tv-player dev
-pnpm -F @home-ktv/tv-player typecheck
+pnpm -F @home-ktv/tv-web dev
+pnpm -F @home-ktv/tv-web typecheck
 ```
 
 推荐统一启动：

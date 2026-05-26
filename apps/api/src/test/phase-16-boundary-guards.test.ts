@@ -6,8 +6,8 @@ const sourceFiles = [
   "../../../../packages/player-contracts/src/index.ts",
   "../../../../apps/api/src/modules/playback/build-playback-target.ts",
   "../../../../apps/api/src/modules/playback/build-switch-target.ts",
-  "../../../../apps/tv-player/src/runtime/player-client.ts",
-  "../../../../apps/tv-player/src/runtime/video-pool.ts"
+  "../../../../apps/tv-web/src/runtime/player-client.ts",
+  "../../../../apps/tv-web/src/runtime/video-pool.ts"
 ] as const;
 
 describe("phase 16 boundary guards", () => {

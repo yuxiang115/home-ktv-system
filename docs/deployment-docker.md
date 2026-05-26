@@ -1,0 +1,84 @@
+# Docker Compose 部署
+
+Docker 部署适合服务器通过 Git 拉取代码后运行。它会启动 PostgreSQL、API、Admin 和 Controller。
+
+## 第一次部署
+
+```bash
+git clone git@github.com:ShaoLongFei/home-ktv-system.git
+cd home-ktv-system
+
+bash deploy/docker/ktv.sh setup
+vim deploy/docker/.env
+bash deploy/docker/ktv.sh start
+bash deploy/docker/ktv.sh status
+```
+
+`deploy/docker/.env` 从 `deploy/env/server.env.example` 生成。至少需要检查：
+
+```bash
+PUBLIC_BASE_URL=http://<server-ip>:4000
+CONTROLLER_BASE_URL=http://<server-ip>:5176
+CORS_ALLOWED_ORIGINS=http://<server-ip>:5174,http://<server-ip>:5176
+KTV_NAS_HOST_PATH=/mnt/nas/KTV歌曲
+```
+
+## 常用命令
+
+```bash
+bash deploy/docker/ktv.sh pull
+bash deploy/docker/ktv.sh build
+bash deploy/docker/ktv.sh start
+bash deploy/docker/ktv.sh restart
+bash deploy/docker/ktv.sh status
+bash deploy/docker/ktv.sh logs
+bash deploy/docker/ktv.sh logs api
+bash deploy/docker/ktv.sh stop
+```
+
+## 服务
+
+```text
+postgres    PostgreSQL 数据库
+api         Fastify API，端口 4000
+admin       Nginx 托管后台，端口 5174
+controller  Nginx 托管手机控制器，端口 5176
+```
+
+API 容器启动时会先执行数据库迁移，再启动 `apps/api/dist/server.js`，避免线上运行时出现数据库字段缺失。
+
+## 媒体路径
+
+Docker 容器内的媒体根目录默认是：
+
+```bash
+DOCKER_MEDIA_ROOT=/data/home-ktv-media
+```
+
+NAS 在宿主机上的路径：
+
+```bash
+KTV_NAS_HOST_PATH=/mnt/nas/KTV歌曲
+```
+
+索引路径到容器路径的映射：
+
+```bash
+DOCKER_MEDIA_PATH_MAPPINGS=/mnt/nas/KTV歌曲=/nas/KTV歌曲
+```
+
+如果服务器 NAS 挂载路径和数据库索引路径一致，也仍然建议通过 `DOCKER_MEDIA_PATH_MAPPINGS` 明确映射到容器内路径。
+
+## 验证
+
+```bash
+bash deploy/docker/ktv.sh config
+curl http://<server-ip>:4000/health
+```
+
+打开：
+
+```text
+http://<server-ip>:5174/
+http://<server-ip>:5176/controller?room=living-room
+```

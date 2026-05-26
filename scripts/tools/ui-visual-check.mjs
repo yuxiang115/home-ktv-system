@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const LOG_DIR = path.join(ROOT_DIR, "logs", "visual");
 const DEFAULT_ADMIN_URL = "http://127.0.0.1:5174/";
 const DEFAULT_API_URL = "http://127.0.0.1:4000";
@@ -14,12 +14,12 @@ const CHROME_CAPTURE_TIMEOUT_MS = 20_000;
 
 const screenshots = [
   {
-    file: path.join(LOG_DIR, "mobile-controller-390x844.png"),
+    file: path.join(LOG_DIR, "controller-390x844.png"),
     size: "390,844",
     url: "mobile"
   },
   {
-    file: path.join(LOG_DIR, "mobile-controller-375x667.png"),
+    file: path.join(LOG_DIR, "controller-375x667.png"),
     size: "375,667",
     url: "mobile"
   },
@@ -162,8 +162,8 @@ Default Mobile capture obtains a fresh paired controller URL from POST /admin/ro
 MOBILE_VISUAL_URL bypasses automatic pairing and is used as the full Mobile URL override.
 
 Output:
-  logs/visual/mobile-controller-390x844.png
-  logs/visual/mobile-controller-375x667.png
+  logs/visual/controller-390x844.png
+  logs/visual/controller-375x667.png
   logs/visual/admin-1440x900.png
   logs/visual/admin-768x900.png
 `);

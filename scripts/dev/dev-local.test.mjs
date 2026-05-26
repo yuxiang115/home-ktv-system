@@ -29,7 +29,7 @@ test("status prints pairing-token mobile controller URL when API snapshot is ava
   const port = server.address().port;
 
   try {
-    const result = await runNodeScript(["scripts/dev-local.mjs", "status"], {
+    const result = await runNodeScript(["scripts/dev/dev-local.mjs", "status"], {
       KTV_LOG_DIR: logDir,
       KTV_LAN_IP: "127.0.0.1",
       PUBLIC_BASE_URL: `http://127.0.0.1:${port}`,
@@ -51,7 +51,7 @@ test("help documents the media path mapping passed to the API service", async ()
   const logDir = await mkdtemp(path.join(os.tmpdir(), "home-ktv-dev-local-"));
 
   try {
-    const result = await runNodeScript(["scripts/dev-local.mjs", "help"], {
+    const result = await runNodeScript(["scripts/dev/dev-local.mjs", "help"], {
       KTV_LOG_DIR: logDir,
       KTV_LAN_IP: "127.0.0.1",
       MEDIA_ROOT: path.join(logDir, "media"),
@@ -69,7 +69,7 @@ test("help documents the media path mapping passed to the API service", async ()
 function runNodeScript(args, env) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, args, {
-      cwd: path.resolve(import.meta.dirname, ".."),
+      cwd: path.resolve(import.meta.dirname, "..", ".."),
       env: { ...process.env, ...env }
     });
 

@@ -4,7 +4,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { seedDemoSongs } from "../../../../scripts/seed-demo-song.mjs";
+import { seedDemoSongs } from "../../../../scripts/tools/seed-demo-song.mjs";
 
 let testServer: Server | null = null;
 

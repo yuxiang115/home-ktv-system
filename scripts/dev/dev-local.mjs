@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const LOG_DIR = process.env.KTV_LOG_DIR?.trim() || path.join(ROOT_DIR, "logs", "dev");
 const PID_DIR = path.join(LOG_DIR, "pids");
 const ROOM_SLUG = process.env.TV_ROOM_SLUG?.trim() || "living-room";
@@ -39,16 +39,21 @@ const SERVICES = {
     command: "pnpm",
     port: 5174
   },
-  "mobile-controller": {
-    args: ["-F", "@home-ktv/mobile-controller", "dev"],
+  controller: {
+    args: ["-F", "@home-ktv/controller", "dev"],
     command: "pnpm",
     port: 5176
   },
-  "tv-player": {
-    args: ["-F", "@home-ktv/tv-player", "dev"],
+  "tv-web": {
+    args: ["-F", "@home-ktv/tv-web", "dev"],
     command: "pnpm",
     port: 5173
   }
+};
+
+const SERVICE_ALIASES = {
+  "mobile-controller": "controller",
+  "tv-player": "tv-web"
 };
 
 const command = process.argv[2] || "status";
@@ -104,7 +109,7 @@ async function main(currentCommand, currentArg) {
 }
 
 function serviceNames() {
-  return ["api", "admin", "tv-player", "mobile-controller"];
+  return ["api", "admin", "tv-web", "controller"];
 }
 
 function serviceLogPath(service) {
@@ -242,7 +247,7 @@ function reportStatus(service) {
 }
 
 async function tailLogs(service) {
-  const targets = service ? [service] : serviceNames();
+  const targets = service ? [normalizeServiceName(service)] : serviceNames();
   for (const name of targets) {
     if (!SERVICES[name]) {
       console.error(`Unknown service: ${name}`);
@@ -267,6 +272,10 @@ async function tailLogs(service) {
     }
     process.exitCode = code ?? 0;
   });
+}
+
+function normalizeServiceName(service) {
+  return SERVICE_ALIASES[service] ?? service;
 }
 
 async function printUrls() {
@@ -329,7 +338,7 @@ function printUsage(error = false) {
     "Usage: pnpm dev:local <command> [service]",
     "",
     "Commands:",
-    "  start              Start api, admin, tv-player, and mobile-controller",
+    "  start              Start api, admin, tv-web, and controller",
     "  stop               Stop services started by this script",
     "  restart            Stop then start all services",
     "  status             Show service status and local URLs",

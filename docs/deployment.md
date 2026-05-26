@@ -1,209 +1,79 @@
 # 部署说明
 
-本文档说明 HomeKTV 的本地部署方式。当前推荐使用电脑作为后端服务端，Android TV、手机控制器和后台通过局域网访问电脑。
-
-## 前置条件
+HomeKTV 支持三种运行方式：
 
 ```text
-Node.js
-pnpm 10.x
-PostgreSQL
-Android Platform Tools / adb
-Android Studio 或真实 Android TV
-ffmpeg / ffprobe
+本地开发      pnpm dev:local start
+Docker 部署   bash deploy/docker/ktv.sh start
+源码部署      bash deploy/source/ktv.sh start
 ```
 
-PostgreSQL 当前默认连接：
+服务器部署只包含后端 API、后台 Admin、手机 Controller 和 PostgreSQL。Android TV 是正式 TV 客户端，需要单独构建 APK 并安装到电视。
+
+## 文档入口
+
+- [本地开发部署](deployment-local.md)
+- [Docker Compose 部署](deployment-docker.md)
+- [源码部署](deployment-source.md)
+- [项目结构](project-structure.md)
+- [Android TV](../clients/android-tv/README.md)
+
+## 推荐路径
+
+本地开发使用：
 
 ```bash
-DATABASE_URL=postgres://ktv:ktv@127.0.0.1:5432/home_ktv
-```
-
-## 本地环境变量
-
-建议在当前 shell 中设置：
-
-```bash
-export DATABASE_URL=postgres://ktv:ktv@127.0.0.1:5432/home_ktv
-export MEDIA_ROOT=/Users/shaolongfei/OtherProjects/home-ktv-system/home-ktv-media
-export PUBLIC_BASE_URL=http://192.168.5.64:4000
-export CONTROLLER_BASE_URL=http://192.168.5.64:5176
-export MEDIA_PATH_MAPPINGS=/mnt/nas/KTV歌曲=/mnt/nas/KTV歌曲
-```
-
-`PUBLIC_BASE_URL` 和 `CONTROLLER_BASE_URL` 必须使用手机和 TV 都能访问的局域网 IP。不要在二维码或 TV 配置里使用 `localhost`。
-
-如果本机 IP 变化，可以通过以下命令查看：
-
-```bash
-ipconfig getifaddr en0
-```
-
-## 数据库迁移
-
-```bash
+pnpm install
 pnpm db:migrate
-```
-
-如果迁移失败，先确认 PostgreSQL 容器或本地服务已经启动，并且 `DATABASE_URL` 指向正确数据库。
-
-## 一键本地部署
-
-启动全部 Web/后端服务：
-
-```bash
 pnpm dev:local start
 ```
 
-重启：
+服务器优先使用 Docker Compose：
 
 ```bash
-pnpm dev:local restart
+bash deploy/docker/ktv.sh setup
+bash deploy/docker/ktv.sh start
+bash deploy/docker/ktv.sh status
 ```
 
-查看状态：
+如果服务器已经有 Node.js、pnpm 和 PostgreSQL，也可以使用源码部署：
 
 ```bash
-pnpm dev:local status
+bash deploy/source/ktv.sh setup
+bash deploy/source/ktv.sh start
+bash deploy/source/ktv.sh status
 ```
 
-停止：
+## 核心配置
+
+`PUBLIC_BASE_URL` 和 `CONTROLLER_BASE_URL` 必须是手机与 Android TV 都能访问的局域网 IP 或域名，不能使用 `localhost`。
+
+真实 NAS 曲库需要确保后端能读取数据库中的文件路径。路径不一致时，通过 `MEDIA_PATH_MAPPINGS` 或 `DOCKER_MEDIA_PATH_MAPPINGS` 映射。
+
+## 常见验证
 
 ```bash
-pnpm dev:local stop
+curl http://<server-ip>:4000/health
 ```
 
-查看日志：
-
-```bash
-pnpm dev:local tail api
-pnpm dev:local tail admin
-pnpm dev:local tail mobile-controller
-pnpm dev:local tail tv-player
-```
-
-日志目录：
+后台：
 
 ```text
-logs/dev/
+http://<server-ip>:5174/
 ```
 
-## 默认访问地址
-
-实际地址以 `pnpm dev:local start` 输出为准。常见地址：
+手机控制器：
 
 ```text
-API health:        http://192.168.5.64:4000/health
-Admin:             http://192.168.5.64:5174/
-Mobile controller: http://192.168.5.64:5176/controller?room=living-room
-Web TV debug:      http://192.168.5.64:5173/
+http://<server-ip>:5176/controller?room=living-room
 ```
 
-## Android TV 部署
-
-Android TV 是正式 TV 播放端。`apps/tv-player` 仍可用于 Web 调试，但真实 MV 播放、音轨切换和电视体验以 Android TV + libVLC 为准。
-
-构建 APK：
-
-```bash
-cd HomeKTV
-./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon
-cd ..
-```
-
-安装到真实电视：
-
-```bash
-adb connect <TV_IP>:5555
-adb install -r HomeKTV/app/build/outputs/apk/debug/app-debug.apk
-```
-
-启动 TV 端：
+Android TV 启动时传入：
 
 ```bash
 adb shell am start -W \
   -n com.liuyue.homektv/.MainActivity \
-  --es apiBaseUrl http://192.168.5.64:4000 \
+  --es apiBaseUrl http://<server-ip>:4000 \
   --es room living-room \
   --es deviceName "Living Room TV"
 ```
-
-如果电视使用 Android 无线调试配对：
-
-```bash
-adb pair <TV_IP>:<PAIR_PORT>
-adb connect <TV_IP>:<CONNECT_PORT>
-```
-
-## 真实曲库与 NAS
-
-数据库中的真实 KTV 索引通常保存 NAS 原始路径，例如：
-
-```text
-/mnt/nas/KTV歌曲/...
-```
-
-后端必须能读取这些路径，或者通过 `MEDIA_PATH_MAPPINGS` 映射到当前机器实际挂载路径。
-
-生成的 web-compatible 文件默认写入：
-
-```text
-home-ktv-media/generated/ktv-index/
-```
-
-这些生成文件是运行时产物，不提交到 git。
-
-## 基线自动验证
-
-在做 Android TV、控制器、后端播放链路或部署脚本改动后，先确认数据库迁移已应用，再运行验证命令：
-
-```bash
-DATABASE_URL=postgres://ktv:ktv@127.0.0.1:5432/home_ktv pnpm db:migrate
-
-pnpm -F @home-ktv/api typecheck
-pnpm -F @home-ktv/mobile-controller typecheck
-
-cd HomeKTV
-./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon
-cd ..
-```
-
-## 真实 Android TV 基线验证
-
-1. 运行 `DATABASE_URL=postgres://ktv:ktv@127.0.0.1:5432/home_ktv pnpm db:migrate`。
-2. `http://192.168.5.64:4000/health` 返回 JSON。
-3. `pnpm dev:local status` 显示 API、Admin、Mobile controller 正常运行。
-4. 安装并启动 Android TV APK，`apiBaseUrl` 使用电脑局域网 IP。
-5. Android TV 空闲页显示二维码。
-6. 后台 `Room` 页面能看到 TV 在线。
-7. 手机扫码进入控制器，右上角显示电视在线。
-8. 手机搜索一首真实歌曲并点歌。
-9. Android TV 开始播放真实 MV，左下角显示时间和音轨信息。
-10. 手机执行切歌，TV 切到下一首或回到空闲状态。
-11. 手机对队列里的歌曲执行顶歌、删除，Mobile/Admin/TV 状态不需要刷新网页即可更新。
-12. 使用一首确认有双音轨的歌曲，点击原唱/伴唱切换；TV 左下角模式或音轨编号应变化。
-13. 拖动手机控制器音量，Android TV 当前播放音量应变化；切到下一首后音量保持房间当前值。
-14. 关闭手机页面，再扫码或打开控制器 URL，队列和当前播放状态能恢复。
-15. Web TV 只作为调试端验证页面和协议，不作为真实 MV 播放兼容性的最终判断。
-
-## 常见问题
-
-### 手机或 TV 访问不到 API
-
-确认电脑、手机、电视在同一个局域网，并且 `PUBLIC_BASE_URL` 是电脑局域网 IP。
-
-### TV 在线但手机显示电视离线
-
-检查控制器请求的 API 地址是否仍是 `localhost`。二维码应该来自 `CONTROLLER_BASE_URL`，并指向局域网 IP。
-
-### 媒体返回 404 或不可读
-
-检查 `assets.file_path` 或 `ktv_song_assets.file_path` 指向的文件是否存在。NAS 路径不可读时，需要挂载 NAS 或配置 `MEDIA_PATH_MAPPINGS`。
-
-### 播放有声音问题
-
-优先在真实电视上验证。Android 模拟器的音频输出可能有杂音，不适合作为最终音质判断。
-
-### 热门歌曲榜单失败
-
-查看 [packages/hot-songs/README.md](../packages/hot-songs/README.md)，重点检查 `source-report.json`、代理和 Cookie。

@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const LOG_DIR = path.join(ROOT_DIR, "logs", "visual");
 const DEFAULT_URL =
   "http://127.0.0.1:5173/?apiBaseUrl=http://127.0.0.1:4000&roomSlug=living-room&deviceName=Living%20Room%20TV";
@@ -12,11 +12,11 @@ const DEFAULT_CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Ch
 
 const screenshots = [
   {
-    file: path.join(LOG_DIR, "tv-player-1920x1080.png"),
+    file: path.join(LOG_DIR, "tv-web-1920x1080.png"),
     size: "1920,1080"
   },
   {
-    file: path.join(LOG_DIR, "tv-player-1366x768.png"),
+    file: path.join(LOG_DIR, "tv-web-1366x768.png"),
     size: "1366,768"
   }
 ];
@@ -62,8 +62,8 @@ Defaults:
   CHROME_BIN=${DEFAULT_CHROME}
 
 Output:
-  logs/visual/tv-player-1920x1080.png
-  logs/visual/tv-player-1366x768.png
+  logs/visual/tv-web-1920x1080.png
+  logs/visual/tv-web-1366x768.png
 `);
 }
 

@@ -88,14 +88,14 @@ near-duplicates.csv
 建议固定输出到 `latest`，这样后续下载器或其它程序只需要读取一个稳定路径：
 
 ```bash
-cd /Users/shaolongfei/OtherProjects/home-ktv-system
+cd /path/to/home-ktv-system
 pnpm hot-songs:update -- --out .planning/reports/hot-songs/latest
 ```
 
 每周运行一次的 cron 示例：
 
 ```cron
-20 4 * * 1 cd /Users/shaolongfei/OtherProjects/home-ktv-system && pnpm hot-songs:update -- --out .planning/reports/hot-songs/latest >> .planning/reports/hot-songs/latest.log 2>&1
+20 4 * * 1 cd /path/to/home-ktv-system && pnpm hot-songs:update -- --out .planning/reports/hot-songs/latest >> .planning/reports/hot-songs/latest.log 2>&1
 ```
 
 如果你在其它地方完成采集，只想复用本项目的归一化和融合：

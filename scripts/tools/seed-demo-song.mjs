@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const DEFAULT_MEDIA_ROOT = process.env.MEDIA_ROOT?.trim() || path.join(ROOT_DIR, "home-ktv-media");
 const DEFAULT_API_BASE_URL = process.env.PUBLIC_BASE_URL?.trim() || process.env.API_BASE_URL?.trim() || "http://127.0.0.1:4000";
 const DEFAULT_ROOM_SLUG = process.env.TV_ROOM_SLUG?.trim() || "living-room";

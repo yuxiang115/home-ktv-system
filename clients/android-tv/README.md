@@ -1,6 +1,6 @@
 # HomeKTV Android TV
 
-`HomeKTV` 是 HomeKTV 的正式 TV 播放端。它是 Android TV 项目，使用 Kotlin 和 libVLC 播放真实 KTV MV。
+`clients/android-tv` 是 HomeKTV 的正式 TV 播放端。它是 Android TV 项目，使用 Kotlin 和 libVLC 播放真实 KTV MV。
 
 Web TV 端保留为调试客户端；真实电视播放、真实 MV 解码和原唱/伴唱音轨切换以本项目为准。浏览器 autoplay 或浏览器音轨支持限制不作为 Android TV 产品体验的判断依据。
 
@@ -25,9 +25,9 @@ Gradle
 ## 关键目录
 
 ```text
-HomeKTV/app/src/main/java/com/liuyue/homektv/
-HomeKTV/app/src/main/res/
-HomeKTV/app/src/test/
+clients/android-tv/app/src/main/java/com/liuyue/homektv/
+clients/android-tv/app/src/main/res/
+clients/android-tv/app/src/test/
 ```
 
 ## 构建
@@ -35,14 +35,14 @@ HomeKTV/app/src/test/
 从项目根目录运行：
 
 ```bash
-cd HomeKTV
+cd clients/android-tv
 ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon
 ```
 
 APK 输出：
 
 ```text
-HomeKTV/app/build/outputs/apk/debug/app-debug.apk
+clients/android-tv/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ## 安装到电视
@@ -51,7 +51,7 @@ HomeKTV/app/build/outputs/apk/debug/app-debug.apk
 
 ```bash
 adb connect <TV_IP>:5555
-adb install -r HomeKTV/app/build/outputs/apk/debug/app-debug.apk
+adb install -r clients/android-tv/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 启动并指定后端：
@@ -81,7 +81,7 @@ instrumental 伴唱/伴奏
 
 ## 基线验证
 
-完整步骤见 [部署说明](../docs/deployment.md) 的“真实 Android TV 基线验证”。每次修改 Android TV 播放、后端播放状态、手机控制器或部署脚本后，至少回归：
+完整步骤见 [部署说明](../../docs/deployment.md) 的“真实 Android TV 基线验证”。每次修改 Android TV 播放、后端播放状态、手机控制器或部署脚本后，至少回归：
 
 - 空闲页二维码。
 - 手机扫码进入控制器。
@@ -94,6 +94,6 @@ instrumental 伴唱/伴奏
 
 ## 相关文档
 
-- [部署说明](../docs/deployment.md)
-- [Android TV libVLC 调研](../docs/plans/2026-05-21-android-tv-libvlc-spike.md)
-- [Android TV 真机客户端设计](../docs/plans/2026-05-21-android-tv-real-client-design.md)
+- [部署说明](../../docs/deployment.md)
+- [Android TV libVLC 调研](../../docs/plans/2026-05-21-android-tv-libvlc-spike.md)
+- [Android TV 真机客户端设计](../../docs/plans/2026-05-21-android-tv-real-client-design.md)

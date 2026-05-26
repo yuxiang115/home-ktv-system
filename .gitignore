@@ -5,7 +5,13 @@ coverage/
 .env
 .env.local
 logs/
+runtime/
 home-ktv-media/
 songs-sample/
 .worktrees/
 worktrees/
+clients/android-tv/.gradle/
+clients/android-tv/.idea/
+clients/android-tv/.kotlin/
+clients/android-tv/app/build/
+clients/android-tv/local.properties
