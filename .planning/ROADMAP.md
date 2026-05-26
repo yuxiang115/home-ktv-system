@@ -5,136 +5,176 @@
 - [x] **v1.0 MVP** - 单房间家庭 KTV 可唱闭环，Phases 1-5，shipped 2026-05-08. Archive: `.planning/milestones/v1.0-ROADMAP.md`
 - [x] **v1.1 Polish** - TV 播放体验、产品化 UI、代码结构与逻辑打磨，Phases 6-11，shipped 2026-05-10. Archive: `.planning/milestones/v1.1-ROADMAP.md`
 - [x] **v1.2 真实 MV 歌库** - 真实 MKV/MPG MV 文件接入，Phases 12-17，shipped 2026-05-14. Archive: `.planning/milestones/v1.2-ROADMAP.md`
-- [ ] **v1.3 真实场景接入、部署和验证** - 真实 `ktv_*` 索引和 NAS 歌库接入产品 runtime，Phases 18-22
+- [x] **v1.3 真实场景接入与 Android TV 基线** - 真实索引搜索、队列同步、真实 NAS 播放验证和 Android TV/libVLC 技术路线收口，Phases 18-19 + direct implementation，converged 2026-05-26. Archive: `.planning/milestones/v1.3-ROADMAP.md`
+- [ ] **v1.4 Android TV 产品化与流程简化** - 正式电视端、部署、诊断、真实歌库运维和代码/流程简化，Phases 20-26
 
 ## Overview
 
-v1.3 把已经建立好的真实 KTV 索引和 NAS 媒体库接入实际产品运行链路。目标不是再证明真实 MV 文件如何建模，而是让用户在真实部署中用手机搜索到 `ktv_*` 索引中的歌曲，点歌时安全同步到现有 `songs/assets` 正式运行表，复用队列、TV 播放、切歌和恢复逻辑，并通过一套可重复部署和 UAT 流程验证真实场景可用。
+v1.4 的目标是把已经跑通的真实歌库 + Android TV 播放链路产品化。当前主链路已经可以用手机搜索真实 `ktv_*` 索引歌曲、点歌、进入队列，并由 Android TV + libVLC 播放 NAS 上的 MKV/MPG MV；用户也已经验证了 30 首随机样本大多可播放和切换音轨。
 
-Explicitly out of scope for this roadmap: native Android TV app, mandatory transcoding/remuxing, bulk import of the whole indexed library, multi-room library partitioning, online provider acquisition/downloads, hot-song ranking, user accounts, and scoring/DSP features.
+本里程碑不继续扩张产品边界，而是按真实使用顺序收口：先冻结当前可用基线，再完善 Android TV 配置、APK 发布、异常诊断、真实歌库运维和部署 smoke。中间安排一个独立的“代码和流程简化”章节，专门清理探索期留下的旧接口、旧流程和重复状态。
 
-## Current Milestone: v1.3 真实场景接入、部署和验证
+Explicitly out of scope for this roadmap: multi-room, accounts, scoring, realtime microphone DSP, mandatory server-side transcoding, large CMS features, and online provider acquisition/downloads.
 
-**Goal:** 让手机搜索、点歌、后台诊断和 TV 播放实际使用已建立的 `ktv_*` 索引与 `/mnt/nas/KTV歌曲` 真实媒体库，并形成可重复部署与真实场景验证流程。
+## Current Milestone: v1.4 Android TV 产品化与流程简化
+
+**Goal:** 让 HomeKTV 可以按真实家庭电视使用方式部署、启动、扫码、点歌、播放、切换、诊断和维护，并通过一次有证据的代码/流程简化降低后续维护成本。
 
 **Phase Numbering:**
 - v1.0 completed Phases 1-5.
 - v1.1 completed Phases 6-11.
 - v1.2 completed Phases 12-17.
-- v1.3 continues with Phases 18-22.
+- v1.3 completed/converged Phases 18-19 and direct Android TV baseline work.
+- v1.4 continues with Phases 20-26.
 - Decimal phases remain reserved for urgent insertions.
 
 ## Phases
 
-- [x] **Phase 18: KTV Index Read Model and Diagnostics** - Make the real index queryable, bounded, observable, and visible to Admin/operators. (completed 2026-05-20)
-- [x] **Phase 19: Search and Queue-Time Catalog Sync** - Let Mobile queue indexed songs by syncing selected assets into canonical `songs/assets`. (completed 2026-05-20)
-- [ ] **Phase 20: Real Media Path, Streaming, and Playback Target Verification** - Prove synced real assets can resolve paths, stream, and reach TV playback safely.
-- [ ] **Phase 21: Real Deployment Profile and Operator Workflow** - Provide one clear real-mode deployment path with logs, env, health checks, and index refresh commands.
-- [ ] **Phase 22: Real-Scene UAT, Failure States, and Milestone Hardening** - Validate real search-to-playback flows and close failure/recovery evidence.
+- [ ] **Phase 20: Android TV Baseline UAT and Current Flow Freeze** - Freeze the current real playback baseline before further productization.
+- [ ] **Phase 21: Android TV Startup Configuration and Persistence** - Make Android TV remember API/room/device configuration and recover without adb-only startup.
+- [ ] **Phase 22: APK Release, Signing, and Install Workflow** - Provide repeatable debug/release APK build, signing, install, and rollback instructions.
+- [ ] **Phase 23: Playback Resilience and Diagnostics** - Harden backend restart, network loss, NAS unreadable, playback failure, and track-switch failure visibility.
+- [ ] **Phase 24: Code and Flow Simplification Audit** - Audit and simplify legacy interfaces, old media assumptions, redundant state, and non-core flows.
+- [ ] **Phase 25: Admin Real Library Operations** - Improve Songs diagnostics for real indexed/NAS library operations without turning Admin into a CMS.
+- [ ] **Phase 26: Production Deployment Smoke and Milestone Hardening** - Provide real-mode startup, logs, health checks, smoke scripts, UAT evidence, and audit readiness.
 
 ## Phase Details
 
-### Phase 18: KTV Index Read Model and Diagnostics
+### Phase 20: Android TV Baseline UAT and Current Flow Freeze
 
-**Goal**: Product and operators can safely inspect and search the real `ktv_*` index without touching queue/playback yet.
-**Depends on**: Phase 17
-**Requirements**: INDEX-01, INDEX-02, INDEX-03, INDEX-04
+**Goal**: Establish the current real Android TV playback path as the regression baseline.
+**Depends on**: v1.3 convergence
+**Requirements**: BASE-01, BASE-02, BASE-03
 **Success Criteria** (what must be TRUE):
-  1. API has a read-only repository for `ktv_index_runs`, `ktv_songs`, `ktv_artists`, `ktv_song_artists`, and active `ktv_song_assets`.
-  2. Search queries use indexed normalized fields and active-asset filters, with bounded limits and no whole-library in-memory scans.
-  3. Admin/operator diagnostics can show latest run, active/missing counts, indexed source root, and query health.
-  4. Product search response can distinguish formal catalog results from KTV indexed results without exposing unsafe queue actions yet.
-**Plans**: 3 plans
+  1. A manual UAT checklist covers QR entry, real search, queue, playback, skip, promote, delete, original/accompaniment switch, volume, and controller re-entry.
+  2. The current verification command set is documented for API, Mobile, and Android TV.
+  3. Known browser autoplay and Web TV limitations are explicitly separated from Android TV product behavior.
+**Plans**: 2 plans
 Plans:
-- [x] 18-01-PLAN.md - KTV index repository, query contracts, and stats model
-- [x] 18-02-PLAN.md - API/Admin diagnostics and bounded search preview
-- [x] 18-03-PLAN.md - Search response source labeling and regression coverage
+- [ ] 20-01-PLAN.md - Baseline UAT checklist and deployment verification commands
+- [ ] 20-02-PLAN.md - Current flow notes and known limitation register
 
-### Phase 19: Search and Queue-Time Catalog Sync
+### Phase 21: Android TV Startup Configuration and Persistence
 
-**Goal**: User can queue a KTV indexed song from Mobile while existing queue/playback continues using canonical `songs/assets` IDs.
-**Depends on**: Phase 18
-**Requirements**: SYNC-01, SYNC-02, SYNC-03, SYNC-04
-**Success Criteria** (what must be TRUE):
-  1. Mobile search renders queueable indexed song versions with clear source/version labels.
-  2. Queueing an indexed asset creates or reuses one canonical Song and one canonical Asset idempotently.
-  3. Synced canonical rows preserve source index identity, file path, title, artist, category, extension, size, and parse confidence.
-  4. Existing queue commands and realtime snapshots work for synced real songs with no second ID universe in `queue_entries`.
-**Plans**: 4 plans
-Plans:
-- [x] 19-01-PLAN.md - Indexed result contract and Mobile search UI
-- [x] 19-02-PLAN.md - Idempotent indexed-asset catalog sync service
-- [x] 19-03-PLAN.md - Queue command integration and duplicate handling
-- [x] 19-04-PLAN.md - Queue/realtime regression coverage for synced real songs
-**UI hint**: yes
-
-### Phase 20: Real Media Path, Streaming, and Playback Target Verification
-
-**Goal**: Synced real songs can be resolved from NAS-indexed paths, streamed through the API, and delivered to TV as safe playback targets.
-**Depends on**: Phase 19
-**Requirements**: MEDIA-01, MEDIA-02, MEDIA-03, MEDIA-04, MEDIA-05
-**Success Criteria** (what must be TRUE):
-  1. API can map indexed `/mnt/nas/KTV歌曲/...` file paths to readable runtime paths through explicit configuration.
-  2. Unmapped, missing, or unreadable real media paths are reported before or during queue/playback with clear Chinese guidance.
-  3. Asset gateway serves synced MKV/MPG/MPEG files with byte-range support and appropriate MIME behavior.
-  4. TV receives normal existing PlaybackTarget payloads for synced real assets and does not need to understand `ktv_*` IDs.
-  5. Original/accompaniment switching remains runtime capability-gated and never claims support before TV proves it.
-**Plans**: 4 plans
-Plans:
-- [ ] 20-01-PLAN.md - Media path resolver and preflight status model
-- [ ] 20-02-PLAN.md - Asset gateway streaming for synced real media
-- [ ] 20-03-PLAN.md - PlaybackTarget and TV failure-state verification
-- [ ] 20-04-PLAN.md - Capability-gated switching and media-path regression coverage
-
-### Phase 21: Real Deployment Profile and Operator Workflow
-
-**Goal**: User can deploy all four local services against the real database and NAS library with one clear command path and useful logs/health checks.
+**Goal**: Android TV can be launched like a product instead of depending on adb parameters every time.
 **Depends on**: Phase 20
-**Requirements**: DEPLOY-01, DEPLOY-02, DEPLOY-03, DEPLOY-04
+**Requirements**: ATV-01, ATV-02, ATV-03, ATV-04
 **Success Criteria** (what must be TRUE):
-  1. Real-library mode starts API, Admin, TV, and Mobile with consistent `DATABASE_URL`, `PUBLIC_BASE_URL`, controller URLs, KTV index root, and media path mapping.
-  2. Per-service logs remain available and tail-able through existing local deployment tooling.
-  3. A health/preflight command verifies PostgreSQL, index counts, NAS mapping, sample file readability, API health, and service URLs.
-  4. Operator documentation explains full index refresh, safe limited smoke index runs, and how to avoid marking assets missing accidentally.
+  1. Android TV persists `apiBaseUrl`, `room`, and `deviceName` after a parameterized launch.
+  2. Normal launch without adb parameters restores saved configuration.
+  3. First launch without configuration shows a clear Chinese setup/connection state.
+  4. API unreachable or network-lost states are visible on the TV without exposing noisy debug text.
 **Plans**: 3 plans
 Plans:
-- [ ] 21-01-PLAN.md - Real-mode deployment profile and env contract
-- [ ] 21-02-PLAN.md - Health/preflight command and per-service log workflow
-- [ ] 21-03-PLAN.md - Index refresh documentation and operator safeguards
-
-### Phase 22: Real-Scene UAT, Failure States, and Milestone Hardening
-
-**Goal**: The milestone is verified end-to-end against the real indexed library, with clear failure boundaries and regression evidence.
-**Depends on**: Phase 21
-**Requirements**: VERIFY-01, VERIFY-02, VERIFY-03, VERIFY-04
-**Success Criteria** (what must be TRUE):
-  1. Automated smoke check proves database counts, search, queue-time sync, queue insertion, TV snapshot target, and asset stream reachability.
-  2. Human UAT checklist verifies real search -> queue -> TV playback -> skip/promote/delete -> recovery using actual indexed songs.
-  3. Verification reports separately track indexed, file-readable, browser-playable, and audio-track-switchable states.
-  4. Missing path, unreadable path, unsupported playback, and stale index failures show actionable Chinese messages in the relevant surface.
-  5. Milestone audit can prove all v1.3 requirements are mapped, tested, and ready to archive.
-**Plans**: 3 plans
-Plans:
-- [ ] 22-01-PLAN.md - Real-scene smoke script and verification report
-- [ ] 22-02-PLAN.md - Manual UAT guide and failure-state polish
-- [ ] 22-03-PLAN.md - Milestone hardening, traceability, and audit readiness
+- [ ] 21-01-PLAN.md - Android TV config model and persistence tests
+- [ ] 21-02-PLAN.md - No-parameter launch and setup state UI
+- [ ] 21-03-PLAN.md - Network/API unreachable states and documentation
 **UI hint**: yes
+
+### Phase 22: APK Release, Signing, and Install Workflow
+
+**Goal**: The Android TV app has a repeatable install/update path for real television testing.
+**Depends on**: Phase 21
+**Requirements**: APK-01, APK-02, APK-03, APK-04
+**Success Criteria** (what must be TRUE):
+  1. Debug and release APK build outputs are documented.
+  2. Release signing uses local-only keystore configuration and does not commit secrets.
+  3. Install, update, clear-data, launch, and rollback commands are documented.
+  4. README explains how this Android TV app relates to the Web TV debug client.
+**Plans**: 2 plans
+Plans:
+- [ ] 22-01-PLAN.md - Android TV release build and signing setup
+- [ ] 22-02-PLAN.md - TV install/update/runbook documentation
+
+### Phase 23: Playback Resilience and Diagnostics
+
+**Goal**: Real playback failures are visible, recoverable, and diagnosable across Android TV, Mobile, Admin, and API logs.
+**Depends on**: Phase 22
+**Requirements**: RES-01, RES-02, RES-03, RES-04, RES-05
+**Success Criteria** (what must be TRUE):
+  1. Backend restart and TV reconnect do not leave Mobile/Admin in stale offline/online states.
+  2. NAS unreadable and asset stream failures surface actionable Chinese messages.
+  3. Track-switch failures keep current playback stable and expose raw evidence for diagnosis.
+  4. Android TV reports enough playback diagnostics to map failures to current song/asset/url.
+  5. Controller re-entry after phone browser close restores room state without manual refresh.
+**Plans**: 4 plans
+Plans:
+- [ ] 23-01-PLAN.md - Reconnect and online-state hardening
+- [ ] 23-02-PLAN.md - NAS/stream/playback failure surfaces
+- [ ] 23-03-PLAN.md - Track-switch diagnostics and rollback evidence
+- [ ] 23-04-PLAN.md - Controller re-entry and realtime refresh regression coverage
+**UI hint**: yes
+
+### Phase 24: Code and Flow Simplification Audit
+
+**Goal**: Remove or downgrade interfaces and flows that real usage no longer needs, with proof before each deletion.
+**Depends on**: Phase 23
+**Requirements**: SIMP-01, SIMP-02, SIMP-03, SIMP-04, SIMP-05
+**Success Criteria** (what must be TRUE):
+  1. Audit identifies legacy Web TV assumptions, old dual-asset switch paths, redundant snapshot/control fields, online supplement scope, and deployment env duplication.
+  2. Each candidate is classified as delete, keep, debug-only, or observe-later.
+  3. Deletions are small-batch and covered by targeted tests or manual UAT evidence.
+  4. Public protocol or database contract removals include compatibility notes.
+  5. README/deployment docs no longer present obsolete flows as primary usage.
+**Plans**: 4 plans
+Plans:
+- [ ] 24-01-PLAN.md - Simplification audit inventory and dependency evidence
+- [ ] 24-02-PLAN.md - Web TV/debug path and deployment profile simplification
+- [ ] 24-03-PLAN.md - Playback/control protocol simplification
+- [ ] 24-04-PLAN.md - Online supplement and legacy catalog flow scope cleanup
+
+### Phase 25: Admin Real Library Operations
+
+**Goal**: Admin helps operate the real indexed NAS library without becoming a broad CMS.
+**Depends on**: Phase 24
+**Requirements**: OPS-01, OPS-02, OPS-03, OPS-04
+**Success Criteria** (what must be TRUE):
+  1. Songs diagnostics can inspect real indexed source identity, file path, file readability, and canonical sync status.
+  2. Operators can recheck a single song/asset and run bounded random sample checks.
+  3. Audio track count and inferred/reviewed original/accompaniment role evidence are visible.
+  4. Admin copy stays concise and operational; detailed raw evidence remains behind diagnostics.
+**Plans**: 3 plans
+Plans:
+- [ ] 25-01-PLAN.md - Real indexed song diagnostics expansion
+- [ ] 25-02-PLAN.md - Single asset recheck and bounded sample check
+- [ ] 25-03-PLAN.md - Track evidence display and Admin regression coverage
+**UI hint**: yes
+
+### Phase 26: Production Deployment Smoke and Milestone Hardening
+
+**Goal**: Real-mode deployment is repeatable, observable, and ready for milestone audit.
+**Depends on**: Phase 25
+**Requirements**: DEPLOY-01, DEPLOY-02, DEPLOY-03, DEPLOY-04, VERIFY-01, VERIFY-02
+**Success Criteria** (what must be TRUE):
+  1. One real-mode command/profile starts API, Admin, Mobile, and logs with consistent env.
+  2. A smoke command checks PostgreSQL, `ktv_*` counts, NAS sample readability, API health, search, queue-time sync, asset stream, and current TV snapshot.
+  3. Android TV install/launch instructions include LAN API URL and configuration persistence behavior.
+  4. Human UAT instructions are short enough to execute without asking what to verify next.
+  5. Milestone audit can map all v1.4 requirements to implementation and verification evidence.
+**Plans**: 3 plans
+Plans:
+- [ ] 26-01-PLAN.md - Real-mode deployment profile and env contract
+- [ ] 26-02-PLAN.md - Real-library smoke script and logs workflow
+- [ ] 26-03-PLAN.md - UAT guide, audit evidence, and milestone closeout
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 18 -> 19 -> 20 -> 21 -> 22
+Phases execute in numeric order: 20 -> 21 -> 22 -> 23 -> 24 -> 25 -> 26
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 18. KTV Index Read Model and Diagnostics | 3/3 | Complete    | 2026-05-20 |
-| 19. Search and Queue-Time Catalog Sync | 4/4 | Complete   | 2026-05-20 |
-| 20. Real Media Path, Streaming, and Playback Target Verification | 0/4 | Blocked on Phase 19 | — |
-| 21. Real Deployment Profile and Operator Workflow | 0/3 | Blocked on Phase 20 | — |
-| 22. Real-Scene UAT, Failure States, and Milestone Hardening | 0/3 | Blocked on Phase 21 | — |
+| 20. Android TV Baseline UAT and Current Flow Freeze | 0/2 | Ready | — |
+| 21. Android TV Startup Configuration and Persistence | 0/3 | Blocked on Phase 20 | — |
+| 22. APK Release, Signing, and Install Workflow | 0/2 | Blocked on Phase 21 | — |
+| 23. Playback Resilience and Diagnostics | 0/4 | Blocked on Phase 22 | — |
+| 24. Code and Flow Simplification Audit | 0/4 | Blocked on Phase 23 | — |
+| 25. Admin Real Library Operations | 0/3 | Blocked on Phase 24 | — |
+| 26. Production Deployment Smoke and Milestone Hardening | 0/3 | Blocked on Phase 25 | — |
 
 ## Archived Phase Details
 
 - v1.0 phases: `.planning/milestones/v1.0-phases/`
 - v1.1 phases: `.planning/milestones/v1.1-phases/`
 - v1.2 phases: `.planning/milestones/v1.2-phases/`
+- v1.3 active phase artifacts: `.planning/phases/18-ktv-index-read-model-and-diagnostics/`, `.planning/phases/19-search-and-queue-time-catalog-sync/`

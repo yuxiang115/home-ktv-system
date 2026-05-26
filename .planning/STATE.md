@@ -1,181 +1,74 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.3
-milestone_name: 真实场景接入、部署和验证
-status: verifying
-stopped_at: Completed 19-04-PLAN.md
-last_updated: "2026-05-20T13:09:16.137Z"
-last_activity: 2026-05-20
+milestone: v1.4
+milestone_name: Android TV 产品化与流程简化
+status: planning
+stopped_at: Created v1.4 roadmap
+last_updated: "2026-05-26T21:40:00+08:00"
+last_activity: 2026-05-26
 progress:
-  total_phases: 5
-  completed_phases: 2
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_phases: 7
+  completed_phases: 0
+  total_plans: 21
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` (updated 2026-05-14)
+See: `.planning/PROJECT.md`
 
 **Core value:** 在家庭单电视场景下，让用户用手机完成全部点歌与控制，并稳定地把歌唱起来。
-**Current focus:** Phase 19 — search-and-queue-time-catalog-sync
+**Current focus:** Phase 20 — Android TV baseline UAT and current flow freeze
 
 ## Current Position
 
-Milestone: v1.3 真实场景接入、部署和验证
-Phase: 19 (search-and-queue-time-catalog-sync) — VERIFYING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-05-20
+Milestone: v1.4 Android TV 产品化与流程简化
+Phase: 20 (android-tv-baseline-uat-and-current-flow-freeze) — READY
+Plan: 0 of 2
+Status: Ready to plan/execute Phase 20
+Last activity: 2026-05-26
 
-Progress: [██████████] 100%
+Progress: [----------] 0%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 62
+- Total plans completed before v1.4: 62+ tracked GSD plans plus direct Android TV productization commits
 - Average duration: See milestone archives
 - Total execution time: See milestone archives
-
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| v1.0 Phases 1-5 | 25 | archived | archived |
-| v1.1 Phases 6-11 | 12 | archived | archived |
-| v1.2 Phases 12-17 | 25 | archived | archived |
-
-**Recent Trend:**
-
-- Last milestone: See `.planning/milestones/v1.2-ROADMAP.md`
-- Trend: Stable; ready for Phase 19 discussion/planning
-
-*Updated after each plan completion*
-| Phase 13 P02 | 20 min | 3 tasks | 2 files |
-| Phase 13 P03 | 60 min | 4 tasks | 5 files |
-| Phase 14 P01 | 14 min | 2 tasks | 3 files |
-| Phase 14 P04 | 17 min | 2 tasks | 4 files |
-| Phase 14 P03 | 20min | 2 tasks | 2 files |
-| Phase 14-admin-review-and-catalog-admission P02 | 15 min | 2 tasks | 5 files |
-| Phase 14 P05 | 15 min | 2 tasks | 2 files |
-| Phase 15 P01 | 35 min | 2 tasks | 3 files |
-| Phase 15 P02 | 19 min | 2 tasks | 4 files |
-| Phase 15 P03 | 20 min | 3 tasks | 8 files |
-| Phase 15 P04 | 32 min | 4 tasks | 11 files |
-| Phase 15 P05 | 89 min | 4 tasks | 4 files |
-| Phase 16-policy-seam-android-reservation-and-hardening P02 | 9 min | 2 tasks | 5 files |
-| Phase 16-policy-seam-android-reservation-and-hardening P01 | 17 min | 2 tasks | 5 files |
-| Phase 16 P03 | 8 min | 2 tasks | 3 files |
-| Phase 16-policy-seam-android-reservation-and-hardening P04 | 18 min | 2 tasks | 4 files |
-| Phase 18 P01 | 12 min | 3 tasks | 4 files |
-| Phase 18 P02 | 15 min | 3 tasks | 10 files |
-| Phase 18 P03 | 17 min | 3 tasks | 9 files |
-| Phase 19 P01 | 10 min | 2 tasks | 11 files |
-| Phase 19 P02 | 11 min | 2 tasks | 4 files |
-| Phase 19 P03 | 12 min | 3 tasks | 6 files |
-| Phase 19 P04 | 29 min | 4 tasks | 14 files |
 
 ## Accumulated Context
 
 ### Decisions
 
+- [Milestone v1.4]: Android TV + libVLC is now the official TV playback target; Web TV remains a debug/development client.
+- [Milestone v1.4]: Real MV playback uses one media file with one active audio track at a time; original/accompaniment switching changes libVLC audio track, not separate media volumes.
+- [Milestone v1.4]: Volume is a single room-level playback volume, not separate original/accompaniment volumes.
+- [Milestone v1.4]: Code and flow simplification must be evidence-led: audit first, classify candidates, then remove or downgrade in small batches.
+- [Milestone v1.4]: Productization priority is deployment, Android TV startup/persistence, resilience, diagnostics, and real-library operations before new feature expansion.
 - [Milestone v1.3]: Search may read `ktv_*` directly, but queue/playback should continue using canonical `songs/assets` by syncing selected indexed assets at queue time.
-- [Milestone v1.3]: Real deployment must validate PostgreSQL index health, NAS path mapping, file readability, API streaming, and browser playback separately.
+- [Milestone v1.3]: Real deployment must validate PostgreSQL index health, NAS path mapping, file readability, API streaming, and TV/Mobile runtime separately.
 - [Milestone v1.2]: Real MV library work uses one MKV/MPG/MPEG file as one song, with optional sibling cover image and `song.json` metadata.
 - [Milestone v1.2]: MediaInfo is the primary metadata source; filename and sibling `song.json` fill gaps before Admin review.
-- [Milestone v1.2]: v1.2 preserves Android TV playback boundaries but does not build a native Android TV app.
-- [Milestone v1.2]: Review-first admission remains the default; auto-admit is only a reserved capability.
-- [Milestone v1.2]: Unsupported or uncertain files must be marked clearly and kept out of normal queueable user flows.
-- [Phase 13-01]: Real MV scanner identity combines media quick hash with artifact signatures so sidecar changes trigger reconciliation.
-- [Phase 13-01]: Unstable real MV files are persisted as pending with file-unstable scannerReasons instead of being probed or silently skipped.
-- [Phase 06] TV display copy, first-play prompt, and fallback notice text are centralized in `tv-display-model.ts`.
-- [Phase 06] First-play autoplay block is tracked in local TV state and cleared on successful playback.
-- [Phase 06] The first-play loading banner stays suppressed so the central prompt is not duplicated.
-- [Phase 08] Admin, Mobile, and TV runtime orchestration now lives behind app-local hooks instead of page components.
-- [Phase 08] No shared runtime package was introduced; boundaries stay local until duplication or cross-app coupling justifies extraction.
-- [Milestone audit] v1.1 audit passed after Phase 9 verification closure, Phase 10 paired Mobile visual coverage, and Phase 11 Admin runtime boundary completion.
-- [Gap planning] Phase 9 closes verification/traceability gaps, Phase 10 closes paired Mobile visual-check coverage, Phase 11 closes remaining Admin runtime boundary debt.
-- [Phase 10-paired-mobile-visual-verification]: Default paired Mobile capture now resolves a fresh controller URL through POST /admin/rooms/:room/pairing-token/refresh.
-- [Phase 10-paired-mobile-visual-verification]: MOBILE_VISUAL_URL remains a full override and bypasses pairing refresh when explicitly set.
-- [Phase 10-paired-mobile-visual-verification]: Chrome capture is time-bounded so visual checks complete deterministically even if headless Chrome lingers after writing a screenshot.
-- [Phase 11-admin-runtime-boundary-completion]: Song Catalog runtime orchestration stays app-local in apps/admin/src/songs/use-song-catalog-runtime.ts.
-- [Phase 11-admin-runtime-boundary-completion]: SongCatalogView.tsx remains responsible for rendering existing markup, labels, and editor wiring only.
-- [Phase 11-admin-runtime-boundary-completion]: Import Workbench runtime orchestration stays app-local in apps/admin/src/imports/use-import-workbench-runtime.ts.
-- [Phase 11-admin-runtime-boundary-completion]: ImportWorkbench.tsx now renders returned state and callbacks while TanStack Query orchestration stays inside the runtime hook.
-- [Phase 11-admin-runtime-boundary-completion]: QUAL-01 closure is scoped to the audited Admin Import/Songs runtime boundary and does not add product capability.
-- [Phase 11-admin-runtime-boundary-completion]: Final evidence combines runtime hook tests, page behavior tests, structure grep checks, Admin typecheck, and workspace typecheck.
-- [Milestone v1.1]: TV playback polish, productized Chinese UI, paired Mobile visual coverage, runtime boundaries, and traceability audit are archived.
-- [Phase 13]: Invalid real MV sidecar JSON and schema mismatches become scanner warnings with stable reason codes instead of scan failures. — Plan 13-02 keeps malformed song.json retryable and visible for later Admin review.
-- [Phase 13]: Real MV filename fallback stays conservative and records provenance/conflicts for Admin review. — Plan 13-02 avoids aggressive identity guesses while preserving MediaInfo, filename, and sidecar source labels.
-- [Phase 14-01]: Reviewed trackRoles are accepted only as a complete original/instrumental object whose slots are TrackRef or null.
-- [Phase 14-01]: Candidate metadata updates validate reviewed trackRoles against current candidate file MediaInfo audioTracks inside the update transaction.
-- [Phase 14-01]: Invalid reviewed track refs return INVALID_TRACK_ROLE_REF from the Admin metadata PATCH route.
-- [Phase 14-04]: Formal song.json now mirrors durable real-MV Asset fields without adding any database dependency to the writer.
-- [Phase 14-04]: Validator treats playbackProfile.kind=single_file_audio_tracks as a one-asset real-MV contract and skips legacy switch-pair validation for it.
-- [Phase 14-04]: Missing real-MV original/instrumental role refs are review warnings; invalid refs remain hard validation errors.
-- [Phase 14-03]: Real-MV admission bypasses legacy pair evaluation and creates exactly one dual-track-video Asset.
-- [Phase 14-03]: Scanner compatibility controls formal readiness, while real-MV switchQualityStatus remains review_required until runtime switching is verified later.
-- [Phase 14-03]: Unsupported real-MV candidates stay review_required with repair metadata instead of being force-promoted or hidden.
-- [Phase 14-02]: Admin real-MV track-role review stores full TrackRef refs from raw MediaInfo audio tracks in files[].trackRoles.
-- [Phase 14-02]: Approval blockers remain limited to non-empty title and artist; compatibility and track-role issues are review guidance.
-- [Phase 14-02]: Real-MV review evidence stays inside the existing dense Admin CandidateEditor instead of a separate review wizard.
-- [Phase 14-05]: API and Admin regression coverage now prove reviewed real-MV admission, song.json validation, and UI review guidance without Phase 15 runtime assertions.
-- [Phase 14-05]: Optional exact typing in regression helpers is satisfied by supplying explicit real-MV defaults rather than undefined placeholders.
-- [Phase 14-05]: Test-only source guards keep excluded mobile, queue, TV playback, switching, transcode, and Android TV concerns out of Phase 14 regression coverage.
-- [Phase 15-03]: Real-MV switching stays on switch-vocal-mode and uses SwitchTarget.switchKind=audio_track. — Reuses existing transition, snapshot, rollback, and telemetry semantics without creating a separate real-MV command path.
-- [Phase 15-03]: TV switch_committed telemetry is the only server-side commit point for real-MV preferredVocalMode. — Failed switch attempts must not change queue playbackOptions, so server state advances only after TV confirms playback.
-- [Phase 15-04]: TV runtime derives TrackRef from PlaybackTarget instead of importing @home-ktv/domain directly. — Keeps tv-player package boundaries clean while preserving the shared player-contract payload shape.
-- [Phase 15-04]: Audio-track playback capability failures send failed telemetry with stage=playback_capability_blocked. — Unsupported real-MV playback should reuse backend failure recovery and show preprocessing copy instead of the autoplay prompt.
-- [Phase 15-05]: Mobile real-MV search queueability is server-authoritative through canQueue/disabledLabel, while nonqueueable candidates stay visible with Chinese disabled labels.
-- [Phase 15-05]: Mobile add-queue payload remains songId/assetId only; vocal mode intent is resolved by the server from current room playback state.
-- [Phase 15-05]: Phase 15 verification passed with automated evidence across Mobile search UI, API queue/playback/switch contracts, TV audio-track runtime, and unsupported failure states.
-- [Phase 16-02]: HARD-03 hardening stays test-only and does not change queue, online task, demo import, or Admin runtime semantics.
-- [Phase 16-02]: Admin compatibility is proven by rendering a real-MV catalog entry beside the legacy 七里香 song while asserting existing maintenance controls remain visible.
-- [Phase 16-01]: Reserved auto-admit eligibility is stored under candidateMeta.realMv.admissionPolicy and remains informational.
-- [Phase 16-01]: CatalogAdmissionService does not read reservedAutoAdmit, so manual approval remains the only admission action.
-- [Phase 16-01]: Admin detail may expose policy as candidate metadata, but file realMv preview and UI controls stay policy-free.
-- [Phase 16]: The Phase 16 report keeps the old controlled fixture path while adding explicit --sample-* flags and MEDIA_ROOT default sample resolution.
-- [Phase 16]: The optional database/index cross-check is read-only and best-effort; missing pg support, unavailable tables, or connection errors are reported in Markdown instead of failing report generation.
-- [Phase 16]: Legacy --mkv and --mpeg flags remain aliases for the new sample flags to avoid breaking existing local spike usage.
-- [Phase 16-policy-seam-android-reservation-and-hardening]: Phase 16 Android reservation remains test-only and source-based; no Android runtime import, native package seam, or contract field was added.
-- [Phase 16-policy-seam-android-reservation-and-hardening]: Final real-MV regression coverage checks serialized platform-neutral contracts rather than introducing Android-specific placeholders.
-- [Phase 16-policy-seam-android-reservation-and-hardening]: Admin review copy treats auto-admit and native-app language as forbidden outside the existing negative guard.
-- [Phase 18-01]: Indexed search versions remain nonqueueable in Phase 18 with queueState=needs_catalog_sync. — Queue/playback integration is deferred so ktv_* access remains read-only.
-- [Phase 18-01]: Mobile indexed search omits filePath while Admin diagnostics preview includes it. — NAS paths are diagnostic detail and should not leak into mobile-facing search results.
-- [Phase 18-01]: NAS diagnostics classify unmapped paths separately from missing, unreadable, and timeout. — Deployment path mapping issues need distinct raw evidence before status interpretation.
-- [Phase 18-02]: KTV index diagnostics are rendered inside the existing Songs workspace instead of a new Admin tab. — The operator diagnostic flow belongs with formal catalog maintenance.
-- [Phase 18-02]: Admin can display NAS file paths in diagnostics while Mobile search remains path-safe. — Admin diagnostics are operator-facing and need raw evidence; Mobile users do not need filesystem paths.
-- [Phase 18-02]: Refresh invalidates only the ktv-index-diagnostics query key. — KTV diagnostics should not reload the formal catalog song list.
-- [Phase 18-03]: SongSearchResponse.indexed is required. — Mobile should consistently receive local, indexed, and online result sections from the existing search endpoint.
-- [Phase 18-03]: Indexed Mobile versions remain disabled with queueState=needs_catalog_sync. — Phase 19 owns catalog sync before queue insertion.
-- [Phase 18-03]: Mobile indexed search preserves indexedSongId/indexedAssetId but never renders NAS file paths. — Identity is needed for Phase 19, while paths remain Admin-only diagnostics.
-- [Phase 19]: Indexed active assets are queueable at search-contract layer; queue-time sync decides stale or unreadable failures. — This keeps Mobile usable from Phase 19 while preserving server-side validation in later plans.
-- [Phase 19]: Mobile indexed duplicate confirmation uses a discriminated union for canonical and indexed selections. — Canonical songId/assetId and indexedAssetId have different command payloads and should not be conflated in UI state.
-- [Phase 19]: KTV source identity is persisted in source_records with provider ktv-index and provider_item_id equal to ktv_song_assets.id. — This gives queue-time sync durable traceability without adding ktv_* ids to queue_entries.
-- [Phase 19]: PgKtvCatalogSyncService accepts QueryExecutor and does not open its own transaction. — The indexed add-queue command can compose sync and queue mutation inside one transaction in 19-03.
-- [Phase 19]: Indexed add-queue-entry sync and canonical queue append run inside one PostgreSQL transaction. — This prevents partial queue-visible mutations when sync or queue insertion fails.
-- [Phase 19]: KTV-index-synced real MV admission is queue-only and does not claim switching support. — Missing track roles still block switch target creation until runtime capability is proven.
-- [Phase 19]: Queued indexed search state is derived by mapping canonical queued asset ids back to ktv-index source_records. — This keeps Mobile search canonical/path-safe while still reflecting already-queued indexed versions.
-- [Phase 19]: KTV source identity is exposed only in Admin Songs with ktv_songs.id, ktv_song_assets.id, source file path, and parse confidence. — Operators need traceability for synced canonical records; Mobile users do not need filesystem details.
-- [Phase 19]: Realtime and queue regression tests assert canonical queue preview ids and avoid raw NAS/index table leakage. — Phase 19 must prove usable queue behavior without leaking raw KTV index storage details into Mobile-facing snapshots.
 
 ### Pending Todos
 
-None.
+- Create Phase 20 plans and baseline UAT checklist.
+- Run current verification commands after the latest volume-control work is deployed.
+- Keep unrelated dirty/untracked files out of commits unless explicitly scoped.
 
 ### Blockers/Concerns
 
-- Product runtime does not yet consume `ktv_*` search/read paths.
-- Indexed NAS paths may not be readable from the API process without explicit mount/path mapping.
-- Browser playback and audio-track switching support must be verified before exposing real MV switching as available.
-- v1.2 does not transcode or remux unsupported files; users preprocess those files outside the system.
+- Current planning files were stale after direct Android TV implementation; v1.4 starts by restoring planning/runtime alignment.
+- Some v1.3 Phase 20-22 ideas are still relevant, but they are now folded into v1.4 Phase 23/26 because Android TV became the official playback path.
+- Simplification must not remove Web TV debug usefulness before Android TV deployment and diagnostics are stable.
 
 ## Session Continuity
 
-Last session: 2026-05-20T13:08:10.211Z
-Stopped at: Completed 19-04-PLAN.md
+Last session: 2026-05-26
+Stopped at: Created v1.4 roadmap
 Resume file: None

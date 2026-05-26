@@ -1,5 +1,25 @@
 # Milestones
 
+## v1.3 真实场景接入与 Android TV 基线 (Converged: 2026-05-26)
+
+**Phases completed:** 2 tracked GSD phases plus direct Android TV productization work
+
+**Key accomplishments:**
+
+- Real `ktv_*` index search is available to product search, and queue-time catalog sync creates/reuses canonical `songs/assets` for indexed assets.
+- Real NAS songs can enter the existing queue and playback session flow without leaking `ktv_*` IDs into queue entries.
+- Android TV + libVLC was selected as the formal TV playback route after real MKV/MPG sample testing, including 30-song playback checks and audio-track switching validation.
+- `HomeKTV` now supports real playback, QR entry, simplified playback overlay, idle QR screen, full-screen video adaptation, audio-track switching, and room-level volume.
+- Project documentation was reorganized around backend/Admin, Android TV, and mobile controller, with deployment and hot-song README coverage.
+- v1.4 will productize this baseline and includes a dedicated code/flow simplification chapter.
+
+Archive:
+
+- `.planning/milestones/v1.3-ROADMAP.md`
+- `.planning/milestones/v1.3-REQUIREMENTS.md`
+
+---
+
 ## v1.2 真实 MV 歌库 (Shipped: 2026-05-14)
 
 **Phases completed:** 6 phases, 25 plans, 58 tasks
