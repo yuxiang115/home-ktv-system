@@ -14,7 +14,9 @@ v1.4 的目标是把已经跑通的真实歌库 + Android TV 播放链路产品�
 
 本里程碑不继续扩张产品边界，而是按真实使用顺序收口：先冻结当前可用基线，再完善 Android TV 配置、APK 发布、异常诊断、真实歌库运维和部署 smoke。中间安排一个独立的“代码和流程简化”章节，专门清理探索期留下的旧接口、旧流程和重复状态。
 
-Explicitly out of scope for this roadmap: multi-room, accounts, scoring, realtime microphone DSP, mandatory server-side transcoding, large CMS features, and online provider acquisition/downloads.
+Explicitly out of scope for this roadmap: multi-room, accounts/Admin auth, media-stream access control, scoring, realtime microphone DSP, mandatory server-side transcoding, large CMS features, APK auto-update, and online provider acquisition/downloads.
+
+Confirmed product policy: real library assets are automatically admitted after indexing; Admin is an operations and diagnostics surface, not a pre-playback review gate. Single-audio-track assets remain playable and are labeled in the controller.
 
 ## Current Milestone: v1.4 Android TV 产品化与流程简化
 
@@ -79,7 +81,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Debug and release APK build outputs are documented.
   2. Release signing uses local-only keystore configuration and does not commit secrets.
-  3. Install, update, clear-data, launch, and rollback commands are documented.
+  3. Manual overwrite install, clear-data, launch, and rollback commands are documented.
   4. README explains how this Android TV app relates to the Web TV debug client.
 **Plans**: 2 plans
 Plans:
@@ -131,7 +133,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Songs diagnostics can inspect real indexed source identity, file path, file readability, and canonical sync status.
   2. Operators can recheck a single song/asset and run bounded random sample checks.
-  3. Audio track count and inferred/reviewed original/accompaniment role evidence are visible.
+  3. Audio track count and inferred original/accompaniment role evidence are visible, including single-track source labeling in the controller.
   4. Admin copy stays concise and operational; detailed raw evidence remains behind diagnostics.
 **Plans**: 3 plans
 Plans:

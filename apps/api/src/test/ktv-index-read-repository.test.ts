@@ -30,6 +30,7 @@ describe("PgKtvIndexReadRepository", () => {
         sourceLabel: "KTV索引",
         extension: ".mkv",
         sizeBytes: 123456,
+        audioTrackCount: 1,
         category: "流行",
         queueState: "not_queued",
         canQueue: true,
@@ -41,6 +42,7 @@ describe("PgKtvIndexReadRepository", () => {
         sourceLabel: "KTV索引",
         extension: ".mpg",
         sizeBytes: null,
+        audioTrackCount: 2,
         category: "演唱会",
         queueState: "not_queued",
         canQueue: true,
@@ -277,6 +279,13 @@ class ScriptedKtvIndexDb implements QueryExecutor {
             file_path: "/mnt/nas/KTV歌曲/周杰伦-七里香-国语-流行.mkv",
             extension: ".mkv",
             size_bytes: "123456",
+            technical_metadata: {
+              mediaInfoSummary: {
+                audioTracks: [
+                  { index: 0, id: "0", label: "Audio 1", language: null, codec: "mp2", channels: 2 }
+                ]
+              }
+            },
             category: "流行"
           }),
           createSearchRow({
@@ -285,6 +294,12 @@ class ScriptedKtvIndexDb implements QueryExecutor {
             file_path: "/mnt/nas/KTV歌曲/周杰伦-七里香-国语-演唱会.mpg",
             extension: ".mpg",
             size_bytes: null,
+            technical_metadata: {
+              audioTracks: [
+                { index: 0, id: "0", label: "原唱", language: null, codec: "mp2", channels: 2 },
+                { index: 1, id: "1", label: "伴奏", language: null, codec: "mp2", channels: 2 }
+              ]
+            },
             category: "演唱会"
           })
         ] as TRow[]
@@ -309,6 +324,7 @@ function createSearchRow(overrides: Record<string, unknown> = {}) {
     extension: ".mkv",
     size_bytes: "123456",
     parse_confidence: "0.980",
+    technical_metadata: {},
     missing_at: null,
     ...overrides
   };

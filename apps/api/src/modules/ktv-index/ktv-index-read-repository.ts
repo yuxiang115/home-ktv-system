@@ -61,6 +61,7 @@ interface IndexedSearchRow {
   extension: string;
   size_bytes: number | string | null;
   parse_confidence: number | string;
+  technical_metadata: unknown;
   missing_at: Date | string | null;
 }
 
@@ -238,6 +239,7 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
                 a.extension,
                 a.size_bytes,
                 a.parse_confidence,
+                a.technical_metadata,
                 a.missing_at,
                 ms.category AS asset_category,
                 row_number() OVER (PARTITION BY ms.song_id ORDER BY a.updated_at DESC, a.file_path ASC) AS asset_rank
@@ -257,6 +259,7 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
               extension,
               size_bytes,
               parse_confidence,
+              technical_metadata,
               missing_at
        FROM ranked_assets
        WHERE asset_rank <= $5
@@ -400,6 +403,7 @@ function mapIndexedSearchRows(
       sourceLabel: "KTV索引",
       extension: row.extension,
       sizeBytes: toNullableNumber(row.size_bytes),
+      audioTrackCount: readAudioTrackCount(row.technical_metadata),
       category: row.category,
       queueState: unreadable ? "file_unreadable" : queued ? "queued" : "not_queued",
       canQueue: !unreadable,
@@ -470,4 +474,21 @@ function toNullableNumber(value: number | string | null): number | null {
 
 function toIsoString(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : value;
+}
+
+function readAudioTrackCount(value: unknown): number | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const mediaInfoSummary = isRecord(value.mediaInfoSummary) ? value.mediaInfoSummary : value;
+  const audioTracks = mediaInfoSummary.audioTracks;
+  if (!Array.isArray(audioTracks)) {
+    return null;
+  }
+  return audioTracks.length;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

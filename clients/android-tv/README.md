@@ -49,6 +49,8 @@ clients/android-tv/app/build/outputs/apk/debug/app-debug.apk
 
 电视需要开启开发者模式和 ADB 调试。
 
+当前发布策略是手动打包 APK 后覆盖安装，不做应用内自动更新。
+
 ```bash
 adb connect <TV_IP>:5555
 adb install -r clients/android-tv/app/build/outputs/apk/debug/app-debug.apk

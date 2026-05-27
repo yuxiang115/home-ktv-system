@@ -26,6 +26,14 @@ Tables:
 
 The existing playback catalog remains separate. This KTV index is the fast lookup layer for finding song versions, artist catalogs, categories, and playable file paths.
 
+## Admission Policy
+
+真实曲库默认全自动入库。只要文件被索引、`missing_at is null`，搜索和点歌链路就可以展示并使用它，不需要 Admin 人工审核后才变为可点。
+
+Admin 的职责是查看和管理资源：检查文件路径、可读性、技术元数据、音轨数量、播放失败证据和重新扫描结果。它不承担歌曲可用性的前置审核职责。
+
+如果索引资源已探测出只有一条音轨，手机控制端会标记“单音轨歌曲源”。这类歌曲仍然可以点歌播放，只是没有双音轨原唱/伴唱切换能力。
+
 ## Filename Rules
 
 Each top-level source folder has one strict parser rule. The current folders all use the same rule:
@@ -133,6 +141,7 @@ where missing_at is null;
 2. Make sure the filename follows that folder's rule.
 3. Run the full index command.
 4. Check parser coverage. If anything is not `filename`, either delete that exception or add a folder-specific rule.
+5. Songs become searchable after indexing; no manual approval step is required.
 
 ## Adding A New Folder Rule
 
@@ -146,4 +155,3 @@ If a new top-level folder has a different filename format:
 pnpm -F @home-ktv/api exec vitest run src/test/ktv-sample-index.test.ts src/test/ktv-full-index.test.ts
 pnpm -F @home-ktv/api typecheck
 ```
-

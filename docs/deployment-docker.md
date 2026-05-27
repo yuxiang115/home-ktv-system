@@ -25,6 +25,8 @@ CORS_ALLOWED_ORIGINS=http://<server-ip>:5174,http://<server-ip>:5176,http://<ser
 KTV_NAS_HOST_PATH=/mnt/nas/KTV歌曲
 ```
 
+当前安全边界保持轻量：Admin 暂不加登录鉴权，公网媒体流暂不做访问控制。生产暴露范围需要通过 Caddy、域名、网络入口和服务器访问策略控制。
+
 ## lxc-dev 当前部署
 
 当前测试部署运行在 `lxc-dev`，公网入口由 `lxc-network` 上的 Caddy 反代：

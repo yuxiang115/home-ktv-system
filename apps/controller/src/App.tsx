@@ -245,6 +245,9 @@ function ControllerApp() {
                                   <span>{version.extension}</span>
                                   <span>{version.category}</span>
                                   <span>{version.sizeBytes == null ? t("search.unknownSize") : formatFileSize(version.sizeBytes)}</span>
+                                  {version.audioTrackCount === 1 ? (
+                                    <span className="single-track-badge">{t("search.singleAudioTrackSource")}</span>
+                                  ) : null}
                                 </div>
                               </div>
                               <button

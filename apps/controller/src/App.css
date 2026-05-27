@@ -627,6 +627,12 @@ button:not(:disabled):hover {
   border-color: rgba(34, 211, 238, 0.3) !important;
 }
 
+.single-track-badge {
+  color: #fef3c7;
+  background: rgba(245, 158, 11, 0.14) !important;
+  border-color: rgba(245, 158, 11, 0.34) !important;
+}
+
 .indexed-empty {
   border: 1px dashed rgba(148, 163, 184, 0.36);
   border-radius: 8px;

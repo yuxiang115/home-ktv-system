@@ -22,6 +22,12 @@ bash deploy/docker/ktv.sh stop
 `deploy/docker/.env` 从 `deploy/env/server.env.example` 生成。`PUBLIC_BASE_URL` 和 `CONTROLLER_BASE_URL` 必须是手机、Web TV 和 Android TV 可访问的服务器地址。
 公网分域名部署时也应设置 `ADMIN_BASE_URL` 和 `TV_WEB_BASE_URL`，这样自检脚本能准确验证 CORS 与入口地址。
 
+当前产品边界：
+
+- Admin 不加登录鉴权，公网暴露范围由部署网络、Caddy 和域名策略控制。
+- 媒体流不做 token 或签名 URL 访问控制。
+- Android TV APK 不通过服务端自动更新，采用本地打包后覆盖安装。
+
 真实 NAS 曲库需要重点检查：
 
 ```bash

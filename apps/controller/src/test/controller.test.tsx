@@ -744,6 +744,7 @@ describe("mobile controller runtime", () => {
                   sourceLabel: "KTV索引",
                   extension: ".mkv",
                   sizeBytes: 734003200,
+                  audioTrackCount: 1,
                   category: "流行",
                   queueState: "not_queued",
                   canQueue: true,
@@ -777,6 +778,7 @@ describe("mobile controller runtime", () => {
     expect(screen.getByText("索引晴天")).toBeTruthy();
     expect(screen.getAllByText("KTV索引").length).toBeGreaterThan(0);
     expect(screen.getByText("2 个索引版本")).toBeTruthy();
+    expect(screen.getByText("单音轨歌曲源")).toBeTruthy();
     expect(screen.getByText("未知大小")).toBeTruthy();
     const addButton = screen.getByRole("button", { name: "点歌" }) as HTMLButtonElement;
     expect(addButton.disabled).toBe(false);

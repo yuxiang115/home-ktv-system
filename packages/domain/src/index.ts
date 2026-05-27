@@ -261,6 +261,7 @@ export interface SongSearchIndexedVersionOption {
   sourceLabel: string;
   extension: string;
   sizeBytes: number | null;
+  audioTrackCount: number | null;
   category: string;
   queueState: SongSearchIndexedQueueState;
   canQueue: boolean;

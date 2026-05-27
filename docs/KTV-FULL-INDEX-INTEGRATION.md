@@ -14,8 +14,11 @@ Core fields for the KTV system:
 - `ktv_songs.primary_artist_name`
 - `ktv_songs.category`
 - `ktv_song_assets.file_path`
+- `ktv_song_assets.technical_metadata`
 
 Do not depend on folder structure for search. Use the indexed database fields, then use `file_path` only when handing the selected asset to the player.
+
+The KTV index is an automatic admission path. Active assets are searchable and queueable without Admin approval. Admin can inspect and repair resources, but it is not a review gate.
 
 ## Query Examples
 
@@ -30,7 +33,8 @@ select
   a.id as asset_id,
   a.file_path,
   a.extension,
-  a.size_bytes
+  a.size_bytes,
+  jsonb_array_length(coalesce(a.technical_metadata->'mediaInfoSummary'->'audioTracks', a.technical_metadata->'audioTracks', '[]'::jsonb)) as audio_track_count
 from ktv_songs s
 join ktv_song_assets a on a.song_id = s.id
 where a.missing_at is null
@@ -125,6 +129,7 @@ Implementation notes:
 - Always use parameterized queries.
 - Always filter `missing_at is null`.
 - Return all matching assets first; automatic "best version" selection can be added later after ffprobe resolution and bitrate metadata is populated.
+- Expose audio track count when technical metadata is present. Controller UI uses `audioTrackCount = 1` to show the “单音轨歌曲源” label.
 
 ## Refreshing The Index
 
@@ -138,4 +143,3 @@ pnpm -F @home-ktv/api index:ktv -- \
 ```
 
 The refresh is safe to repeat. Existing rows are updated, new files are inserted, and deleted files are hidden through `missing_at`.
-
