@@ -10,6 +10,8 @@ bash deploy/docker/ktv.sh status
 bash deploy/docker/ktv.sh doctor
 ```
 
+`doctor` 会同时输出 API、Admin、Controller、Web TV、NAS 路径和 KTV 索引诊断的原始指标。索引诊断中的 `active`、`missing`、`songs`、`latest` 只用于排查事实，不替代人工判断。
+
 本地或源码部署：
 
 ```bash
@@ -69,4 +71,3 @@ bash deploy/source/ktv.sh doctor
 ## Web TV 能播但 Android TV 不能播
 
 真实电视端以 Android TV + libVLC 为准。先记录 Android 日志里的当前 URL、assetId 和异常，再用同一 URL 在样本播放页或 VLC 桌面版验证。
-

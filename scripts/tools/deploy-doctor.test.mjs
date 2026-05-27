@@ -58,6 +58,22 @@ test("buildDeployConfig derives Admin, Controller, and Web TV URLs", () => {
   assert.equal(config.roomSlug, "living-room");
 });
 
+test("buildDeployConfig resolves docker host paths relative to the compose directory", () => {
+  const config = buildDeployConfig({
+    env: {
+      DOCKER_MEDIA_PATH_MAPPINGS: "/mnt/nas/KTV歌曲=/nas/KTV歌曲",
+      KTV_MEDIA_HOST_PATH: "../../runtime/media",
+      KTV_NAS_HOST_PATH: "../../runtime/nas/KTV歌曲"
+    },
+    envFile: "/repo/deploy/docker/.env",
+    mode: "docker",
+    rootDir: "/repo"
+  });
+
+  assert.equal(config.mediaRoot, "/repo/runtime/media");
+  assert.equal(config.nasHostPath, "/repo/runtime/nas/KTV歌曲");
+});
+
 test("checkCors warns when Web TV origin is missing", () => {
   const config = buildDeployConfig({
     env: {
@@ -120,13 +136,74 @@ test("buildDoctorReport returns FAIL when API health probe fails", async () => {
       },
       {
         canReadPath: () => true,
-        fetchImpl: async (url) => ({ status: String(url).includes("/health") ? 500 : 200 }),
+        fetchImpl: async (url) => ({
+          status: String(url).includes("/health") ? 500 : 200,
+          async json() {
+            return {
+              activeAssetCount: 34385,
+              latestRun: { status: "completed" },
+              missingAssetCount: 0,
+              songCount: 31893
+            };
+          }
+        }),
         pathExists: () => true
       }
     );
 
     assert.equal(report.summary.fail, 1);
     assert.equal(report.checks.find((check) => check.name === "api health")?.status, "FAIL");
+  } finally {
+    await rm(dir, { force: true, recursive: true });
+  }
+});
+
+test("buildDoctorReport includes raw KTV index diagnostics metrics", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "home-ktv-doctor-"));
+  const envFile = path.join(dir, ".env");
+  await writeFile(
+    envFile,
+    [
+      "PUBLIC_BASE_URL=http://127.0.0.1:4000",
+      "CONTROLLER_BASE_URL=http://127.0.0.1:5176",
+      "CORS_ALLOWED_ORIGINS=http://127.0.0.1:5174,http://127.0.0.1:5176,http://127.0.0.1:5173",
+      "DOCKER_DATABASE_URL=postgres://ktv:ktv@postgres:5432/home_ktv",
+      "KTV_NAS_HOST_PATH=/mnt/nas/KTV歌曲",
+      "DOCKER_MEDIA_PATH_MAPPINGS=/mnt/nas/KTV歌曲=/nas/KTV歌曲"
+    ].join("\n")
+  );
+
+  try {
+    const report = await buildDoctorReport(
+      {
+        envFile,
+        json: false,
+        mode: "docker",
+        serviceStatusCmd: "",
+        skipNetwork: false
+      },
+      {
+        canReadPath: () => true,
+        fetchImpl: async (url) => ({
+          status: 200,
+          async json() {
+            assert.equal(String(url).includes("/admin/ktv-index/diagnostics"), true);
+            return {
+              activeAssetCount: 34385,
+              latestRun: { status: "completed" },
+              missingAssetCount: 0,
+              songCount: 31893
+            };
+          }
+        }),
+        pathExists: () => true
+      }
+    );
+
+    const check = report.checks.find((item) => item.name === "ktv index diagnostics");
+    assert.equal(check?.status, "PASS");
+    assert.match(check?.message ?? "", /active=34385/u);
+    assert.match(check?.message ?? "", /latest=completed/u);
   } finally {
     await rm(dir, { force: true, recursive: true });
   }

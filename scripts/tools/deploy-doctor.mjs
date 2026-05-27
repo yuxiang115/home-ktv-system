@@ -107,12 +107,14 @@ export function parseArgs(argv) {
 }
 
 export function buildDeployConfig({ env, envFile, mode, rootDir = ROOT_DIR }) {
+  const dockerBaseDir = path.join(rootDir, "deploy", "docker");
+  const hostPathBaseDir = mode === "docker" ? dockerBaseDir : rootDir;
   const apiBaseUrl = clean(env.PUBLIC_BASE_URL) || "http://127.0.0.1:4000";
   const adminBaseUrl = clean(env.ADMIN_BASE_URL) || replaceUrlPort(apiBaseUrl, clean(env.ADMIN_PORT) || "5174");
   const controllerBaseUrl = clean(env.CONTROLLER_BASE_URL) || replaceUrlPort(apiBaseUrl, clean(env.CONTROLLER_PORT) || "5176");
   const tvWebBaseUrl = clean(env.TV_WEB_BASE_URL) || replaceUrlPort(apiBaseUrl, clean(env.TV_WEB_PORT) || "5173");
-  const mediaRoot = resolveFromRoot(rootDir, mode === "docker" ? clean(env.KTV_MEDIA_HOST_PATH) : clean(env.MEDIA_ROOT));
-  const nasHostPath = resolveFromRoot(rootDir, clean(env.KTV_NAS_HOST_PATH));
+  const mediaRoot = resolveFromRoot(hostPathBaseDir, mode === "docker" ? clean(env.KTV_MEDIA_HOST_PATH) : clean(env.MEDIA_ROOT));
+  const nasHostPath = resolveFromRoot(hostPathBaseDir, clean(env.KTV_NAS_HOST_PATH));
   const rawPathMappings = mode === "docker" ? clean(env.DOCKER_MEDIA_PATH_MAPPINGS) : clean(env.MEDIA_PATH_MAPPINGS);
 
   return {
@@ -220,8 +222,9 @@ export function checkMediaPaths(config, dependencies = {}) {
 
 export async function checkUrls(config, dependencies = {}) {
   const fetchImpl = dependencies.fetchImpl ?? fetch;
+  const apiBase = config.apiBaseUrl.replace(/\/$/u, "");
   const targets = [
-    ["api health", `${config.apiBaseUrl.replace(/\/$/u, "")}/health`],
+    ["api health", `${apiBase}/health`],
     ["admin", ensureTrailingSlash(config.adminBaseUrl)],
     ["controller", `${config.controllerBaseUrl.replace(/\/$/u, "")}/controller?room=${encodeURIComponent(config.roomSlug)}`],
     [
@@ -234,6 +237,7 @@ export async function checkUrls(config, dependencies = {}) {
   for (const [name, url] of targets) {
     checks.push(await probeUrl(name, url, fetchImpl));
   }
+  checks.push(await probeKtvIndexDiagnostics(`${apiBase}/admin/ktv-index/diagnostics?sampleSize=3&sampleTimeoutMs=100`, fetchImpl));
   return checks;
 }
 
@@ -310,6 +314,41 @@ async function probeUrl(name, url, fetchImpl) {
     return fail("network", name, `${response.status} ${url}`);
   } catch (error) {
     return fail("network", name, `${url} ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function probeKtvIndexDiagnostics(url, fetchImpl) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const response = await fetchImpl(url, {
+      method: "GET",
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    if (response.status < 200 || response.status >= 400) {
+      return fail("network", "ktv index diagnostics", `${response.status} ${url}`);
+    }
+
+    const body = await readJsonResponse(response);
+    if (!isRecord(body)) {
+      return fail("network", "ktv index diagnostics", `invalid JSON ${url}`);
+    }
+
+    const latestRun = isRecord(body.latestRun) ? body.latestRun : null;
+    return pass(
+      "network",
+      "ktv index diagnostics",
+      [
+        `active=${formatMetric(body.activeAssetCount)}`,
+        `missing=${formatMetric(body.missingAssetCount)}`,
+        `songs=${formatMetric(body.songCount)}`,
+        `latest=${typeof latestRun?.status === "string" ? latestRun.status : "none"}`
+      ].join(" ")
+    );
+  } catch (error) {
+    return fail("network", "ktv index diagnostics", `${url} ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -462,4 +501,25 @@ function firstLine(value) {
     .split(/\r?\n/u)
     .map((line) => line.trim())
     .find(Boolean);
+}
+
+async function readJsonResponse(response) {
+  if (typeof response.json === "function") {
+    return response.json();
+  }
+  if (typeof response.text === "function") {
+    return JSON.parse(await response.text());
+  }
+  return null;
+}
+
+function isRecord(value) {
+  return typeof value === "object" && value !== null;
+}
+
+function formatMetric(value) {
+  if (typeof value === "number" || typeof value === "string") {
+    return String(value);
+  }
+  return "unknown";
 }
