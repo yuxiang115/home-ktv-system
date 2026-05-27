@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect } from "react";
-import type { RoomControlSnapshot } from "@home-ktv/player-contracts";
+import { DEFAULT_ROOM_VOLUME_PERCENT, type RoomControlSnapshot } from "@home-ktv/player-contracts";
 import {
   addQueueEntry,
   deleteQueueEntry,
@@ -591,6 +591,21 @@ describe("mobile controller runtime", () => {
     expect(requests.find((request) => request.url === "/rooms/living-room/commands/set-volume")?.body).toMatchObject({
       volumePercent: 65
     });
+  });
+
+  it("falls back to 50 when the restored snapshot omits volume", async () => {
+    const snapshotWithoutVolume = roomSnapshot();
+    delete (snapshotWithoutVolume as { volumePercent?: number }).volumePercent;
+    installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(snapshotWithoutVolume))]
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    await screen.findByText("电视在线");
+    expect(screen.getByText("音量")).toBeTruthy();
+    expect(screen.getByText("50%")).toBeTruthy();
   });
 
   it("does not expose raw playback or vocal enum labels in the Chinese controller", async () => {
@@ -1614,7 +1629,7 @@ function roomSnapshot(options: {
     roomSlug: "living-room",
     sessionVersion: options.sessionVersion ?? 1,
     state: "playing",
-    volumePercent: options.volumePercent ?? 100,
+    volumePercent: options.volumePercent ?? DEFAULT_ROOM_VOLUME_PERCENT,
     pairing: {
       roomSlug: "living-room",
       controllerUrl: "http://ktv.local/controller?room=living-room",

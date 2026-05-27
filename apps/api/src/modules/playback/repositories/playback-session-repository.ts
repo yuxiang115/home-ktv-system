@@ -6,6 +6,7 @@ import type {
   RoomId,
   VocalMode
 } from "@home-ktv/domain";
+import { DEFAULT_ROOM_VOLUME_PERCENT } from "@home-ktv/player-contracts";
 import type { QueryExecutor } from "../../../db/query-executor.js";
 import type { PlaybackSessionRow } from "../../../db/schema.js";
 
@@ -71,7 +72,7 @@ function mapPlaybackSessionRow(row: PlaybackSessionRowWithVolume): PlaybackSessi
     targetVocalMode: row.target_vocal_mode as VocalMode,
     playerState: row.player_state as PlayerState,
     playerPositionMs: row.player_position_ms,
-    volumePercent: row.volume_percent ?? 100,
+    volumePercent: row.volume_percent ?? DEFAULT_ROOM_VOLUME_PERCENT,
     mediaStartedAt: row.media_started_at?.toISOString() ?? null,
     version: row.version,
     updatedAt: row.updated_at.toISOString()

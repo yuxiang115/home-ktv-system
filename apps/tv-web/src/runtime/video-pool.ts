@@ -1,4 +1,4 @@
-import type { PlaybackTarget, SwitchTarget } from "@home-ktv/player-contracts";
+import { DEFAULT_ROOM_VOLUME_PERCENT, type PlaybackTarget, type SwitchTarget } from "@home-ktv/player-contracts";
 import { AUDIO_TRACK_SWITCH_UNSUPPORTED_MESSAGE } from "./playback-capability.js";
 
 type TrackRef = NonNullable<PlaybackTarget["selectedTrackRef"]>;
@@ -28,6 +28,7 @@ export interface KtvVideoElement {
   paused?: boolean;
   readyState: number;
   src: string;
+  volume?: number;
   addEventListener(type: string, listener: () => void, options?: AddEventListenerOptions | boolean): void;
   load(): void;
   pause(): void;
@@ -59,6 +60,12 @@ export class DualVideoPool {
     this.activeVideo.load();
   }
 
+  applyVolume(volumePercent: number | null | undefined): void {
+    const normalizedVolume = normalizeVolume(volumePercent);
+    this.activeVideo.volume = normalizedVolume;
+    this.standbyVideo.volume = normalizedVolume;
+  }
+
   selectActiveAudioTrack(target: PlaybackTarget): AudioTrackSelectionResult {
     return selectAudioTrack(this.activeVideo, target.selectedTrackRef);
   }
@@ -74,6 +81,7 @@ export class DualVideoPool {
     this.standbyVideo.src = target.playbackUrl;
     this.standbyVideo.currentTime = msToSeconds(target.resumePositionMs);
     this.standbyVideo.muted = this.activeVideo.muted;
+    this.standbyVideo.volume = this.activeVideo.volume ?? normalizeVolume(DEFAULT_ROOM_VOLUME_PERCENT);
     this.standbyVideo.hidden = false;
     this.standbyVideo.load();
   }
@@ -261,4 +269,10 @@ function findAudioTrackIndex(audioTracks: SelectableAudioTrackList, trackRef: Tr
 
 function msToSeconds(positionMs: number): number {
   return Math.max(0, positionMs) / 1000;
+}
+
+function normalizeVolume(volumePercent: number | null | undefined): number {
+  const percent =
+    typeof volumePercent === "number" && Number.isFinite(volumePercent) ? Math.trunc(volumePercent) : DEFAULT_ROOM_VOLUME_PERCENT;
+  return Math.max(0, Math.min(100, percent)) / 100;
 }

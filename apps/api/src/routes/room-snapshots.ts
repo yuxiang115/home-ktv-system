@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { PlayerState, Room, RoomId } from "@home-ktv/domain";
-import type { PlayerConflictState, RoomSnapshot } from "@home-ktv/player-contracts";
+import { DEFAULT_ROOM_VOLUME_PERCENT, type PlayerConflictState, type RoomSnapshot } from "@home-ktv/player-contracts";
 import type { ApiConfig } from "../config.js";
 import type { AssetGateway } from "../modules/assets/asset-gateway.js";
 import type { AssetRepository } from "../modules/catalog/repositories/asset-repository.js";
@@ -54,7 +54,7 @@ export async function buildRoomSnapshot(input: BuildRoomSnapshotInput): Promise<
       roomSlug: room.slug,
       sessionVersion: 0,
       state: "conflict",
-      volumePercent: 100,
+      volumePercent: DEFAULT_ROOM_VOLUME_PERCENT,
       pairing,
       currentTarget: null,
       switchTarget: null,
@@ -87,7 +87,7 @@ export async function buildRoomSnapshot(input: BuildRoomSnapshotInput): Promise<
     roomSlug: room.slug,
     sessionVersion: currentTarget?.sessionVersion ?? session?.version ?? 0,
     state: snapshotState(room, session?.playerState ?? "idle", Boolean(currentTarget)),
-    volumePercent: session?.volumePercent ?? 100,
+    volumePercent: session?.volumePercent ?? DEFAULT_ROOM_VOLUME_PERCENT,
     pairing,
     currentTarget,
     switchTarget,

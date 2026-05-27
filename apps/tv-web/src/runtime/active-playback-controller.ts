@@ -29,6 +29,8 @@ export class ActivePlaybackController {
       return { status: "disabled", reason: "no-current-target" };
     }
 
+    this.videoPool.applyVolume(snapshot.volumePercent);
+
     const targetChanged = this.videoPool.activeTarget?.assetId !== snapshot.currentTarget.assetId;
     if (targetChanged) {
       this.videoPool.primeActive(snapshot.currentTarget);

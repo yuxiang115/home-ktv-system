@@ -73,7 +73,7 @@ class MainActivity : Activity() {
     private var switchInFlight = false
     private var lastRecoveryVersion: Int? = null
     private var selectedTrackKey: String? = null
-    private var desiredVolumePercent = 100
+    private var desiredVolumePercent = DEFAULT_ROOM_VOLUME_PERCENT
     private var renderedQrPayload: String? = null
     private val sentTelemetryKeys = mutableSetOf<String>()
 

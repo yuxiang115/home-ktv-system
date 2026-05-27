@@ -12,6 +12,8 @@ import type {
 } from "@home-ktv/domain";
 import type { PlayerTelemetryEventName } from "@home-ktv/protocol";
 
+export const DEFAULT_ROOM_VOLUME_PERCENT = 50;
+
 export interface QueueEntryPreview {
   queueEntryId: QueueEntryId;
   songTitle: string;

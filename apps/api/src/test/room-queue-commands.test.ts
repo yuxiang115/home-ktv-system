@@ -19,12 +19,29 @@ import type { RoomPairingTokenRepository } from "../modules/rooms/repositories/p
 import type { RoomRepository } from "../modules/rooms/repositories/room-repository.js";
 import type { ApiConfig } from "../config.js";
 import { InMemoryRoomPairingTokenRepository } from "../modules/rooms/repositories/pairing-token-repository.js";
-import type { ControlSessionInfo, RoomControlSnapshot } from "@home-ktv/player-contracts";
+import { DEFAULT_ROOM_VOLUME_PERCENT, type ControlSessionInfo, type RoomControlSnapshot } from "@home-ktv/player-contracts";
 
 const now = new Date("2026-05-01T10:00:00.000Z");
 type RoomCommandResult = Awaited<ReturnType<typeof executeRoomCommand>>;
 
 describe("room queue commands", () => {
+  it("uses 50 as the default room volume", async () => {
+    const harness = createHarness({ queueEntries: [] });
+
+    const snapshot = await buildRoomControlSnapshot({
+      roomSlug: harness.room.slug,
+      config: harness.config,
+      repositories: harness.repositories,
+      assetGateway: harness.assetGateway,
+      now
+    });
+
+    if (!snapshot) {
+      throw new Error("expected room control snapshot");
+    }
+    expect(snapshot.volumePercent).toBe(50);
+  });
+
   it("accepts room volume updates without starting queue playback", async () => {
     const harness = createHarness({ queueEntries: [] });
 
@@ -764,7 +781,7 @@ function createHarness(options: { queueEntries: readonly QueueEntry[]; targetVoc
     targetVocalMode: options.targetVocalMode ?? "instrumental",
     playerState: options.queueEntries.some((entry) => entry.status === "playing") ? "playing" : "idle",
     playerPositionMs: 0,
-    volumePercent: 100,
+    volumePercent: DEFAULT_ROOM_VOLUME_PERCENT,
     mediaStartedAt: null,
     version: 1,
     updatedAt: now.toISOString()

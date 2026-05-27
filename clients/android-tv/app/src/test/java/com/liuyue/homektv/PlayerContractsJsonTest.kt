@@ -35,6 +35,17 @@ class PlayerContractsJsonTest {
     }
 
     @Test
+    fun defaultsMissingRoomSnapshotVolumeTo50() {
+        val json = JSONObject(roomSnapshotJson(type = "room.snapshot")).apply {
+            remove("volumePercent")
+        }
+
+        val snapshot = PlayerContractsJson.roomSnapshotFromJson(json)
+
+        assertEquals(50, snapshot.volumePercent)
+    }
+
+    @Test
     fun parsesRealtimeControlSnapshotEnvelope() {
         val message = """
             {

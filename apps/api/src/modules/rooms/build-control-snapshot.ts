@@ -11,7 +11,12 @@ import type { PlayerDeviceSessionRepository } from "../player/register-player.js
 import { ACTIVE_TV_PLAYER_WINDOW_MS } from "../player/conflict-service.js";
 import { buildRoomSnapshot } from "../../routes/room-snapshots.js";
 import type { OnlineCandidateTask, OnlineCandidateTaskState, PlaybackEvent, QueueEntry, RoomId, Song } from "@home-ktv/domain";
-import type { PlaybackNotice, RoomControlSnapshot, RoomQueueEntryPreview } from "@home-ktv/player-contracts";
+import {
+  DEFAULT_ROOM_VOLUME_PERCENT,
+  type PlaybackNotice,
+  type RoomControlSnapshot,
+  type RoomQueueEntryPreview
+} from "@home-ktv/player-contracts";
 import type { CandidateTaskService } from "../online/candidate-task-service.js";
 
 interface RecentPlaybackEventRepository {
@@ -131,7 +136,7 @@ export async function buildRoomControlSnapshot(input: BuildRoomControlSnapshotIn
     roomSlug: baseSnapshot.roomSlug,
     sessionVersion: session?.version ?? baseSnapshot.sessionVersion,
     state: baseSnapshot.state,
-    volumePercent: baseSnapshot.volumePercent ?? 100,
+    volumePercent: baseSnapshot.volumePercent ?? DEFAULT_ROOM_VOLUME_PERCENT,
     pairing: baseSnapshot.pairing,
     tvPresence: activeTvPlayer
       ? {

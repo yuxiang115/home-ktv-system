@@ -16,7 +16,7 @@ object PlayerContractsJson {
             roomSlug = json.optString("roomSlug", ""),
             sessionVersion = json.optInt("sessionVersion", 0),
             state = json.optString("state", "idle"),
-            volumePercent = json.optInt("volumePercent", 100).coerceIn(0, 100),
+            volumePercent = json.optInt("volumePercent", DEFAULT_ROOM_VOLUME_PERCENT).coerceIn(0, 100),
             pairing = json.optJSONObject("pairing")?.let(::pairingInfoFromJson),
             currentTarget = json.optJSONObject("currentTarget")?.let(::playbackTargetFromJson),
             switchTarget = json.optJSONObject("switchTarget")?.let(::switchTargetFromJson),

@@ -469,6 +469,7 @@ CREATE TABLE IF NOT EXISTS playback_sessions (
   player_position_ms integer NOT NULL DEFAULT 0 CHECK (player_position_ms >= 0),
   next_queue_entry_id text REFERENCES queue_entries(id) ON DELETE SET NULL,
   version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+  volume_percent integer NOT NULL DEFAULT 50 CHECK (volume_percent >= 0 AND volume_percent <= 100),
   media_started_at timestamptz,
   updated_at timestamptz NOT NULL DEFAULT now()
 );

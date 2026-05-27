@@ -61,6 +61,16 @@ describe("active playback controller", () => {
     expect(activeVideo.playCalls).toBe(1);
   });
 
+  it("applies the snapshot volume to the active video before playback", async () => {
+    const activeVideo = new FakeVideo();
+    const pool = new DualVideoPool(activeVideo, new FakeVideo());
+
+    const result = await new ActivePlaybackController({ videoPool: pool }).ensurePlaying(snapshot({ volumePercent: 50 }));
+
+    expect(result.status).toBe("playing");
+    expect(activeVideo.volume).toBe(0.5);
+  });
+
   it("applies selectedTrackRef before starting real MV playback", async () => {
     const activeVideo = new FakeVideo({
       audioTracks: [
@@ -134,6 +144,7 @@ class FakeVideo implements KtvVideoElement {
   playCalls = 0;
   readyState = 4;
   src = "";
+  volume = 1;
 
   constructor(input: { audioTracks?: SelectableAudioTrack[] } = {}) {
     if (input.audioTracks) {

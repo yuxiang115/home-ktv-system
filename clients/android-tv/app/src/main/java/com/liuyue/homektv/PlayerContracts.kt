@@ -1,5 +1,7 @@
 package com.liuyue.homektv
 
+const val DEFAULT_ROOM_VOLUME_PERCENT = 50
+
 data class QueueEntryPreview(
     val queueEntryId: String,
     val songTitle: String,
@@ -63,7 +65,7 @@ data class RoomSnapshot(
     val roomSlug: String,
     val sessionVersion: Int,
     val state: String,
-    val volumePercent: Int = 100,
+    val volumePercent: Int = DEFAULT_ROOM_VOLUME_PERCENT,
     val pairing: PairingInfo? = null,
     val currentTarget: PlaybackTarget?,
     val switchTarget: SwitchTarget?,

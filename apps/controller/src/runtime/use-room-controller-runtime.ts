@@ -1,5 +1,5 @@
 import type { SongSearchIndexedQueueState, SongSearchQueueState, SongSearchResponse } from "@home-ktv/domain";
-import type { RoomControlSnapshot } from "@home-ktv/player-contracts";
+import { DEFAULT_ROOM_VOLUME_PERCENT, type RoomControlSnapshot } from "@home-ktv/player-contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addQueueEntry,
@@ -392,7 +392,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
     songSearchQuery,
     songSearchStatus,
     snapshot,
-    volumePercent: pendingVolumePercent ?? snapshot?.volumePercent ?? 100,
+    volumePercent: pendingVolumePercent ?? snapshot?.volumePercent ?? DEFAULT_ROOM_VOLUME_PERCENT,
     addSongVersion,
     cancelDuplicateAdd: () => setDuplicateConfirm(null),
     cancelSkip: () => setSkipConfirmOpen(false),
@@ -477,7 +477,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
 
 function normalizeVolumePercent(value: number): number {
   if (!Number.isFinite(value)) {
-    return 100;
+    return DEFAULT_ROOM_VOLUME_PERCENT;
   }
   return Math.max(0, Math.min(100, Math.trunc(value)));
 }
