@@ -12,6 +12,7 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "migrate": "node scripts/apply-migrations.mjs",
     "index:ktv": "tsx src/scripts/ktv-full-index.ts",
+    "probe:ktv-index": "tsx src/scripts/ktv-index-probe.ts",
     "sample:ktv-index": "tsx src/scripts/ktv-sample-index.ts",
     "test": "vitest run",
     "start": "node dist/server.js"
