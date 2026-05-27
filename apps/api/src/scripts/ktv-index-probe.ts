@@ -21,7 +21,7 @@ export interface KtvIndexProbeCliOptions {
 }
 
 interface DbClient extends QueryExecutor {
-  connect(): Promise<void>;
+  connect(): Promise<unknown>;
   end(): Promise<void>;
 }
 
