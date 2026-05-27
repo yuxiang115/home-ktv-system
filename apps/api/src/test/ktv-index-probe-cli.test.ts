@@ -100,6 +100,56 @@ describe("ktv-index-probe CLI", () => {
     ]);
   });
 
+  it("supports pool-like database clients without a required connect step", async () => {
+    const closed: string[] = [];
+    const serviceInputs: unknown[] = [];
+
+    const exitCode = await runKtvIndexProbeCli(
+      ["--concurrency", "8"],
+      {
+        env: {
+          DATABASE_URL: "postgres://env"
+        },
+        createDbClient: (databaseUrl) => ({
+          async end() {
+            closed.push(databaseUrl);
+          },
+          async query() {
+            return { rows: [] };
+          }
+        }),
+        createService: () => ({
+          async probeKtvIndexAssets(input) {
+            serviceInputs.push(input);
+            return {
+              selected: 0,
+              probed: 0,
+              failed: 0,
+              skipped: 0,
+              singleTrack: 0,
+              dualTrack: 0,
+              multiTrack: 0,
+              elapsedMs: 0
+            };
+          }
+        }),
+        stdout: () => {}
+      }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(closed).toEqual(["postgres://env"]);
+    expect(serviceInputs).toEqual([
+      {
+        limit: undefined,
+        concurrency: 8,
+        retryFailed: false,
+        dryRun: false,
+        assetId: undefined
+      }
+    ]);
+  });
+
   it("throws when no database URL is configured", async () => {
     await expect(runKtvIndexProbeCli([], { env: {} })).rejects.toThrow("DATABASE_URL or --database-url is required");
   });

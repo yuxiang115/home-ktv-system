@@ -1,6 +1,6 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { Client } from "pg";
+import { Pool } from "pg";
 import type { QueryExecutor } from "../db/query-executor.js";
 import { parseMediaPathMappings, type MediaPathMapping } from "../modules/assets/media-path-mapping.js";
 import {
@@ -21,7 +21,7 @@ export interface KtvIndexProbeCliOptions {
 }
 
 interface DbClient extends QueryExecutor {
-  connect(): Promise<unknown>;
+  connect?(): Promise<unknown>;
   end(): Promise<void>;
 }
 
@@ -63,7 +63,7 @@ export async function runKtvIndexProbeCli(
   }
 
   const db = (dependencies.createDbClient ?? createPgClient)(options.databaseUrl);
-  await db.connect();
+  await db.connect?.();
   try {
     const service = (dependencies.createService ?? createProbeService)(db, {
       pathMappings: parseMediaPathMappings(options.mediaPathMappings)
@@ -137,7 +137,7 @@ export function parseKtvIndexProbeCliOptions(
 }
 
 function createPgClient(databaseUrl: string): DbClient {
-  return new Client({ connectionString: databaseUrl });
+  return new Pool({ connectionString: databaseUrl });
 }
 
 function createProbeService(db: QueryExecutor, options: { pathMappings: MediaPathMapping[] }): ProbeService {
