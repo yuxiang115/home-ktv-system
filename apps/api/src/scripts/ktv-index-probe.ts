@@ -9,6 +9,8 @@ import {
   type ProbeKtvIndexAssetsInput
 } from "../modules/ktv-index/ktv-index-technical-probe.js";
 
+const DEFAULT_CLOSE_TIMEOUT_MS = 5000;
+
 export interface KtvIndexProbeCliOptions {
   assetId: string | undefined;
   concurrency: number;
@@ -30,6 +32,7 @@ interface ProbeService {
 }
 
 export interface RunKtvIndexProbeCliDependencies {
+  closeTimeoutMs?: number;
   createDbClient?: (databaseUrl: string) => DbClient;
   createService?: (db: QueryExecutor, options: { pathMappings: MediaPathMapping[] }) => ProbeService;
   env?: Record<string, string | undefined>;
@@ -38,10 +41,10 @@ export interface RunKtvIndexProbeCliDependencies {
 
 if (import.meta.url === pathToFileURL(path.resolve(process.argv[1] ?? "")).href) {
   runKtvIndexProbeCli(process.argv.slice(2)).then((exitCode) => {
-    process.exitCode = exitCode;
+    process.exit(exitCode);
   }).catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
+    process.exit(1);
   });
 }
 
@@ -78,7 +81,7 @@ export async function runKtvIndexProbeCli(
     printSummary(result, stdout);
     return 0;
   } finally {
-    await db.end();
+    await closeDbClient(db, dependencies.closeTimeoutMs ?? DEFAULT_CLOSE_TIMEOUT_MS);
   }
 }
 
@@ -150,6 +153,22 @@ function printSummary(result: KtvIndexTechnicalProbeResult, stdout: (line: strin
   stdout("KTV index probe summary");
   stdout(`selected=${result.selected} probed=${result.probed} failed=${result.failed} skipped=${result.skipped}`);
   stdout(`tracks:1=${result.singleTrack} tracks:2=${result.dualTrack} tracks:3+=${result.multiTrack} elapsedMs=${result.elapsedMs}`);
+}
+
+async function closeDbClient(db: DbClient, timeoutMs: number): Promise<void> {
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      db.end(),
+      new Promise<void>((resolve) => {
+        timeout = setTimeout(resolve, Math.max(1, timeoutMs));
+      })
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
 }
 
 function requireValue(args: readonly string[], index: number, optionName: string): string {

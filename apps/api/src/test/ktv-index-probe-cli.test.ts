@@ -150,7 +150,54 @@ describe("ktv-index-probe CLI", () => {
     ]);
   });
 
+  it("does not hang forever when database client close is slow", async () => {
+    const output: string[] = [];
+
+    const result = await Promise.race([
+      runKtvIndexProbeCli(
+        [],
+        {
+          closeTimeoutMs: 1,
+          env: {
+            DATABASE_URL: "postgres://env"
+          },
+          createDbClient: () => ({
+            async end() {
+              await new Promise(() => {});
+            },
+            async query() {
+              return { rows: [] };
+            }
+          }),
+          createService: () => ({
+            async probeKtvIndexAssets() {
+              return {
+                selected: 0,
+                probed: 0,
+                failed: 0,
+                skipped: 0,
+                singleTrack: 0,
+                dualTrack: 0,
+                multiTrack: 0,
+                elapsedMs: 0
+              };
+            }
+          }),
+          stdout: (line) => output.push(line)
+        }
+      ),
+      sleep(50).then(() => "timeout" as const)
+    ]);
+
+    expect(result).toBe(0);
+    expect(output).toContain("KTV index probe summary");
+  });
+
   it("throws when no database URL is configured", async () => {
     await expect(runKtvIndexProbeCli([], { env: {} })).rejects.toThrow("DATABASE_URL or --database-url is required");
   });
 });
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
