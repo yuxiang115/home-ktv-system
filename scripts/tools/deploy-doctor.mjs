@@ -588,7 +588,7 @@ function statusCount(value, status) {
     return undefined;
   }
   const row = value.find((item) => isRecord(item) && item.technicalStatus === status);
-  return isRecord(row) ? row.count : undefined;
+  return isRecord(row) ? row.count : 0;
 }
 
 function trackCount(value, audioTrackCount) {
@@ -596,5 +596,5 @@ function trackCount(value, audioTrackCount) {
     return undefined;
   }
   const row = value.find((item) => isRecord(item) && Number(item.audioTrackCount) === audioTrackCount);
-  return isRecord(row) ? row.count : undefined;
+  return isRecord(row) ? row.count : 0;
 }

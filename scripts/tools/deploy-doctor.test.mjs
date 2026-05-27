@@ -296,6 +296,60 @@ test("buildDoctorReport includes raw KTV index diagnostics metrics", async () =>
   }
 });
 
+test("buildDoctorReport renders absent KTV probe buckets as zero", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "home-ktv-doctor-"));
+  const envFile = path.join(dir, ".env");
+  await writeFile(
+    envFile,
+    [
+      "PUBLIC_BASE_URL=http://127.0.0.1:4000",
+      "CONTROLLER_BASE_URL=http://127.0.0.1:5176",
+      "CORS_ALLOWED_ORIGINS=http://127.0.0.1:5174,http://127.0.0.1:5176,http://127.0.0.1:5173",
+      "DOCKER_DATABASE_URL=postgres://ktv:ktv@postgres:5432/home_ktv",
+      "KTV_NAS_HOST_PATH=/mnt/nas/KTV歌曲",
+      "DOCKER_MEDIA_PATH_MAPPINGS=/mnt/nas/KTV歌曲=/nas/KTV歌曲"
+    ].join("\n")
+  );
+
+  try {
+    const report = await buildDoctorReport(
+      {
+        envFile,
+        json: false,
+        mode: "docker",
+        serviceStatusCmd: "",
+        skipNetwork: false
+      },
+      {
+        canReadPath: () => true,
+        fetchImpl: async () => ({
+          status: 200,
+          async json() {
+            return {
+              activeAssetCount: 34385,
+              audioTrackDistribution: [],
+              latestRun: { status: "completed" },
+              missingAssetCount: 0,
+              probeFailedCount: 0,
+              probePendingCount: 34385,
+              probeCoveragePercent: 0,
+              technicalStatusCounts: [{ technicalStatus: "pending", count: 34385 }],
+              songCount: 31840
+            };
+          }
+        }),
+        pathExists: () => true
+      }
+    );
+
+    const check = report.checks.find((item) => item.name === "ktv index diagnostics");
+    assert.match(check?.message ?? "", /probed=0/u);
+    assert.match(check?.message ?? "", /tracks:1=0/u);
+  } finally {
+    await rm(dir, { force: true, recursive: true });
+  }
+});
+
 test("parseArgs and parsePathMappings expose CLI and mapping primitives", () => {
   assert.deepEqual(parseArgs(["--", "--mode", "source", "--env-file", "server.env", "--skip-network", "--json"]), {
     envFile: "server.env",
