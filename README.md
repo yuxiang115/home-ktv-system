@@ -89,7 +89,7 @@ bash deploy/source/ktv.sh logs
 ```
 
 部署总览见 [docs/deployment.md](docs/deployment.md)。Docker 方式见 [docs/deployment-docker.md](docs/deployment-docker.md)，源码方式见 [docs/deployment-source.md](docs/deployment-source.md)。
-服务器运维步骤见 [docs/runbooks/deploy-lxc-dev.md](docs/runbooks/deploy-lxc-dev.md)，故障排查见 [docs/runbooks/troubleshooting.md](docs/runbooks/troubleshooting.md)，发布检查见 [docs/runbooks/release-checklist.md](docs/runbooks/release-checklist.md)。
+服务器运维步骤见 [docs/runbooks/deploy-lxc-dev.md](docs/runbooks/deploy-lxc-dev.md)，故障排查见 [docs/runbooks/troubleshooting.md](docs/runbooks/troubleshooting.md)，仓库卫生见 [docs/runbooks/repo-hygiene.md](docs/runbooks/repo-hygiene.md)，发布检查见 [docs/runbooks/release-checklist.md](docs/runbooks/release-checklist.md)。
 
 ## Android TV
 

@@ -7,7 +7,16 @@ import { fileURLToPath } from "node:url";
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const HIGH_RISK_PREFIXES = ["apps/", "clients/", "packages/", "deploy/", "scripts/", "docs/"];
 const HIGH_RISK_FILES = new Set(["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.base.json"]);
-const RUNTIME_PATHS = ["runtime", "logs", "home-ktv-media", "songs-sample", ".worktrees", "worktrees"];
+const RUNTIME_PATHS = [
+  "runtime",
+  "logs",
+  "home-ktv-media",
+  "songs-sample",
+  ".codex",
+  ".planning/reports",
+  ".worktrees",
+  "worktrees"
+];
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   main(process.argv.slice(2)).catch((error) => {

@@ -8,6 +8,8 @@ logs/
 runtime/
 home-ktv-media/
 songs-sample/
+.codex/
+.planning/reports/
 .worktrees/
 worktrees/
 clients/android-tv/.gradle/

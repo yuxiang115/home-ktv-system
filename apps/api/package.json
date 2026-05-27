@@ -11,6 +11,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit",
     "migrate": "node scripts/apply-migrations.mjs",
+    "index:ktv": "tsx src/scripts/ktv-full-index.ts",
+    "sample:ktv-index": "tsx src/scripts/ktv-sample-index.ts",
     "test": "vitest run",
     "start": "node dist/server.js"
   },

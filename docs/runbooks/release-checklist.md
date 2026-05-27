@@ -9,6 +9,8 @@ pnpm test
 pnpm build
 ```
 
+如果本地已有历史调研文件，先按 [仓库卫生 Runbook](repo-hygiene.md) 判断归属；不要把不属于当前发布的文件混进提交。
+
 如果只改了部署脚本或文档，可以至少运行：
 
 ```bash
@@ -70,4 +72,3 @@ cd clients/android-tv
 3. 原唱/伴唱切换。
 4. 音频是否干净。
 5. 断线重连后状态恢复。
-
