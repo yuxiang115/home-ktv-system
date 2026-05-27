@@ -7,6 +7,9 @@ import { fileURLToPath } from "node:url";
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const INDEXED_NAS_ROOT = "/mnt/nas/KTV歌曲";
+const NETWORK_RETRY_ATTEMPTS = 4;
+const NETWORK_RETRY_DELAY_MS = 1000;
+const TRANSIENT_HTTP_STATUSES = new Set([408, 425, 429, 502, 503, 504, 521, 522, 523, 524]);
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   main(process.argv.slice(2)).catch((error) => {
@@ -222,6 +225,7 @@ export function checkMediaPaths(config, dependencies = {}) {
 
 export async function checkUrls(config, dependencies = {}) {
   const fetchImpl = dependencies.fetchImpl ?? fetch;
+  const wait = dependencies.wait ?? sleep;
   const apiBase = config.apiBaseUrl.replace(/\/$/u, "");
   const targets = [
     ["api health", `${apiBase}/health`],
@@ -235,9 +239,15 @@ export async function checkUrls(config, dependencies = {}) {
 
   const checks = [];
   for (const [name, url] of targets) {
-    checks.push(await probeUrl(name, url, fetchImpl));
+    checks.push(await probeUrl(name, url, fetchImpl, wait));
   }
-  checks.push(await probeKtvIndexDiagnostics(`${apiBase}/admin/ktv-index/diagnostics?sampleSize=3&sampleTimeoutMs=100`, fetchImpl));
+  checks.push(
+    await probeKtvIndexDiagnostics(
+      `${apiBase}/admin/ktv-index/diagnostics?sampleSize=3&sampleTimeoutMs=100`,
+      fetchImpl,
+      wait
+    )
+  );
   return checks;
 }
 
@@ -299,34 +309,33 @@ function checkPath(category, name, filePath, pathExists, canReadPath) {
   return pass(category, name, `${filePath} is readable`);
 }
 
-async function probeUrl(name, url, fetchImpl) {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    const response = await fetchImpl(url, {
-      method: "GET",
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
+async function probeUrl(name, url, fetchImpl, wait) {
+  const result = await fetchWithTransientRetry(url, fetchImpl, wait, { timeoutMs: 3000 });
+  if (result.error) {
+    return fail("network", name, `${url} ${result.error instanceof Error ? result.error.message : String(result.error)}`);
+  }
+
+  const response = result.response;
+  if (response) {
     if (response.status >= 200 && response.status < 400) {
       return pass("network", name, `${response.status} ${url}`);
     }
     return fail("network", name, `${response.status} ${url}`);
-  } catch (error) {
-    return fail("network", name, `${url} ${error instanceof Error ? error.message : String(error)}`);
   }
+  return fail("network", name, `${url} no response`);
 }
 
-async function probeKtvIndexDiagnostics(url, fetchImpl) {
+async function probeKtvIndexDiagnostics(url, fetchImpl, wait) {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    const response = await fetchImpl(url, {
-      method: "GET",
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
+    const result = await fetchWithTransientRetry(url, fetchImpl, wait, { timeoutMs: 5000 });
+    if (result.error) {
+      return fail("network", "ktv index diagnostics", `${url} ${result.error instanceof Error ? result.error.message : String(result.error)}`);
+    }
 
+    const response = result.response;
+    if (!response) {
+      return fail("network", "ktv index diagnostics", `${url} no response`);
+    }
     if (response.status < 200 || response.status >= 400) {
       return fail("network", "ktv index diagnostics", `${response.status} ${url}`);
     }
@@ -350,6 +359,44 @@ async function probeKtvIndexDiagnostics(url, fetchImpl) {
   } catch (error) {
     return fail("network", "ktv index diagnostics", `${url} ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+async function fetchWithTransientRetry(url, fetchImpl, wait, { timeoutMs }) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= NETWORK_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(url, fetchImpl, timeoutMs);
+      if (!TRANSIENT_HTTP_STATUSES.has(response.status) || attempt === NETWORK_RETRY_ATTEMPTS) {
+        return { response, error: null };
+      }
+    } catch (error) {
+      lastError = error;
+      if (attempt === NETWORK_RETRY_ATTEMPTS) {
+        return { response: null, error };
+      }
+    }
+
+    await wait(NETWORK_RETRY_DELAY_MS);
+  }
+
+  return { response: null, error: lastError };
+}
+
+async function fetchWithTimeout(url, fetchImpl, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetchImpl(url, {
+      method: "GET",
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function sleep(ms) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function publicConfig(config) {

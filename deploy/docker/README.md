@@ -19,6 +19,8 @@ bash deploy/docker/ktv.sh logs api
 bash deploy/docker/ktv.sh stop
 ```
 
+`doctor` 会对刚重启后常见的 502/503/504 等公网反代临时状态做短重试，避免 `restart && doctor` 因 API 刚恢复时序产生误报。500 等后端错误仍会直接标记失败。
+
 `deploy/docker/.env` 从 `deploy/env/server.env.example` 生成。`PUBLIC_BASE_URL` 和 `CONTROLLER_BASE_URL` 必须是手机、Web TV 和 Android TV 可访问的服务器地址。
 公网分域名部署时也应设置 `ADMIN_BASE_URL` 和 `TV_WEB_BASE_URL`，这样自检脚本能准确验证 CORS 与入口地址。
 

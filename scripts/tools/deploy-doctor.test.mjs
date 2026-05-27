@@ -110,6 +110,64 @@ test("checkMediaPaths verifies indexed NAS mapping and readable path", () => {
   assert.equal(checks.find((check) => check.name === "indexed NAS mapping")?.status, "PASS");
 });
 
+test("buildDoctorReport retries transient public network failures", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "home-ktv-doctor-"));
+  const envFile = path.join(dir, ".env");
+  await writeFile(
+    envFile,
+    [
+      "PUBLIC_BASE_URL=http://127.0.0.1:4000",
+      "CONTROLLER_BASE_URL=http://127.0.0.1:5176",
+      "CORS_ALLOWED_ORIGINS=http://127.0.0.1:5174,http://127.0.0.1:5176,http://127.0.0.1:5173",
+      "DOCKER_DATABASE_URL=postgres://ktv:ktv@postgres:5432/home_ktv",
+      "KTV_NAS_HOST_PATH=/mnt/nas/KTV歌曲",
+      "DOCKER_MEDIA_PATH_MAPPINGS=/mnt/nas/KTV歌曲=/nas/KTV歌曲"
+    ].join("\n")
+  );
+
+  const attemptsByUrl = new Map();
+
+  try {
+    const report = await buildDoctorReport(
+      {
+        envFile,
+        json: false,
+        mode: "docker",
+        serviceStatusCmd: "",
+        skipNetwork: false
+      },
+      {
+        canReadPath: () => true,
+        fetchImpl: async (url) => {
+          const key = String(url);
+          const attempts = (attemptsByUrl.get(key) ?? 0) + 1;
+          attemptsByUrl.set(key, attempts);
+
+          return {
+            status: attempts === 1 && key.includes("127.0.0.1:4000") ? 502 : 200,
+            async json() {
+              return {
+                activeAssetCount: 34385,
+                latestRun: { status: "completed" },
+                missingAssetCount: 0,
+                songCount: 31893
+              };
+            }
+          };
+        },
+        pathExists: () => true,
+        wait: async () => {}
+      }
+    );
+
+    assert.equal(report.summary.fail, 0);
+    assert.equal(attemptsByUrl.get("http://127.0.0.1:4000/health"), 2);
+    assert.equal(attemptsByUrl.get("http://127.0.0.1:4000/admin/ktv-index/diagnostics?sampleSize=3&sampleTimeoutMs=100"), 2);
+  } finally {
+    await rm(dir, { force: true, recursive: true });
+  }
+});
+
 test("buildDoctorReport returns FAIL when API health probe fails", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "home-ktv-doctor-"));
   const envFile = path.join(dir, ".env");
