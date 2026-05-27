@@ -151,10 +151,26 @@ describe("KtvIndexTechnicalProbeService", () => {
     });
     expect(db.selectValues[0]).toMatchObject({ assetId: "asset-only" });
   });
+
+  it("selects all eligible assets when limit is omitted for full-library backfill", async () => {
+    const db = new FakeKtvIndexProbeDb({
+      rows: Array.from({ length: 120 }, (_, index) => createProbeTarget({ id: `asset-${index}` }))
+    });
+    const service = new KtvIndexTechnicalProbeService(db, {
+      accessFile: async () => {},
+      probeMedia: async (filePath) => createProbeSummary({ filePath, audioTrackCount: 2 })
+    });
+
+    const result = await service.probeKtvIndexAssets({ concurrency: 4 });
+
+    expect(result.selected).toBe(120);
+    expect(result.probed).toBe(120);
+    expect(db.selectValues[0]).toMatchObject({ limit: null });
+  });
 });
 
 interface FakeSelectValues {
-  limit: number;
+  limit: number | null;
   retryFailed: boolean;
   assetId: string | null;
 }
@@ -168,13 +184,13 @@ class FakeKtvIndexProbeDb implements QueryExecutor {
 
   async query<TRow>(text: string, values: readonly unknown[] = []) {
     if (text.includes("FROM ktv_song_assets")) {
-      const [limit, retryFailed, assetId] = values as [number, boolean, string | null];
+      const [retryFailed, assetId, limit = null] = values as [boolean, string | null, number | null];
       this.selectValues.push({ limit, retryFailed, assetId });
       const rows = this.input.rows
         .filter((row) => (assetId ? row.id === assetId : true))
-        .filter((row) => retryFailed || row.technical_status !== "failed")
-        .slice(0, limit);
-      return { rows: rows as TRow[] };
+        .filter((row) => retryFailed || row.technical_status !== "failed");
+      const selectedRows = limit == null ? rows : rows.slice(0, limit);
+      return { rows: selectedRows as TRow[] };
     }
 
     if (text.includes("technical_status = 'probed'")) {

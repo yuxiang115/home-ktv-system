@@ -82,19 +82,25 @@ export class KtvIndexTechnicalProbeService {
     const limit = normalizeLimit(input.limit);
     const retryFailed = input.retryFailed === true;
     const assetId = clean(input.assetId) || null;
+    const values = [retryFailed, assetId] as unknown[];
+    const limitClause = limit == null ? "" : "LIMIT $3";
+    if (limit != null) {
+      values.push(limit);
+    }
+
     const result = await this.db.query<KtvIndexProbeTargetRow>(
       `SELECT id, file_path, technical_status
        FROM ktv_song_assets
        WHERE missing_at IS NULL
-         AND ($3::text IS NULL OR id = $3)
-         AND ($2::boolean OR technical_status <> 'failed')
+         AND ($2::text IS NULL OR id = $2)
+         AND ($1::boolean OR technical_status <> 'failed')
          AND (
            technical_status <> 'probed'
            OR jsonb_typeof(coalesce(technical_metadata->'mediaInfoSummary'->'audioTracks', technical_metadata->'audioTracks')) IS DISTINCT FROM 'array'
          )
        ORDER BY updated_at ASC, file_path ASC
-       LIMIT $1`,
-      [limit, retryFailed, assetId]
+       ${limitClause}`,
+      values
     );
     return result.rows;
   }
@@ -188,9 +194,12 @@ async function defaultAccessFile(filePath: string): Promise<void> {
   await access(filePath, constants.R_OK);
 }
 
-function normalizeLimit(value: number | undefined): number {
-  if (!Number.isInteger(value) || value == null || value <= 0) {
-    return 100;
+function normalizeLimit(value: number | undefined): number | null {
+  if (value == null) {
+    return null;
+  }
+  if (!Number.isInteger(value) || value <= 0) {
+    return null;
   }
   return Math.min(10_000, value);
 }
