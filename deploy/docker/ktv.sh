@@ -20,6 +20,7 @@ Commands:
   status      Show service status
   logs [svc]  Follow logs for all services or one service
   doctor      Run deployment self-checks
+  probe-index Probe indexed KTV media technical metadata inside the API container
   stop        Stop services
   config      Render docker compose config
   help        Show this help
@@ -49,7 +50,9 @@ setup() {
 }
 
 command="${1:-help}"
-service="${2:-}"
+if [[ $# -gt 0 ]]; then
+  shift
+fi
 
 case "${command}" in
   setup)
@@ -76,6 +79,7 @@ case "${command}" in
     ;;
   logs)
     ensure_env
+    service="${1:-}"
     if [[ -n "${service}" ]]; then
       compose logs -f "${service}"
     else
@@ -88,6 +92,13 @@ case "${command}" in
       --mode docker \
       --env-file "${ENV_FILE}" \
       --service-status-cmd "docker compose --env-file '${ENV_FILE}' -f '${COMPOSE_FILE}' ps"
+    ;;
+  probe-index)
+    ensure_env
+    if [[ "${1:-}" == "--" ]]; then
+      shift
+    fi
+    compose exec -T api pnpm -F @home-ktv/api probe:ktv-index -- "$@"
     ;;
   stop)
     ensure_env

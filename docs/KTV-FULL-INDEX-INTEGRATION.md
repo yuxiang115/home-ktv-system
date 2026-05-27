@@ -130,6 +130,7 @@ Implementation notes:
 - Always filter `missing_at is null`.
 - Return all matching assets first; automatic "best version" selection can be added later after ffprobe resolution and bitrate metadata is populated.
 - Expose audio track count when technical metadata is present. Controller UI uses `audioTrackCount = 1` to show the “单音轨歌曲源” label.
+- Technical probing is non-blocking. Failed probes should keep resources searchable and queueable; they only leave `audioTrackCount` unknown until a later retry.
 
 ## Refreshing The Index
 
@@ -143,3 +144,19 @@ pnpm -F @home-ktv/api index:ktv -- \
 ```
 
 The refresh is safe to repeat. Existing rows are updated, new files are inserted, and deleted files are hidden through `missing_at`.
+
+## Probing Technical Metadata
+
+Run a bounded sample first:
+
+```bash
+bash deploy/docker/ktv.sh probe-index -- --limit 300 --concurrency 2
+```
+
+Then run the full backfill after checking elapsed time and failure rate:
+
+```bash
+bash deploy/docker/ktv.sh probe-index -- --concurrency 8 --retry-failed
+```
+
+The probe stores compact `mediaInfoSummary`, `mediaInfoProvenance`, and failure summaries only. Do not persist full ffprobe raw JSON in `technical_metadata`.

@@ -16,6 +16,7 @@ bash deploy/docker/ktv.sh status
 bash deploy/docker/ktv.sh doctor
 bash deploy/docker/ktv.sh logs
 bash deploy/docker/ktv.sh logs api
+bash deploy/docker/ktv.sh probe-index -- --limit 300 --concurrency 2
 bash deploy/docker/ktv.sh stop
 ```
 
@@ -36,6 +37,20 @@ bash deploy/docker/ktv.sh stop
 KTV_NAS_HOST_PATH=/mnt/nas/KTV歌曲
 DOCKER_MEDIA_PATH_MAPPINGS=/mnt/nas/KTV歌曲=/nas/KTV歌曲
 ```
+
+真实曲库音轨元数据探测先跑小样本：
+
+```bash
+bash deploy/docker/ktv.sh probe-index -- --limit 300 --concurrency 2
+```
+
+确认耗时和失败率可接受后，再全量高并发回填：
+
+```bash
+bash deploy/docker/ktv.sh probe-index -- --concurrency 8 --retry-failed
+```
+
+探测只保存 `mediaInfoSummary`、`mediaInfoProvenance` 和失败摘要，不保存完整 ffprobe raw JSON。探测失败不会影响搜索、点歌或播放。
 
 容器内 API 会使用 `DOCKER_DATABASE_URL` 连接 Compose 内的 PostgreSQL。源码部署才使用 `DATABASE_URL`。
 

@@ -34,6 +34,30 @@ Admin 的职责是查看和管理资源：检查文件路径、可读性、技�
 
 如果索引资源已探测出只有一条音轨，手机控制端会标记“单音轨歌曲源”。这类歌曲仍然可以点歌播放，只是没有双音轨原唱/伴唱切换能力。
 
+## Technical Probe Flow
+
+完整文件名索引和媒体技术探测保持分离。索引负责让歌曲可搜索、可点歌；技术探测负责随后回填音轨数量、编码和时长等播放诊断元数据，不阻塞真实使用。
+
+Docker 部署先跑 300 首样本：
+
+```bash
+bash deploy/docker/ktv.sh probe-index -- --limit 300 --concurrency 2
+```
+
+确认耗时和失败率可接受后，再全量高并发回填：
+
+```bash
+bash deploy/docker/ktv.sh probe-index -- --concurrency 8 --retry-failed
+```
+
+探测只保存必要摘要：
+
+- `technical_status = 'probed'` 与 `technical_metadata.mediaInfoSummary`
+- `technical_metadata.mediaInfoProvenance`
+- 失败时保存 `technical_status = 'failed'` 与 `technical_metadata.probeError`
+
+探测不保存完整 ffprobe raw JSON。探测失败不会让歌曲不可用，只表示音轨数量等技术元数据暂时未知，后续可通过 `--retry-failed` 重试。
+
 ## Filename Rules
 
 Each top-level source folder has one strict parser rule. The current folders all use the same rule:
