@@ -199,8 +199,20 @@ test("buildDoctorReport returns FAIL when API health probe fails", async () => {
           async json() {
             return {
               activeAssetCount: 34385,
+              audioTrackDistribution: [
+                { audioTrackCount: 1, count: 12 },
+                { audioTrackCount: 2, count: 260 }
+              ],
               latestRun: { status: "completed" },
               missingAssetCount: 0,
+              probeFailedCount: 2,
+              probePendingCount: 100,
+              probeCoveragePercent: 81.43,
+              technicalStatusCounts: [
+                { technicalStatus: "failed", count: 2 },
+                { technicalStatus: "pending", count: 100 },
+                { technicalStatus: "probed", count: 280 }
+              ],
               songCount: 31893
             };
           }
@@ -248,8 +260,20 @@ test("buildDoctorReport includes raw KTV index diagnostics metrics", async () =>
             assert.equal(String(url).includes("/admin/ktv-index/diagnostics"), true);
             return {
               activeAssetCount: 34385,
+              audioTrackDistribution: [
+                { audioTrackCount: 1, count: 12 },
+                { audioTrackCount: 2, count: 260 }
+              ],
               latestRun: { status: "completed" },
               missingAssetCount: 0,
+              probeFailedCount: 2,
+              probePendingCount: 100,
+              probeCoveragePercent: 81.43,
+              technicalStatusCounts: [
+                { technicalStatus: "failed", count: 2 },
+                { technicalStatus: "pending", count: 100 },
+                { technicalStatus: "probed", count: 280 }
+              ],
               songCount: 31893
             };
           }
@@ -261,6 +285,11 @@ test("buildDoctorReport includes raw KTV index diagnostics metrics", async () =>
     const check = report.checks.find((item) => item.name === "ktv index diagnostics");
     assert.equal(check?.status, "PASS");
     assert.match(check?.message ?? "", /active=34385/u);
+    assert.match(check?.message ?? "", /probed=280/u);
+    assert.match(check?.message ?? "", /pending=100/u);
+    assert.match(check?.message ?? "", /failed=2/u);
+    assert.match(check?.message ?? "", /coverage=81\.43%/u);
+    assert.match(check?.message ?? "", /tracks:1=12/u);
     assert.match(check?.message ?? "", /latest=completed/u);
   } finally {
     await rm(dir, { force: true, recursive: true });

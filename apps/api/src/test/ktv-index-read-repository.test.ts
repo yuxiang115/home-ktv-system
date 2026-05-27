@@ -105,6 +105,19 @@ describe("PgKtvIndexReadRepository", () => {
       missingAssetCount: 28,
       songCount: 31893,
       artistCount: 8568,
+      technicalStatusCounts: [
+        { technicalStatus: "failed", count: 2 },
+        { technicalStatus: "pending", count: 100 },
+        { technicalStatus: "probed", count: 280 }
+      ],
+      audioTrackDistribution: [
+        { audioTrackCount: 1, count: 12 },
+        { audioTrackCount: 2, count: 260 },
+        { audioTrackCount: 3, count: 8 }
+      ],
+      probePendingCount: 100,
+      probeFailedCount: 2,
+      probeCoveragePercent: 0.81,
       lowConfidenceCount: 0,
       minParseConfidence: 0.98,
       nasSample: {
@@ -136,6 +149,8 @@ describe("PgKtvIndexReadRepository", () => {
     expect(db.queries.map((query) => query.text)).toEqual(expect.arrayContaining([
       expect.stringContaining("to_regclass"),
       expect.stringContaining("count(*) FILTER (WHERE a.missing_at IS NULL)"),
+      expect.stringContaining("GROUP BY technical_status"),
+      expect.stringContaining("jsonb_array_length"),
       expect.stringContaining("parse_confidence < 0.75")
     ]));
   });
@@ -260,6 +275,26 @@ class ScriptedKtvIndexDb implements QueryExecutor {
 
     if (text.includes("GROUP BY parse_strategy")) {
       return { rows: [{ parse_strategy: "filename", count: "34385" }] as TRow[] };
+    }
+
+    if (text.includes("GROUP BY technical_status")) {
+      return {
+        rows: [
+          { technical_status: "failed", count: "2" },
+          { technical_status: "pending", count: "100" },
+          { technical_status: "probed", count: "280" }
+        ] as TRow[]
+      };
+    }
+
+    if (text.includes("jsonb_array_length")) {
+      return {
+        rows: [
+          { audio_track_count: "1", count: "12" },
+          { audio_track_count: "2", count: "260" },
+          { audio_track_count: "3", count: "8" }
+        ] as TRow[]
+      };
     }
 
     if (text.includes("parse_confidence < 0.75")) {

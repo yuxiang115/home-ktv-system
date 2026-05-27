@@ -353,6 +353,11 @@ async function probeKtvIndexDiagnostics(url, fetchImpl, wait) {
         `active=${formatMetric(body.activeAssetCount)}`,
         `missing=${formatMetric(body.missingAssetCount)}`,
         `songs=${formatMetric(body.songCount)}`,
+        `probed=${formatMetric(statusCount(body.technicalStatusCounts, "probed"))}`,
+        `pending=${formatMetric(body.probePendingCount ?? statusCount(body.technicalStatusCounts, "pending"))}`,
+        `failed=${formatMetric(body.probeFailedCount ?? statusCount(body.technicalStatusCounts, "failed"))}`,
+        `coverage=${formatPercent(body.probeCoveragePercent)}`,
+        `tracks:1=${formatMetric(trackCount(body.audioTrackDistribution, 1))}`,
         `latest=${typeof latestRun?.status === "string" ? latestRun.status : "none"}`
       ].join(" ")
     );
@@ -569,4 +574,27 @@ function formatMetric(value) {
     return String(value);
   }
   return "unknown";
+}
+
+function formatPercent(value) {
+  if (typeof value === "number" || typeof value === "string") {
+    return `${value}%`;
+  }
+  return "unknown";
+}
+
+function statusCount(value, status) {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const row = value.find((item) => isRecord(item) && item.technicalStatus === status);
+  return isRecord(row) ? row.count : undefined;
+}
+
+function trackCount(value, audioTrackCount) {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const row = value.find((item) => isRecord(item) && Number(item.audioTrackCount) === audioTrackCount);
+  return isRecord(row) ? row.count : undefined;
 }

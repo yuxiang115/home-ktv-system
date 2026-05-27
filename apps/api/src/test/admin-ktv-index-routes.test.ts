@@ -66,6 +66,18 @@ function createDiagnosticsFixture(): KtvIndexDiagnosticsResponse {
     songCount: 31893,
     artistCount: 8568,
     parseStrategies: [{ parseStrategy: "filename", count: 34385 }],
+    technicalStatusCounts: [
+      { technicalStatus: "failed", count: 2 },
+      { technicalStatus: "pending", count: 100 },
+      { technicalStatus: "probed", count: 280 }
+    ],
+    audioTrackDistribution: [
+      { audioTrackCount: 1, count: 12 },
+      { audioTrackCount: 2, count: 260 }
+    ],
+    probePendingCount: 100,
+    probeFailedCount: 2,
+    probeCoveragePercent: 0.81,
     lowConfidenceCount: 0,
     minParseConfidence: 0.98,
     nasSample: {

@@ -1029,7 +1029,7 @@ button:disabled {
 }
 
 .ktv-index-metrics {
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
 }
 
 .ktv-index-sample-counts {
@@ -1069,7 +1069,7 @@ button:disabled {
 .ktv-index-detail-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: minmax(190px, 0.8fr) minmax(190px, 0.8fr) minmax(260px, 1.2fr) minmax(320px, 1.6fr);
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   min-width: 0;
 }
 

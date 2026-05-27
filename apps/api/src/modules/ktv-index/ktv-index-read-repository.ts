@@ -95,6 +95,16 @@ interface ConfidenceRow {
   min_parse_confidence: number | string | null;
 }
 
+interface TechnicalStatusRow {
+  technical_status: string | null;
+  count: number | string;
+}
+
+interface AudioTrackDistributionRow {
+  audio_track_count: number | string;
+  count: number | string;
+}
+
 interface SampleAssetRow {
   id: string;
   file_path: string;
@@ -128,6 +138,11 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
         songCount: 0,
         artistCount: 0,
         parseStrategies: [],
+        technicalStatusCounts: [],
+        audioTrackDistribution: [],
+        probePendingCount: 0,
+        probeFailedCount: 0,
+        probeCoveragePercent: 0,
         lowConfidenceCount: 0,
         minParseConfidence: null,
         nasSample: emptyNasSample,
@@ -135,17 +150,20 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
       };
     }
 
-    const [latestRun, counts, parseStrategies, confidence, preview] = await Promise.all([
-      this.getLatestRun(),
-      this.getCounts(),
-      this.getParseStrategies(),
-      this.getConfidenceSummary(),
-      this.searchDiagnosticsPreview({
-        query: input.previewQuery ?? "",
-        limit: input.previewLimit ?? 8,
-        versionsPerSong: 4
-      })
-    ]);
+    const [latestRun, counts, parseStrategies, technicalStatusCounts, audioTrackDistribution, confidence, preview] =
+      await Promise.all([
+        this.getLatestRun(),
+        this.getCounts(),
+        this.getParseStrategies(),
+        this.getTechnicalStatusCounts(),
+        this.getAudioTrackDistribution(),
+        this.getConfidenceSummary(),
+        this.searchDiagnosticsPreview({
+          query: input.previewQuery ?? "",
+          limit: input.previewLimit ?? 8,
+          versionsPerSong: 4
+        })
+      ]);
     const sampleAssets = await this.getSampleAssets(input);
     const nasSample = await buildNasSample({
       assets: sampleAssets.map((asset) => ({ indexedAssetId: asset.id, filePath: asset.file_path })),
@@ -163,6 +181,14 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
       songCount: counts.songCount,
       artistCount: counts.artistCount,
       parseStrategies,
+      technicalStatusCounts,
+      audioTrackDistribution,
+      probePendingCount: countTechnicalStatus(technicalStatusCounts, "pending"),
+      probeFailedCount: countTechnicalStatus(technicalStatusCounts, "failed"),
+      probeCoveragePercent: calculateProbeCoveragePercent({
+        activeAssetCount: counts.activeAssetCount,
+        probedCount: countTechnicalStatus(technicalStatusCounts, "probed")
+      }),
       lowConfidenceCount: confidence.lowConfidenceCount,
       minParseConfidence: confidence.minParseConfidence,
       nasSample,
@@ -347,6 +373,40 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
     }));
   }
 
+  private async getTechnicalStatusCounts(): Promise<KtvIndexDiagnosticsResponse["technicalStatusCounts"]> {
+    const result = await this.db.query<TechnicalStatusRow>(
+      `SELECT technical_status, count(*)::int AS count
+       FROM ktv_song_assets
+       WHERE missing_at IS NULL
+       GROUP BY technical_status
+       ORDER BY technical_status ASC`
+    );
+    return result.rows.map((row) => ({
+      technicalStatus: row.technical_status ?? "unknown",
+      count: toNumber(row.count)
+    }));
+  }
+
+  private async getAudioTrackDistribution(): Promise<KtvIndexDiagnosticsResponse["audioTrackDistribution"]> {
+    const result = await this.db.query<AudioTrackDistributionRow>(
+      `WITH track_arrays AS (
+         SELECT coalesce(technical_metadata->'mediaInfoSummary'->'audioTracks', technical_metadata->'audioTracks') AS audio_tracks
+         FROM ktv_song_assets
+         WHERE missing_at IS NULL
+       )
+       SELECT jsonb_array_length(audio_tracks)::int AS audio_track_count,
+              count(*)::int AS count
+       FROM track_arrays
+       WHERE jsonb_typeof(audio_tracks) = 'array'
+       GROUP BY audio_track_count
+       ORDER BY audio_track_count ASC`
+    );
+    return result.rows.map((row) => ({
+      audioTrackCount: toNumber(row.audio_track_count),
+      count: toNumber(row.count)
+    }));
+  }
+
   private async getConfidenceSummary(): Promise<{ lowConfidenceCount: number; minParseConfidence: number | null }> {
     const result = await this.db.query<ConfidenceRow>(
       `SELECT count(*) FILTER (WHERE parse_confidence < 0.75)::int AS low_confidence_count,
@@ -474,6 +534,20 @@ function toNullableNumber(value: number | string | null): number | null {
 
 function toIsoString(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : value;
+}
+
+function countTechnicalStatus(
+  rows: KtvIndexDiagnosticsResponse["technicalStatusCounts"],
+  technicalStatus: string
+): number {
+  return rows.find((row) => row.technicalStatus === technicalStatus)?.count ?? 0;
+}
+
+function calculateProbeCoveragePercent(input: { activeAssetCount: number; probedCount: number }): number {
+  if (input.activeAssetCount <= 0) {
+    return 0;
+  }
+  return Math.round((input.probedCount / input.activeAssetCount) * 10_000) / 100;
 }
 
 function readAudioTrackCount(value: unknown): number | null {

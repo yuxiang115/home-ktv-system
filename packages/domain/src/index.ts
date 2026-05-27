@@ -307,6 +307,16 @@ export interface KtvIndexParseStrategyCount {
   count: number;
 }
 
+export interface KtvIndexTechnicalStatusCount {
+  technicalStatus: string;
+  count: number;
+}
+
+export interface KtvIndexAudioTrackDistribution {
+  audioTrackCount: number;
+  count: number;
+}
+
 export interface KtvIndexNasSampleResult {
   indexedAssetId: string;
   filePath: string;
@@ -346,6 +356,11 @@ export interface KtvIndexDiagnosticsResponse {
   songCount: number;
   artistCount: number;
   parseStrategies: KtvIndexParseStrategyCount[];
+  technicalStatusCounts: KtvIndexTechnicalStatusCount[];
+  audioTrackDistribution: KtvIndexAudioTrackDistribution[];
+  probePendingCount: number;
+  probeFailedCount: number;
+  probeCoveragePercent: number;
   lowConfidenceCount: number;
   minParseConfidence: number | null;
   nasSample: {

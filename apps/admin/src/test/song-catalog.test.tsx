@@ -75,6 +75,11 @@ describe("song catalog maintenance", () => {
     expect(screen.getByLabelText("歌曲状态")).toBeTruthy();
     expect(screen.getAllByLabelText("语言").length).toBeGreaterThan(0);
     const diagnostics = screen.getByRole("region", { name: "KTV 索引诊断" });
+    expect(within(diagnostics).getByText("探测覆盖率")).toBeTruthy();
+    expect(within(diagnostics).getByText("0.81%")).toBeTruthy();
+    expect(within(diagnostics).getByText("音轨分布")).toBeTruthy();
+    expect(within(diagnostics).getByText("1 条音轨")).toBeTruthy();
+    expect(within(diagnostics).getAllByText("12").length).toBeGreaterThan(0);
     expect(within(diagnostics).getByText("NAS 抽样读取")).toBeTruthy();
     expect(within(diagnostics).getByText("搜索预览")).toBeTruthy();
     expect(within(diagnostics).getAllByText("未映射").length).toBeGreaterThan(0);
@@ -616,6 +621,18 @@ function createKtvDiagnostics(): KtvIndexDiagnosticsResponse {
     songCount: 1,
     artistCount: 1,
     parseStrategies: [{ parseStrategy: "filename", count: 2 }],
+    technicalStatusCounts: [
+      { technicalStatus: "failed", count: 2 },
+      { technicalStatus: "pending", count: 100 },
+      { technicalStatus: "probed", count: 280 }
+    ],
+    audioTrackDistribution: [
+      { audioTrackCount: 1, count: 12 },
+      { audioTrackCount: 2, count: 260 }
+    ],
+    probePendingCount: 100,
+    probeFailedCount: 2,
+    probeCoveragePercent: 0.81,
     lowConfidenceCount: 0,
     minParseConfidence: 0.98,
     nasSample: {

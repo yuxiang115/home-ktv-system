@@ -173,6 +173,9 @@ function KtvIndexDiagnosticsPanel({
         <Metric label={t("ktvIndex.missingAssets")} value={formatNumber(diagnostics?.missingAssetCount)} />
         <Metric label={t("ktvIndex.songCount")} value={formatNumber(diagnostics?.songCount)} />
         <Metric label={t("ktvIndex.artistCount")} value={formatNumber(diagnostics?.artistCount)} />
+        <Metric label={t("ktvIndex.probeCoverage")} value={formatPercent(diagnostics?.probeCoveragePercent)} />
+        <Metric label={t("ktvIndex.probePending")} value={formatNumber(diagnostics?.probePendingCount)} />
+        <Metric label={t("ktvIndex.probeFailed")} value={formatNumber(diagnostics?.probeFailedCount)} />
         <Metric label={t("ktvIndex.lowConfidence")} value={formatNumber(diagnostics?.lowConfidenceCount)} />
       </dl>
 
@@ -197,6 +200,38 @@ function KtvIndexDiagnosticsPanel({
                 <div className="ktv-index-row" role="row" key={strategy.parseStrategy}>
                   <span role="cell">{strategy.parseStrategy}</span>
                   <strong role="cell">{formatNumber(strategy.count)}</strong>
+                </div>
+              ))
+            ) : (
+              <p className="queue-empty-text">{isLoading ? t("common.loading") : t("common.none")}</p>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <h3>{t("ktvIndex.technicalStatus")}</h3>
+          <div className="ktv-index-table" role="table" aria-label={t("ktvIndex.technicalStatus")}>
+            {diagnostics?.technicalStatusCounts.length ? (
+              diagnostics.technicalStatusCounts.map((status) => (
+                <div className="ktv-index-row" role="row" key={status.technicalStatus}>
+                  <span role="cell">{status.technicalStatus}</span>
+                  <strong role="cell">{formatNumber(status.count)}</strong>
+                </div>
+              ))
+            ) : (
+              <p className="queue-empty-text">{isLoading ? t("common.loading") : t("common.none")}</p>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <h3>{t("ktvIndex.audioTrackDistribution")}</h3>
+          <div className="ktv-index-table" role="table" aria-label={t("ktvIndex.audioTrackDistribution")}>
+            {diagnostics?.audioTrackDistribution.length ? (
+              diagnostics.audioTrackDistribution.map((item) => (
+                <div className="ktv-index-row" role="row" key={item.audioTrackCount}>
+                  <span role="cell">{t("ktvIndex.audioTrackCount", { count: item.audioTrackCount })}</span>
+                  <strong role="cell">{formatNumber(item.count)}</strong>
                 </div>
               ))
             ) : (
@@ -342,6 +377,10 @@ function KtvSyncedSourcesPanel({ song }: { song: AdminCatalogSong }) {
 
 function formatNumber(value: number | null | undefined): string {
   return value == null ? "0" : value.toLocaleString();
+}
+
+function formatPercent(value: number | null | undefined): string {
+  return value == null ? "0%" : `${value}%`;
 }
 
 function formatNullableNumber(value: number | null | undefined): string {
