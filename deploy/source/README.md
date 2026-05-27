@@ -11,7 +11,7 @@ bash deploy/source/ktv.sh build
 bash deploy/source/ktv.sh restart
 ```
 
-`setup` 会安装依赖、构建 API/Admin/Controller，并执行数据库迁移。`deploy/source/.env` 从 `deploy/env/server.env.example` 生成。修改 `PUBLIC_BASE_URL` 后需要重新 `build`，因为 Admin/Controller 会在构建时写入 API 地址。
+`setup` 会安装依赖、构建 API/Admin/Controller/Web TV，并执行数据库迁移。`deploy/source/.env` 从 `deploy/env/server.env.example` 生成。修改 `PUBLIC_BASE_URL` 后需要重新 `build`，因为前端应用会在构建时写入 API 地址。
 
 ## 常用命令
 
@@ -19,6 +19,7 @@ bash deploy/source/ktv.sh restart
 bash deploy/source/ktv.sh start
 bash deploy/source/ktv.sh restart
 bash deploy/source/ktv.sh status
+bash deploy/source/ktv.sh doctor
 bash deploy/source/ktv.sh logs
 bash deploy/source/ktv.sh logs api
 bash deploy/source/ktv.sh stop
@@ -32,6 +33,7 @@ bash deploy/source/ktv.sh stop
 api         4000  后端 API、媒体网关、房间状态和队列
 admin       5174  后台管理界面
 controller  5176  手机扫码控制器
+tv-web      5173  Web TV 调试端
 ```
 
 日志和 PID 默认写入：
@@ -43,7 +45,7 @@ runtime/pids/
 
 ## 关键配置
 
-`PUBLIC_BASE_URL` 和 `CONTROLLER_BASE_URL` 必须是手机和 Android TV 能访问的服务器局域网或域名地址。
+`PUBLIC_BASE_URL`、`ADMIN_BASE_URL`、`CONTROLLER_BASE_URL` 和 `TV_WEB_BASE_URL` 必须是手机、Web TV 和 Android TV 能访问的服务器局域网或域名地址。
 
 真实 NAS 曲库需要确保后端进程能读到数据库索引中的文件路径。路径不一致时用 `MEDIA_PATH_MAPPINGS` 映射，例如：
 

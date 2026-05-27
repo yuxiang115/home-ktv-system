@@ -58,6 +58,7 @@ pnpm dev:local start
 ```bash
 pnpm dev:local status
 pnpm dev:local tail api
+pnpm repo:hygiene
 pnpm typecheck
 pnpm test
 pnpm build
@@ -73,6 +74,7 @@ Docker Compose 部署：
 bash deploy/docker/ktv.sh setup
 bash deploy/docker/ktv.sh start
 bash deploy/docker/ktv.sh status
+bash deploy/docker/ktv.sh doctor
 bash deploy/docker/ktv.sh logs
 ```
 
@@ -82,10 +84,12 @@ bash deploy/docker/ktv.sh logs
 bash deploy/source/ktv.sh setup
 bash deploy/source/ktv.sh start
 bash deploy/source/ktv.sh status
+bash deploy/source/ktv.sh doctor
 bash deploy/source/ktv.sh logs
 ```
 
 部署总览见 [docs/deployment.md](docs/deployment.md)。Docker 方式见 [docs/deployment-docker.md](docs/deployment-docker.md)，源码方式见 [docs/deployment-source.md](docs/deployment-source.md)。
+服务器运维步骤见 [docs/runbooks/deploy-lxc-dev.md](docs/runbooks/deploy-lxc-dev.md)，故障排查见 [docs/runbooks/troubleshooting.md](docs/runbooks/troubleshooting.md)，发布检查见 [docs/runbooks/release-checklist.md](docs/runbooks/release-checklist.md)。
 
 ## Android TV
 

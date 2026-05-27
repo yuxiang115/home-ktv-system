@@ -18,7 +18,9 @@ bash deploy/docker/ktv.sh status
 
 ```bash
 PUBLIC_BASE_URL=http://<server-ip>:4000
+ADMIN_BASE_URL=http://<server-ip>:5174
 CONTROLLER_BASE_URL=http://<server-ip>:5176
+TV_WEB_BASE_URL=http://<server-ip>:5173
 CORS_ALLOWED_ORIGINS=http://<server-ip>:5174,http://<server-ip>:5176,http://<server-ip>:5173
 KTV_NAS_HOST_PATH=/mnt/nas/KTV歌曲
 ```
@@ -54,6 +56,7 @@ bash deploy/docker/ktv.sh build
 bash deploy/docker/ktv.sh start
 bash deploy/docker/ktv.sh restart
 bash deploy/docker/ktv.sh status
+bash deploy/docker/ktv.sh doctor
 bash deploy/docker/ktv.sh logs
 bash deploy/docker/ktv.sh logs api
 bash deploy/docker/ktv.sh stop
@@ -97,6 +100,7 @@ DOCKER_MEDIA_PATH_MAPPINGS=/mnt/nas/KTV歌曲=/nas/KTV歌曲
 
 ```bash
 bash deploy/docker/ktv.sh config
+bash deploy/docker/ktv.sh doctor
 curl http://<server-ip>:4000/health
 ```
 

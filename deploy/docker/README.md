@@ -13,12 +13,14 @@ bash deploy/docker/ktv.sh start
 ```bash
 bash deploy/docker/ktv.sh restart
 bash deploy/docker/ktv.sh status
+bash deploy/docker/ktv.sh doctor
 bash deploy/docker/ktv.sh logs
 bash deploy/docker/ktv.sh logs api
 bash deploy/docker/ktv.sh stop
 ```
 
 `deploy/docker/.env` 从 `deploy/env/server.env.example` 生成。`PUBLIC_BASE_URL` 和 `CONTROLLER_BASE_URL` 必须是手机、Web TV 和 Android TV 可访问的服务器地址。
+公网分域名部署时也应设置 `ADMIN_BASE_URL` 和 `TV_WEB_BASE_URL`，这样自检脚本能准确验证 CORS 与入口地址。
 
 真实 NAS 曲库需要重点检查：
 

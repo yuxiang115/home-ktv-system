@@ -8,7 +8,7 @@ Docker 部署   bash deploy/docker/ktv.sh start
 源码部署      bash deploy/source/ktv.sh start
 ```
 
-服务器部署只包含后端 API、后台 Admin、手机 Controller 和 PostgreSQL。Android TV 是正式 TV 客户端，需要单独构建 APK 并安装到电视。
+服务器部署包含后端 API、后台 Admin、手机 Controller、Web TV 调试端和 PostgreSQL。Android TV 是正式 TV 客户端，需要单独构建 APK 并安装到电视。
 
 ## 文档入口
 
@@ -34,6 +34,7 @@ pnpm dev:local start
 bash deploy/docker/ktv.sh setup
 bash deploy/docker/ktv.sh start
 bash deploy/docker/ktv.sh status
+bash deploy/docker/ktv.sh doctor
 ```
 
 如果服务器已经有 Node.js、pnpm 和 PostgreSQL，也可以使用源码部署：
@@ -42,11 +43,12 @@ bash deploy/docker/ktv.sh status
 bash deploy/source/ktv.sh setup
 bash deploy/source/ktv.sh start
 bash deploy/source/ktv.sh status
+bash deploy/source/ktv.sh doctor
 ```
 
 ## 核心配置
 
-`PUBLIC_BASE_URL` 和 `CONTROLLER_BASE_URL` 必须是手机与 Android TV 都能访问的局域网 IP 或域名，不能使用 `localhost`。
+`PUBLIC_BASE_URL`、`ADMIN_BASE_URL`、`CONTROLLER_BASE_URL` 和 `TV_WEB_BASE_URL` 必须是手机、Web TV 与 Android TV 都能访问的局域网 IP 或域名，不能使用 `localhost`。
 
 真实 NAS 曲库需要确保后端能读取数据库中的文件路径。路径不一致时，通过 `MEDIA_PATH_MAPPINGS` 或 `DOCKER_MEDIA_PATH_MAPPINGS` 映射。
 
@@ -66,6 +68,12 @@ http://<server-ip>:5174/
 
 ```text
 http://<server-ip>:5176/controller?room=living-room
+```
+
+Web TV：
+
+```text
+http://<server-ip>:5173/?apiBaseUrl=http://<server-ip>:4000&roomSlug=living-room&deviceName=Web%20TV
 ```
 
 Android TV 启动时传入：

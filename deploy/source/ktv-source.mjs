@@ -31,11 +31,18 @@ const SERVICES = {
     command: "pnpm",
     healthFile: "apps/controller/dist/index.html",
     port: 5176
+  },
+  "tv-web": {
+    args: ["-F", "@home-ktv/tv-web", "preview", "--", "--host", "0.0.0.0", "--port", "5173"],
+    command: "pnpm",
+    healthFile: "apps/tv-web/dist/index.html",
+    port: 5173
   }
 };
 
 const SERVICE_ALIASES = {
-  "mobile-controller": "controller"
+  "mobile-controller": "controller",
+  "tv-player": "tv-web"
 };
 
 const command = process.argv[2] || "help";
@@ -107,6 +114,17 @@ async function main(currentCommand, currentArg) {
       ensureDirs();
       await tailLogs(currentArg);
       return;
+    case "doctor":
+      requireEnvFile();
+      ensureDirs();
+      await runForeground("node", [
+        "scripts/tools/deploy-doctor.mjs",
+        "--mode",
+        "source",
+        "--env-file",
+        ENV_FILE
+      ]);
+      return;
     case "help":
     case "-h":
     case "--help":
@@ -119,7 +137,7 @@ async function main(currentCommand, currentArg) {
 }
 
 function serviceNames() {
-  return ["api", "admin", "controller"];
+  return ["api", "admin", "controller", "tv-web"];
 }
 
 function ensureEnvFile() {
@@ -313,9 +331,10 @@ function buildRuntimeConfig() {
   const apiBaseUrl = clean(rawEnv.PUBLIC_BASE_URL) || "http://127.0.0.1:4000";
   const adminBaseUrl = clean(rawEnv.ADMIN_BASE_URL) || replaceUrlPort(apiBaseUrl, 5174);
   const controllerBaseUrl = clean(rawEnv.CONTROLLER_BASE_URL) || replaceUrlPort(apiBaseUrl, 5176);
+  const tvWebBaseUrl = clean(rawEnv.TV_WEB_BASE_URL) || replaceUrlPort(apiBaseUrl, 5173);
   const mediaRoot = resolveFromRoot(clean(rawEnv.MEDIA_ROOT) || "runtime/media");
   const roomSlug = clean(rawEnv.TV_ROOM_SLUG) || "living-room";
-  const corsAllowedOrigins = clean(rawEnv.CORS_ALLOWED_ORIGINS) || [adminBaseUrl, controllerBaseUrl].join(",");
+  const corsAllowedOrigins = clean(rawEnv.CORS_ALLOWED_ORIGINS) || [adminBaseUrl, controllerBaseUrl, tvWebBaseUrl].join(",");
 
   const env = {
     ...rawEnv,
@@ -338,7 +357,8 @@ function buildRuntimeConfig() {
     controllerBaseUrl,
     env,
     mediaRoot,
-    roomSlug
+    roomSlug,
+    tvWebBaseUrl
   };
 }
 
@@ -390,6 +410,9 @@ function printUrls() {
   console.log(`  API health:  ${config.apiBaseUrl}/health`);
   console.log(`  Admin:       ${config.adminBaseUrl}/`);
   console.log(`  Controller:  ${config.controllerBaseUrl}/controller?room=${encodeURIComponent(config.roomSlug)}`);
+  console.log(
+    `  Web TV:      ${config.tvWebBaseUrl}/?apiBaseUrl=${encodeURIComponent(config.apiBaseUrl)}&roomSlug=${encodeURIComponent(config.roomSlug)}&deviceName=Web%20TV`
+  );
   console.log("");
   console.log("Logs:");
   console.log(`  ${LOG_DIR}`);
@@ -410,17 +433,18 @@ function printUsage(error = false) {
     "Commands:",
     "  setup       Create env file, install dependencies, build apps, and run migrations",
     "  pull        git pull --ff-only",
-    "  build       Build API, Admin, and Controller from source",
+    "  build       Build API, Admin, Controller, and Web TV from source",
     "  migrate     Run database migrations",
-    "  start       Run migrations and start API/Admin/Controller",
-    "  restart     Stop, migrate, and start API/Admin/Controller",
+    "  start       Run migrations and start API/Admin/Controller/Web TV",
+    "  restart     Stop, migrate, and start API/Admin/Controller/Web TV",
     "  status      Show service status and URLs",
     "  logs [svc]  Follow logs for all services or one service",
+    "  doctor      Run deployment self-checks",
     "  stop        Stop services",
     "  help        Show this help",
     "",
     "Services:",
-    "  api, admin, controller",
+    "  api, admin, controller, tv-web",
     "",
     "Environment:",
     `  KTV_ENV_FILE     Env file, default: ${ENV_FILE}`,

@@ -19,6 +19,7 @@ Commands:
   restart     Restart services
   status      Show service status
   logs [svc]  Follow logs for all services or one service
+  doctor      Run deployment self-checks
   stop        Stop services
   config      Render docker compose config
   help        Show this help
@@ -80,6 +81,13 @@ case "${command}" in
     else
       compose logs -f
     fi
+    ;;
+  doctor)
+    ensure_env
+    node "${ROOT_DIR}/scripts/tools/deploy-doctor.mjs" \
+      --mode docker \
+      --env-file "${ENV_FILE}" \
+      --service-status-cmd "docker compose --env-file '${ENV_FILE}' -f '${COMPOSE_FILE}' ps"
     ;;
   stop)
     ensure_env

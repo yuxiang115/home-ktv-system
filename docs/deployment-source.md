@@ -39,6 +39,7 @@ bash deploy/source/ktv.sh migrate
 bash deploy/source/ktv.sh start
 bash deploy/source/ktv.sh restart
 bash deploy/source/ktv.sh status
+bash deploy/source/ktv.sh doctor
 bash deploy/source/ktv.sh logs
 bash deploy/source/ktv.sh logs api
 bash deploy/source/ktv.sh stop
@@ -50,6 +51,7 @@ bash deploy/source/ktv.sh stop
 api         node apps/api/dist/server.js，端口 4000
 admin       vite preview，端口 5174
 controller  vite preview，端口 5176
+tv-web      vite preview，端口 5173
 ```
 
 日志和 PID：
@@ -64,8 +66,10 @@ runtime/pids/
 ```bash
 DATABASE_URL=postgres://ktv:ktv@127.0.0.1:5432/home_ktv
 PUBLIC_BASE_URL=http://<server-ip>:4000
+ADMIN_BASE_URL=http://<server-ip>:5174
 CONTROLLER_BASE_URL=http://<server-ip>:5176
-CORS_ALLOWED_ORIGINS=http://<server-ip>:5174,http://<server-ip>:5176
+TV_WEB_BASE_URL=http://<server-ip>:5173
+CORS_ALLOWED_ORIGINS=http://<server-ip>:5174,http://<server-ip>:5176,http://<server-ip>:5173
 MEDIA_ROOT=./runtime/media
 MEDIA_PATH_MAPPINGS=/mnt/nas/KTV歌曲=/mnt/nas/KTV歌曲
 TV_ROOM_SLUG=living-room
@@ -78,6 +82,7 @@ TV_ROOM_SLUG=living-room
 ```bash
 curl http://<server-ip>:4000/health
 bash deploy/source/ktv.sh status
+bash deploy/source/ktv.sh doctor
 ```
 
 打开：
@@ -85,4 +90,5 @@ bash deploy/source/ktv.sh status
 ```text
 http://<server-ip>:5174/
 http://<server-ip>:5176/controller?room=living-room
+http://<server-ip>:5173/?apiBaseUrl=http://<server-ip>:4000&roomSlug=living-room&deviceName=Web%20TV
 ```

@@ -12,6 +12,8 @@
     "ui:visual-check:test": "node --test scripts/tools/ui-visual-check.test.mjs",
     "tv:visual-check": "node scripts/tools/tv-visual-check.mjs",
     "real-mv:risk-spike": "node scripts/tools/real-mv-playback-risk-spike.mjs",
+    "deploy:doctor": "node scripts/tools/deploy-doctor.mjs",
+    "repo:hygiene": "node scripts/tools/repo-hygiene-check.mjs",
     "deploy:docker": "bash deploy/docker/ktv.sh",
     "deploy:source": "bash deploy/source/ktv.sh",
     "hot-songs:sources": "pnpm -F @home-ktv/hot-songs collect-sources",

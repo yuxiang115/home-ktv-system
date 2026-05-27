@@ -14,6 +14,7 @@ Docker Compose：
 ```bash
 bash deploy/docker/ktv.sh setup
 bash deploy/docker/ktv.sh start
+bash deploy/docker/ktv.sh doctor
 ```
 
 源码部署：
@@ -21,6 +22,7 @@ bash deploy/docker/ktv.sh start
 ```bash
 bash deploy/source/ktv.sh setup
 bash deploy/source/ktv.sh start
+bash deploy/source/ktv.sh doctor
 ```
 
 完整说明见：
