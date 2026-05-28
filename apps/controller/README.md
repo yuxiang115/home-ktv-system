@@ -24,7 +24,7 @@ CSS
 ## 环境变量
 
 ```bash
-VITE_API_BASE_URL=http://192.168.5.64:4000
+VITE_API_BASE_URL=http://<LAN_IP>:4000
 ```
 
 本地一键部署脚本会自动注入该变量。
@@ -48,7 +48,7 @@ pnpm dev:local start
 默认访问地址：
 
 ```text
-http://192.168.5.64:5176/controller?room=living-room
+http://<LAN_IP>:5176/controller?room=living-room
 ```
 
 实际二维码 URL 以后端 `/rooms/:roomSlug/snapshot` 返回的 `pairing.qrPayload` 为准。

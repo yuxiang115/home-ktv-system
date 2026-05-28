@@ -12,12 +12,13 @@ home-ktv-system/
 ├── deploy/
 ├── scripts/
 ├── docs/
+├── .planning/
 ├── runtime/
 ├── logs/
 └── home-ktv-media/
 ```
 
-`runtime/`、`logs/`、`home-ktv-media/` 是本地或服务器运行产物，不进入版本库。
+`runtime/`、`logs/`、`home-ktv-media/` 是本地或服务器运行产物，不进入版本库。`.planning/` 是 GSD 过程档案，不是运行时必需目录。
 
 ## 应用层
 
@@ -83,8 +84,19 @@ scripts/tools/
 
 ```text
 docs/
+docs/archive/
 docs/plans/
 docs/reports/
 ```
 
-`docs/` 放长期有效的架构、部署、曲库和产品说明。`docs/plans/` 放阶段性设计和实施计划。`docs/reports/` 放验证报告和分析结果。
+`docs/` 放长期有效的架构、部署、曲库和产品说明。`docs/archive/` 放已过期但仍有参考价值的历史设计。`docs/plans/` 放阶段性设计和实施计划。`docs/reports/` 放验证报告和分析结果。
+
+日常入口优先级：
+
+1. `README.md`
+2. `docs/KTV-ARCHITECTURE.md`
+3. `docs/deployment.md`
+4. `docs/KTV-FULL-INDEX.md`
+5. `docs/runbooks/`
+
+`docs/plans/` 和 `.planning/` 中可能保留旧路径、旧决策或历史 UAT 记录，不应直接作为当前实现依据。

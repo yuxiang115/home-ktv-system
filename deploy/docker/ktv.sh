@@ -23,6 +23,7 @@ Commands:
   probe-index Probe indexed KTV media technical metadata inside the API container
   tag-styles  Tag indexed KTV songs with style tags inside the API container
   fetch-covers Batch fetch song cover metadata inside the API container
+  cover-coverage Test cover lookup coverage without writing database rows
   stop        Stop services
   config      Render docker compose config
   help        Show this help
@@ -115,6 +116,13 @@ case "${command}" in
       shift
     fi
     compose exec -T api pnpm -F @home-ktv/api covers:songs -- "$@"
+    ;;
+  cover-coverage)
+    ensure_env
+    if [[ "${1:-}" == "--" ]]; then
+      shift
+    fi
+    compose exec -T api pnpm -F @home-ktv/api covers:coverage -- "$@"
     ;;
   stop)
     ensure_env

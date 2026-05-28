@@ -61,7 +61,7 @@ adb install -r clients/android-tv/app/build/outputs/apk/debug/app-debug.apk
 ```bash
 adb shell am start -W \
   -n com.liuyue.homektv/.MainActivity \
-  --es apiBaseUrl http://192.168.5.64:4000 \
+  --es apiBaseUrl http://<LAN_IP>:4000 \
   --es room living-room \
   --es deviceName "Living Room TV"
 ```

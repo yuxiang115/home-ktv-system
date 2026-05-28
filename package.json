@@ -16,6 +16,7 @@
     "ktv:tags": "pnpm -F @home-ktv/api tag:ktv-styles",
     "ktv:tags:full": "node scripts/tools/run-style-tagging-full.mjs",
     "covers:songs": "pnpm -F @home-ktv/api covers:songs",
+    "covers:coverage": "pnpm -F @home-ktv/api covers:coverage",
     "deploy:doctor": "node scripts/tools/deploy-doctor.mjs",
     "repo:hygiene": "node scripts/tools/repo-hygiene-check.mjs",
     "deploy:docker": "bash deploy/docker/ktv.sh",

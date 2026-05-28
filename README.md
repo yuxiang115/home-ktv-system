@@ -16,7 +16,7 @@ home-ktv-system/
 ├── packages/                # 共享领域模型、协议、会话引擎、热门歌曲工具
 ├── deploy/                  # Docker 和源码部署入口
 ├── scripts/                 # 本地开发和工具脚本
-├── docs/                    # 架构、部署、曲库接入和产品化文档
+├── docs/                    # 当前架构、部署、曲库接入和产品化文档
 └── runtime/                 # 源码部署运行时目录，生成产物不入库
 ```
 
@@ -99,6 +99,14 @@ bash deploy/source/ktv.sh logs
 部署总览见 [docs/deployment.md](docs/deployment.md)。Docker 方式见 [docs/deployment-docker.md](docs/deployment-docker.md)，源码方式见 [docs/deployment-source.md](docs/deployment-source.md)。
 服务器运维步骤见 [docs/runbooks/deploy-lxc-dev.md](docs/runbooks/deploy-lxc-dev.md)，故障排查见 [docs/runbooks/troubleshooting.md](docs/runbooks/troubleshooting.md)，仓库卫生见 [docs/runbooks/repo-hygiene.md](docs/runbooks/repo-hygiene.md)，发布检查见 [docs/runbooks/release-checklist.md](docs/runbooks/release-checklist.md)。
 
+## 文档入口
+
+- [当前架构](docs/KTV-ARCHITECTURE.md)
+- [项目结构](docs/project-structure.md)
+- [部署说明](docs/deployment.md)
+- [真实曲库索引](docs/KTV-FULL-INDEX.md)
+- [真实曲库接入](docs/KTV-FULL-INDEX-INTEGRATION.md)
+
 ## Android TV
 
 ```bash
@@ -124,8 +132,10 @@ pnpm hot-songs:update
 
 这些目录是本地运行资源或生成产物，默认不提交：
 
-- `home-ktv-media/`: 本地媒体、生成的 web-compatible 文件、demo 歌曲。
+- `home-ktv-media/`: 本地媒体、demo 歌曲和可选生成文件。
 - `logs/`: `pnpm dev:local` 生成的服务日志。
 - `runtime/`: 源码部署运行时日志、pid 和静态产物。
 - `songs-sample/`: 本地 MV 样本文件。
 - `.planning/reports/`: GSD 工作流和调研报告。
+
+`.planning/` 和 `docs/plans/` 是历史规划、讨论和验证记录。日常开发、部署和排障优先看上面的文档入口。

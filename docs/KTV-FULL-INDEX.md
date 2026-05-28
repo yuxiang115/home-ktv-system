@@ -3,14 +3,7 @@
 ## Current State
 
 - Source root: `/mnt/nas/KTV歌曲` on `lxc-nas`
-- Latest full run: `96288717-1299-4d0c-beed-326697548cc3`
-- Active media assets: `34,385`
-- Missing historical assets: `28`
-- Active file size: `1745 GB`
-- Active parse strategy: `filename = 34,385`
-- Low-confidence active rows: `0`
-- Songs: `31,893`
-- Artists: `8,568`
+- Current counts change whenever the NAS library is rescanned. Use SQL against the live PostgreSQL database for exact numbers.
 
 ## Architecture
 
@@ -20,11 +13,12 @@ Tables:
 
 - `ktv_index_runs`: every index run, source root, status, counts, errors.
 - `ktv_artists`: normalized artist names plus pinyin and initials.
-- `ktv_songs`: title, primary artist, category, normalized search keys.
+- `ktv_songs`: title, primary artist, normalized search keys.
 - `ktv_song_artists`: many-to-many song/artist links for duet and multi-artist songs.
 - `ktv_song_assets`: actual playable files, path, size, parse confidence, technical metadata, missing marker.
+- `ktv_style_groups`, `ktv_style_tags`, `ktv_song_style_tags`: multi-style tagging model. One song can belong to multiple style tags.
 
-The existing playback catalog remains separate. This KTV index is the fast lookup layer for finding song versions, artist catalogs, categories, and playable file paths.
+The existing playback catalog remains separate. This KTV index is the fast lookup layer for finding song versions, artist catalogs, style tags, and playable file paths.
 
 ## Admission Policy
 
@@ -69,7 +63,7 @@ Each top-level source folder has one strict parser rule. The current folders all
 Format:
 
 ```text
-歌手-歌曲名-语种-分类.ext
+歌手-歌曲名-语种-原始分类.ext
 ```
 
 Details:
@@ -78,7 +72,7 @@ Details:
 - Titles may contain `-`; parsing is done from the tail.
 - The first segment is artist.
 - The second-to-last segment must be a known language marker.
-- The last segment is stored as `category`.
+- The last segment is treated as source parsing evidence only. `ktv_songs.category` is no longer a durable classification field.
 - The middle segments are joined back as `title`.
 - Language is only used to validate the filename. It is not stored as a business field.
 - Trailing display markers such as `(MTV)` are removed from title.
@@ -87,6 +81,17 @@ Exception policy:
 
 - If a file does not match the folder rule, delete it or add a new explicit folder rule before making it part of the active library.
 - After cleanup, all active assets should have `parse_strategy = 'filename'` and `parse_confidence = 0.98`.
+
+## Style Tags
+
+歌曲风格不再依赖文件名中的原始分类。当前使用独立标签表：
+
+- `ktv_style_groups`: 标签分组，例如语言、年代、情绪、曲风。
+- `ktv_style_tags`: 具体标签。
+- `ktv_song_style_tags`: 歌曲和标签的多对多关系，带来源字段。
+- `ktv_song_tagging_status`: 每首歌在某个标签来源下的处理状态。
+
+主标签来源优先使用网易云 API；低覆盖歌曲可以用 LLM 批量补充。标签回填不影响搜索、点歌和播放。
 
 ## Rebuild Flow
 

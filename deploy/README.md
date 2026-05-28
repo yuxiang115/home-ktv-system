@@ -1,31 +1,29 @@
 # 部署入口
 
-服务器部署入口集中在 `deploy/`：
+`deploy/` 只保留可执行部署入口和环境变量模板。完整说明集中在 `docs/`，避免部署规则分散维护。
 
 ```text
 deploy/
-├── docker/   # Docker Compose 部署
-├── source/   # 源码部署
+├── docker/   # Docker Compose 部署脚本
+├── source/   # 源码部署脚本
 └── env/      # 环境变量模板
 ```
 
-Docker Compose：
+常用入口：
 
 ```bash
 bash deploy/docker/ktv.sh setup
 bash deploy/docker/ktv.sh start
 bash deploy/docker/ktv.sh doctor
-```
 
-源码部署：
-
-```bash
 bash deploy/source/ktv.sh setup
 bash deploy/source/ktv.sh start
 bash deploy/source/ktv.sh doctor
 ```
 
-完整说明见：
+文档：
 
-- [Docker 部署](../docs/deployment-docker.md)
+- [部署总览](../docs/deployment.md)
+- [Docker Compose 部署](../docs/deployment-docker.md)
 - [源码部署](../docs/deployment-source.md)
+- [lxc-dev Runbook](../docs/runbooks/deploy-lxc-dev.md)

@@ -17,10 +17,12 @@ Batch-fetch album cover metadata for the controller home recommendation list wit
 Docker deployments can run:
 
 ```bash
+bash deploy/docker/ktv.sh cover-coverage -- --limit 100
 bash deploy/docker/ktv.sh fetch-covers -- --limit 300
 ```
 
 The command only processes missing cache rows by default. Failed network/provider attempts can be retried with `--retry-failed`.
+Detailed commands and the verified coverage result are documented in `docs/runbooks/song-cover-fetching.md`.
 
 ## Verification
 

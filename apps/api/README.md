@@ -23,9 +23,9 @@ apps/api/scripts/          # 数据库迁移脚本
 
 ```bash
 DATABASE_URL=postgres://ktv:ktv@127.0.0.1:5432/home_ktv
-MEDIA_ROOT=/Users/shaolongfei/OtherProjects/home-ktv-system/home-ktv-media
-PUBLIC_BASE_URL=http://192.168.5.64:4000
-CONTROLLER_BASE_URL=http://192.168.5.64:5176
+MEDIA_ROOT="$(pwd)/home-ktv-media"
+PUBLIC_BASE_URL=http://<LAN_IP>:4000
+CONTROLLER_BASE_URL=http://<LAN_IP>:5176
 MEDIA_PATH_MAPPINGS=/mnt/nas/KTV歌曲=/mnt/nas/KTV歌曲
 ```
 

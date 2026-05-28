@@ -13,9 +13,10 @@ songs-sample/
 .planning/reports/
 .worktrees/
 worktrees/
+local-private-deploy/
 clients/android-tv/.gradle/
 clients/android-tv/.idea/
 clients/android-tv/.kotlin/
 clients/android-tv/app/build/
 clients/android-tv/local.properties
-HomeKTV/.idea/
+HomeKTV/

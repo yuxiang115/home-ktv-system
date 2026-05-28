@@ -15,6 +15,7 @@
     "probe:ktv-index": "tsx src/scripts/ktv-index-probe.ts",
     "tag:ktv-styles": "tsx src/scripts/ktv-style-tags.ts",
     "covers:songs": "tsx src/scripts/song-covers.ts",
+    "covers:coverage": "tsx src/scripts/song-cover-coverage.ts",
     "sample:ktv-index": "tsx src/scripts/ktv-sample-index.ts",
     "test": "vitest run",
     "start": "node dist/server.js"

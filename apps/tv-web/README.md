@@ -20,7 +20,7 @@ HTML5 media
 ## 环境变量
 
 ```bash
-VITE_API_BASE_URL=http://192.168.5.64:4000
+VITE_API_BASE_URL=http://<LAN_IP>:4000
 ```
 
 ## 常用命令
@@ -41,7 +41,7 @@ pnpm dev:local start
 默认访问地址：
 
 ```text
-http://192.168.5.64:5173/?apiBaseUrl=http://192.168.5.64:4000&roomSlug=living-room&deviceName=Living%20Room%20TV
+http://<LAN_IP>:5173/?apiBaseUrl=http://<LAN_IP>:4000&roomSlug=living-room&deviceName=Living%20Room%20TV
 ```
 
 ## 与 Android TV 的区别
