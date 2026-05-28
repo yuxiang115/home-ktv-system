@@ -28,6 +28,52 @@ describe("ktv-style-tags CLI options", () => {
     expect(options.progressEvery).toBe(25);
   });
 
+  it("parses LLM fallback options", () => {
+    const options = parseKtvStyleTagsCliOptions(
+      [
+        "--source",
+        "llm",
+        "--llm-base-url",
+        "192.168.5.103:8317",
+        "--llm-api-key",
+        "test-key",
+        "--llm-model",
+        "local-model",
+        "--max-existing-tags",
+        "1",
+        "--limit",
+        "50",
+        "--apply"
+      ],
+      { DATABASE_URL: "postgres://ktv:ktv@127.0.0.1:5432/home_ktv" }
+    );
+
+    expect(options).toMatchObject({
+      source: "llm",
+      taggingSource: "llm-style-v1",
+      llmBaseUrl: "192.168.5.103:8317",
+      llmApiKey: "test-key",
+      llmModel: "local-model",
+      maxExistingTags: 1,
+      limit: 50,
+      apply: true
+    });
+  });
+
+  it("defaults LLM fallback to low-coverage songs", () => {
+    const options = parseKtvStyleTagsCliOptions(["--source", "llm"], {
+      DATABASE_URL: "postgres://ktv:ktv@127.0.0.1:5432/home_ktv",
+      LLM_API_BASE_URL: "http://llm.local:8317",
+      LLM_API_KEY: "test-key",
+      LLM_MODEL: "local-model"
+    });
+
+    expect(options.maxExistingTags).toBe(1);
+    expect(options.llmBaseUrl).toBe("http://llm.local:8317");
+    expect(options.llmApiKey).toBe("test-key");
+    expect(options.llmModel).toBe("local-model");
+  });
+
   it("defaults to dry-run unless --apply is present", () => {
     const options = parseKtvStyleTagsCliOptions(["--limit", "50"], {
       DATABASE_URL: "postgres://ktv:ktv@127.0.0.1:5432/home_ktv"
