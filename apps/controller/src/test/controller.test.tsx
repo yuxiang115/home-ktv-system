@@ -228,7 +228,7 @@ describe("mobile controller runtime", () => {
 
     expect(await screen.findByText("歌手点歌")).toBeTruthy();
     expect(screen.getByText("风格点歌")).toBeTruthy();
-    expect(within(screen.getByRole("button", { name: /歌手点歌/u })).getByText("周杰伦")).toBeTruthy();
+    await waitFor(() => expect(within(screen.getByRole("button", { name: /歌手点歌/u })).getByText("周杰伦")).toBeTruthy());
     expect(within(screen.getByRole("button", { name: /歌手点歌/u })).getByText("五月天")).toBeTruthy();
     expect(within(screen.getByRole("button", { name: /风格点歌/u })).getByText("流行")).toBeTruthy();
     expect(within(screen.getByRole("button", { name: /风格点歌/u })).getByText("摇滚")).toBeTruthy();
