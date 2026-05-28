@@ -74,7 +74,7 @@ bash deploy/docker/ktv.sh tag-styles -- \
   --apply
 ```
 
-`--source llm` 默认只处理当前聚合标签数 `<= 1` 的歌曲，并写入独立来源 `llm-style-v1`。如需调整阈值，使用 `--max-existing-tags <n>`。
+`--source llm` 默认只处理已经有 `netease-playlist-v1` 状态、且当前聚合标签数 `<= 1` 的歌曲，并写入独立来源 `llm-style-v1`。如需调整阈值，使用 `--max-existing-tags <n>`；如需改成其它主来源，使用 `--fallback-from-source <source>`。
 
 容器内 API 会使用 `DOCKER_DATABASE_URL` 连接 Compose 内的 PostgreSQL。源码部署才使用 `DATABASE_URL`。
 
