@@ -52,8 +52,8 @@ interface IndexedSearchRow {
   song_id: string;
   title: string;
   primary_artist_name: string;
-  category: string;
-  match_reason: SongSearchMatchReason | "category";
+  style_tags: string[] | null;
+  match_reason: SongSearchMatchReason | "style";
   score: number | string;
   asset_id: string;
   file_name: string;
@@ -199,7 +199,7 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
   private async queryIndexedRows(input: SearchKtvIndexedSongsInput): Promise<IndexedSearchRow[]> {
     const normalizedQuery = normalizeSearchText(input.query);
     const likeQuery = `%${normalizedQuery}%`;
-    const categoryQuery = `%${input.query.trim()}%`;
+    const tagQuery = `%${input.query.trim()}%`;
     const limit = Math.min(30, Math.max(1, input.limit ?? 20));
     const versionsPerSong = Math.min(8, Math.max(1, input.versionsPerSong ?? 4));
 
@@ -208,7 +208,18 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
          SELECT s.id AS song_id,
                 s.title,
                 s.primary_artist_name,
-                s.category,
+                COALESCE((
+                  SELECT array_agg(tag_name ORDER BY group_sort, tag_sort, tag_name)
+                  FROM (
+                    SELECT DISTINCT t.name AS tag_name,
+                           g.sort_order AS group_sort,
+                           t.sort_order AS tag_sort
+                    FROM ktv_song_style_tags st
+                    JOIN ktv_style_tags t ON t.id = st.tag_id AND t.enabled = true
+                    JOIN ktv_style_groups g ON g.id = t.group_id AND g.enabled = true
+                    WHERE st.song_id = s.id
+                  ) style_tag_rows
+                ), ARRAY[]::text[]) AS style_tags,
                 CASE
                   WHEN $1 = '' THEN 1
                   WHEN s.normalized_title = $1 THEN 100
@@ -218,7 +229,13 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
                   WHEN s.normalized_primary_artist_name LIKE $2 OR bool_or(ar.normalized_name LIKE $2) THEN 60
                   WHEN s.title_pinyin LIKE $2 OR bool_or(ar.name_pinyin LIKE $2) THEN 50
                   WHEN s.title_initials LIKE $2 OR bool_or(ar.name_initials LIKE $2) THEN 45
-                  WHEN s.category ILIKE $3 THEN 35
+                  WHEN EXISTS (
+                    SELECT 1
+                    FROM ktv_song_style_tags st
+                    JOIN ktv_style_tags t ON t.id = st.tag_id AND t.enabled = true
+                    WHERE st.song_id = s.id
+                      AND (t.normalized_name LIKE $2 OR t.name ILIKE $3)
+                  ) THEN 35
                   ELSE 0
                 END AS score,
                 CASE
@@ -229,7 +246,13 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
                   WHEN s.normalized_primary_artist_name LIKE $2 OR bool_or(ar.normalized_name LIKE $2) THEN 'artist'
                   WHEN s.title_pinyin LIKE $2 OR bool_or(ar.name_pinyin LIKE $2) THEN 'pinyin'
                   WHEN s.title_initials LIKE $2 OR bool_or(ar.name_initials LIKE $2) THEN 'initials'
-                  WHEN s.category ILIKE $3 THEN 'category'
+                  WHEN EXISTS (
+                    SELECT 1
+                    FROM ktv_song_style_tags st
+                    JOIN ktv_style_tags t ON t.id = st.tag_id AND t.enabled = true
+                    WHERE st.song_id = s.id
+                      AND (t.normalized_name LIKE $2 OR t.name ILIKE $3)
+                  ) THEN 'style'
                   ELSE 'default'
                 END AS match_reason
          FROM ktv_songs s
@@ -246,17 +269,23 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
             OR ar.normalized_name LIKE $2
             OR ar.name_pinyin LIKE $2
             OR ar.name_initials LIKE $2
-            OR s.category ILIKE $3
-         GROUP BY s.id, s.title, s.primary_artist_name, s.category, s.normalized_title,
+            OR EXISTS (
+              SELECT 1
+              FROM ktv_song_style_tags st
+              JOIN ktv_style_tags t ON t.id = st.tag_id AND t.enabled = true
+              WHERE st.song_id = s.id
+                AND (t.normalized_name LIKE $2 OR t.name ILIKE $3)
+            )
+         GROUP BY s.id, s.title, s.primary_artist_name, s.normalized_title,
                   s.normalized_primary_artist_name, s.title_pinyin, s.title_initials
-         ORDER BY score DESC, s.title ASC, s.primary_artist_name ASC, s.category ASC
+         ORDER BY score DESC, s.title ASC, s.primary_artist_name ASC
          LIMIT $4
        ),
        ranked_assets AS (
          SELECT ms.song_id,
                 ms.title,
                 ms.primary_artist_name,
-                ms.category AS song_category,
+                ms.style_tags,
                 ms.match_reason,
                 ms.score,
                 a.id AS asset_id,
@@ -267,7 +296,6 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
                 a.parse_confidence,
                 a.technical_metadata,
                 a.missing_at,
-                ms.category AS asset_category,
                 row_number() OVER (PARTITION BY ms.song_id ORDER BY a.updated_at DESC, a.file_path ASC) AS asset_rank
          FROM matched_songs ms
          JOIN ktv_song_assets a ON a.song_id = ms.song_id
@@ -276,7 +304,7 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
        SELECT song_id,
               title,
               primary_artist_name,
-              asset_category AS category,
+              style_tags,
               match_reason,
               score,
               asset_id,
@@ -289,8 +317,8 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
               missing_at
        FROM ranked_assets
        WHERE asset_rank <= $5
-       ORDER BY score DESC, title ASC, primary_artist_name ASC, category ASC, file_name ASC`,
-      [normalizedQuery, likeQuery, categoryQuery, limit, versionsPerSong]
+       ORDER BY score DESC, title ASC, primary_artist_name ASC, file_name ASC`,
+      [normalizedQuery, likeQuery, tagQuery, limit, versionsPerSong]
     );
 
     return result.rows;
@@ -464,7 +492,8 @@ function mapIndexedSearchRows(
       extension: row.extension,
       sizeBytes: toNullableNumber(row.size_bytes),
       audioTrackCount: readAudioTrackCount(row.technical_metadata),
-      category: row.category,
+      styleTags: normalizeStyleTags(row.style_tags),
+      category: displayCategory(row.style_tags),
       queueState: unreadable ? "file_unreadable" : queued ? "queued" : "not_queued",
       canQueue: !unreadable,
       disabledLabel: unreadable ? "文件不可读" : null
@@ -479,7 +508,8 @@ function mapDiagnosticsPreviewRows(rows: readonly IndexedSearchRow[]): KtvIndexD
     sourceLabel: "KTV索引",
     extension: row.extension,
     sizeBytes: toNullableNumber(row.size_bytes),
-    category: row.category,
+    styleTags: normalizeStyleTags(row.style_tags),
+    category: displayCategory(row.style_tags),
     parseConfidence: toNumber(row.parse_confidence),
     filePath: row.file_path,
     missingAt: row.missing_at ? toIsoString(row.missing_at) : null
@@ -503,7 +533,8 @@ function mapGroupedRows<TVersion>(
       indexedSongId: first.song_id,
       title: first.title,
       artistName: first.primary_artist_name,
-      category: first.category,
+      styleTags: normalizeStyleTags(first.style_tags),
+      category: displayCategory(first.style_tags),
       sourceLabel: "KTV索引",
       matchReason: first.match_reason,
       versions: songRows.map(mapVersion)
@@ -534,6 +565,14 @@ function toNullableNumber(value: number | string | null): number | null {
 
 function toIsoString(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : value;
+}
+
+function normalizeStyleTags(value: readonly string[] | null): string[] {
+  return Array.isArray(value) ? value.filter((tag) => tag.trim().length > 0) : [];
+}
+
+function displayCategory(value: readonly string[] | null): string {
+  return normalizeStyleTags(value)[0] ?? "未打标签";
 }
 
 function countTechnicalStatus(

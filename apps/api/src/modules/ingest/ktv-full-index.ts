@@ -13,7 +13,6 @@ export interface KtvIndexAssetDraft {
   titlePinyin: string;
   titleInitials: string;
   artistNames: string[];
-  category: string;
   filePath: string;
   relativePath: string;
   fileName: string;
@@ -57,7 +56,6 @@ export function buildKtvIndexAssetDraft(sourceFile: KtvSampleSourceFile): KtvInd
     titlePinyin: titleKeys.pinyin,
     titleInitials: titleKeys.initials,
     artistNames,
-    category: sample.category ?? "未分类",
     filePath: sample.sourcePath,
     relativePath: sample.relativePath,
     fileName: sample.fileName,
@@ -169,10 +167,10 @@ async function upsertSong(db: QueryExecutor, draft: KtvIndexAssetDraft, primaryA
   const result = await db.query<IdRow>(
     `INSERT INTO ktv_songs (
        title, normalized_title, title_pinyin, title_initials,
-       primary_artist_name, normalized_primary_artist_name, category
+       primary_artist_name, normalized_primary_artist_name
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (normalized_title, normalized_primary_artist_name, category)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (normalized_title, normalized_primary_artist_name)
      DO UPDATE SET
        title = EXCLUDED.title,
        title_pinyin = EXCLUDED.title_pinyin,
@@ -186,8 +184,7 @@ async function upsertSong(db: QueryExecutor, draft: KtvIndexAssetDraft, primaryA
       draft.titlePinyin,
       draft.titleInitials,
       primaryArtistName,
-      normalizedPrimaryArtistName,
-      draft.category
+      normalizedPrimaryArtistName
     ]
   );
   return requireRow(result.rows[0], "ktv_songs upsert").id;

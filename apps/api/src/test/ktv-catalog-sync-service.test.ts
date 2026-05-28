@@ -75,7 +75,7 @@ describe("PgKtvCatalogSyncService", () => {
         relativePath: "周杰伦/七里香.mkv",
         title: "七里香",
         primaryArtistName: "周杰伦",
-        category: "流行",
+        styleTags: ["流行"],
         extension: ".mkv",
         sizeBytes: 123456,
         parseConfidence: 0.98
@@ -239,7 +239,7 @@ interface FakeIndexedAssetRow {
   missing_at: Date | null;
   title: string;
   primary_artist_name: string;
-  category: string;
+  style_tags: string[] | null;
   source_root: string | null;
 }
 
@@ -355,7 +355,7 @@ function createIndexedAssetRow(input: Partial<FakeIndexedAssetRow> = {}): FakeIn
     missing_at: null,
     title: "七里香",
     primary_artist_name: "周杰伦",
-    category: "流行",
+    style_tags: ["流行"],
     source_root: "/mnt/nas/KTV歌曲",
     ...input
   };

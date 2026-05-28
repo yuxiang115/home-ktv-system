@@ -404,9 +404,10 @@ function mapKtvIndexSyncedSourceRow(row: KtvIndexSyncedSourceRow): KtvIndexSynce
   const filePath = stringValue(rawMeta.filePath) ?? row.source_uri;
   const title = stringValue(rawMeta.title);
   const artistName = stringValue(rawMeta.primaryArtistName) ?? stringValue(rawMeta.artistName);
-  const category = stringValue(rawMeta.category);
+  const styleTags = stringArrayValue(rawMeta.styleTags);
+  const category = styleTags[0] ?? "未打标签";
 
-  if (!indexedAssetId || !indexedSongId || !filePath || !title || !artistName || !category) {
+  if (!indexedAssetId || !indexedSongId || !filePath || !title || !artistName) {
     return null;
   }
 
@@ -418,6 +419,7 @@ function mapKtvIndexSyncedSourceRow(row: KtvIndexSyncedSourceRow): KtvIndexSynce
     filePath,
     title,
     artistName,
+    styleTags,
     category,
     parseConfidence: numberValue(rawMeta.parseConfidence)
   };
@@ -436,6 +438,10 @@ function numberValue(value: unknown): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function stringArrayValue(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
 }
 
 function isSongStatus(value: string): value is SongStatus {

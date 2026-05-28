@@ -19,6 +19,7 @@ describe("PgKtvIndexReadRepository", () => {
       indexedSongId: "ktv-song-1",
       title: "七里香",
       artistName: "周杰伦",
+      styleTags: ["流行", "KTV必点"],
       category: "流行",
       sourceLabel: "KTV索引",
       matchReason: "title"
@@ -31,6 +32,7 @@ describe("PgKtvIndexReadRepository", () => {
         extension: ".mkv",
         sizeBytes: 123456,
         audioTrackCount: 1,
+        styleTags: ["流行", "KTV必点"],
         category: "流行",
         queueState: "not_queued",
         canQueue: true,
@@ -43,7 +45,8 @@ describe("PgKtvIndexReadRepository", () => {
         extension: ".mpg",
         sizeBytes: null,
         audioTrackCount: 2,
-        category: "演唱会",
+        styleTags: ["流行", "KTV必点"],
+        category: "流行",
         queueState: "not_queued",
         canQueue: true,
         disabledLabel: null
@@ -56,8 +59,8 @@ describe("PgKtvIndexReadRepository", () => {
     expect(searchQuery?.text).toContain("a.missing_at IS NULL");
     expect(searchQuery?.text).toContain("ktv_song_artists");
     expect(searchQuery?.text).toContain("ktv_artists");
-    expect(searchQuery?.text).not.toContain("ms.song_category");
-    expect(searchQuery?.text).toContain("ms.category AS asset_category");
+    expect(searchQuery?.text).not.toContain("s.category");
+    expect(searchQuery?.text).toContain("ktv_song_style_tags");
     expect(searchQuery?.values).toEqual(["七里香", "%七里香%", "%七里香%", 10, 2]);
   });
 
@@ -321,7 +324,7 @@ class ScriptedKtvIndexDb implements QueryExecutor {
                 ]
               }
             },
-            category: "流行"
+            style_tags: ["流行", "KTV必点"]
           }),
           createSearchRow({
             asset_id: "ktv-asset-2",
@@ -335,7 +338,7 @@ class ScriptedKtvIndexDb implements QueryExecutor {
                 { index: 1, id: "1", label: "伴奏", language: null, codec: "mp2", channels: 2 }
               ]
             },
-            category: "演唱会"
+            style_tags: ["流行", "KTV必点"]
           })
         ] as TRow[]
       };
@@ -350,7 +353,7 @@ function createSearchRow(overrides: Record<string, unknown> = {}) {
     song_id: "ktv-song-1",
     title: "七里香",
     primary_artist_name: "周杰伦",
-    category: "流行",
+    style_tags: ["流行", "KTV必点"],
     match_reason: "title",
     score: 100,
     asset_id: "ktv-asset-1",

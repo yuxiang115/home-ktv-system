@@ -262,6 +262,7 @@ export interface SongSearchIndexedVersionOption {
   extension: string;
   sizeBytes: number | null;
   audioTrackCount: number | null;
+  styleTags?: readonly string[];
   category: string;
   queueState: SongSearchIndexedQueueState;
   canQueue: boolean;
@@ -272,9 +273,10 @@ export interface SongSearchIndexedResult {
   indexedSongId: string;
   title: string;
   artistName: string;
+  styleTags?: readonly string[];
   category: string;
   sourceLabel: string;
-  matchReason: SongSearchMatchReason | "category";
+  matchReason: SongSearchMatchReason | "style";
   versions: SongSearchIndexedVersionOption[];
 }
 
@@ -358,6 +360,7 @@ export interface KtvIndexDiagnosticsPreviewVersion {
   sourceLabel: string;
   extension: string;
   sizeBytes: number | null;
+  styleTags?: readonly string[];
   category: string;
   parseConfidence: number;
   filePath: string;
@@ -368,9 +371,10 @@ export interface KtvIndexDiagnosticsPreviewResult {
   indexedSongId: string;
   title: string;
   artistName: string;
+  styleTags?: readonly string[];
   category: string;
   sourceLabel: string;
-  matchReason: SongSearchMatchReason | "category";
+  matchReason: SongSearchMatchReason | "style";
   versions: KtvIndexDiagnosticsPreviewVersion[];
 }
 
@@ -411,6 +415,7 @@ export interface KtvIndexSyncedSourceRecord {
   filePath: string;
   title: string;
   artistName: string;
+  styleTags?: readonly string[];
   category: string;
   parseConfidence: number | null;
 }

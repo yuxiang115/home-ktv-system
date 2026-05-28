@@ -34,16 +34,17 @@ describe("KTV full index schema", () => {
     expect(tableNames.ktvSongAssets).toBe("ktv_song_assets");
   });
 
-  it("indexes title, artist, category, and path lookup columns", () => {
+  it("indexes title, artist, and path lookup columns without retaining legacy category", () => {
     for (const expected of [
       "ktv_songs_normalized_title_trgm_idx",
       "ktv_artists_normalized_name_trgm_idx",
-      "ktv_songs_category_idx",
       "ktv_song_assets_path_uq"
     ]) {
       expect(migrationSql).toContain(expected);
       expect(schemaSql).toContain(expected);
     }
+    expect(schemaSql).not.toContain("category text NOT NULL");
+    expect(schemaSql).not.toContain("ktv_songs_category_idx");
   });
 
   it("adds partial indexes for active playable assets", () => {
@@ -69,7 +70,6 @@ describe("KTV full index importer", () => {
     expect(draft).toMatchObject({
       title: "练舞功",
       artistNames: ["谢金燕"],
-      category: "流行",
       filePath: "/mnt/nas/KTV歌曲/流行歌曲(2.5万首880G)/推荐0001/谢金燕-练舞功(MTV)-闽南语-流行.mkv",
       relativePath: "流行歌曲(2.5万首880G)/推荐0001/谢金燕-练舞功(MTV)-闽南语-流行.mkv",
       technicalStatus: "pending"
@@ -128,7 +128,6 @@ function createDraft(overrides: Partial<KtvIndexAssetDraft> = {}): KtvIndexAsset
     titlePinyin: "qilixiang",
     titleInitials: "qlx",
     artistNames: ["周杰伦"],
-    category: "流行",
     filePath: "/media/周杰伦-七里香-国语-流行.mkv",
     relativePath: "周杰伦-七里香-国语-流行.mkv",
     fileName: "周杰伦-七里香-国语-流行.mkv",

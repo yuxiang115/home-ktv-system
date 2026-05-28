@@ -57,7 +57,7 @@ interface KtvIndexedAssetSyncRow {
   missing_at: Date | string | null;
   title: string;
   primary_artist_name: string;
-  category: string;
+  style_tags: string[] | null;
   source_root: string | null;
 }
 
@@ -135,7 +135,18 @@ export class PgKtvCatalogSyncService {
               a.missing_at,
               s.title,
               s.primary_artist_name,
-              s.category,
+              COALESCE((
+                SELECT array_agg(tag_name ORDER BY group_sort, tag_sort, tag_name)
+                FROM (
+                  SELECT DISTINCT t.name AS tag_name,
+                         g.sort_order AS group_sort,
+                         t.sort_order AS tag_sort
+                  FROM ktv_song_style_tags st
+                  JOIN ktv_style_tags t ON t.id = st.tag_id AND t.enabled = true
+                  JOIN ktv_style_groups g ON g.id = t.group_id AND g.enabled = true
+                  WHERE st.song_id = s.id
+                ) style_tag_rows
+              ), ARRAY[]::text[]) AS style_tags,
               r.source_root
        FROM ktv_song_assets a
        JOIN ktv_songs s ON s.id = a.song_id
@@ -223,8 +234,9 @@ export class PgKtvCatalogSyncService {
     const titleKeys = buildPinyinSearchKeys(input.row.title);
     const artistKeys = buildPinyinSearchKeys(input.row.primary_artist_name);
     const artistId = `artist-ktv-${normalizeSearchText(input.row.primary_artist_name) || "unknown"}`;
-    const genre = compact([input.row.category]);
-    const searchHints = compact([input.row.category, input.row.extension, input.row.primary_artist_name]);
+    const styleTags = normalizeStyleTags(input.row.style_tags);
+    const genre = styleTags;
+    const searchHints = compact([...styleTags, input.row.extension, input.row.primary_artist_name]);
 
     await this.db.query(
       `INSERT INTO songs (
@@ -328,7 +340,7 @@ export class PgKtvCatalogSyncService {
       relativePath: input.row.relative_path,
       title: input.row.title,
       primaryArtistName: input.row.primary_artist_name,
-      category: input.row.category,
+      styleTags: normalizeStyleTags(input.row.style_tags),
       extension: input.row.extension,
       sizeBytes: input.row.size_bytes == null ? null : toNumber(input.row.size_bytes),
       parseConfidence: toNumber(input.row.parse_confidence)
@@ -374,4 +386,8 @@ function compact(values: readonly string[]): string[] {
 
 function toJsonbParam(value: unknown): string {
   return JSON.stringify(value);
+}
+
+function normalizeStyleTags(value: readonly string[] | null): string[] {
+  return Array.isArray(value) ? value.filter((tag) => tag.trim().length > 0) : [];
 }
