@@ -111,6 +111,26 @@ describe("KtvStyleTaggingService", () => {
     expect(db.status.get("song-1:netease-playlist-v1")).toMatchObject({ status: "tagged", tagCount: 2 });
     expect(db.status.get("song-1:llm-style-v1")).toMatchObject({ status: "tagged", tagCount: 2 });
   });
+
+  it("can select low-coverage songs for fallback tagging", async () => {
+    const db = new FakeStyleTaggingDb();
+    const service = new KtvStyleTaggingService(db, {
+      tagger: new FakeTagger(),
+      now: () => 1000
+    });
+
+    await service.run({
+      source: "llm-style-v1",
+      limit: 10,
+      apply: false,
+      onlyMissing: true,
+      maxExistingTags: 1
+    });
+
+    expect(db.lastSelectSql).toContain("existing_tags.tag_count <= $4");
+    expect(db.lastSelectSql).toContain("status.status = 'tagged'");
+    expect(db.lastSelectValues).toEqual(["llm-style-v1", true, 10, 1]);
+  });
 });
 
 class FakeTagger implements KtvStyleTagger {
@@ -139,11 +159,15 @@ class FakeStyleTaggingDb implements QueryExecutor {
   readonly songTags = new Map<string, Array<{ tagName: string; source: string }>>();
   readonly status = new Map<string, Record<string, unknown>>();
   statusUpsertSql = "";
+  lastSelectSql = "";
+  lastSelectValues: readonly unknown[] = [];
   readonly deletedSources: string[] = [];
   private runCounter = 0;
 
   async query<TRow>(text: string, values: readonly unknown[] = []) {
     if (text.includes("FROM ktv_songs")) {
+      this.lastSelectSql = text;
+      this.lastSelectValues = values;
       return {
         rows: [
           { id: "song-1", title: "七里香", primary_artist_name: "周杰伦" },

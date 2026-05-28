@@ -22,6 +22,7 @@ export interface KtvStyleTaggingRunInput {
   limit: number;
   apply: boolean;
   onlyMissing: boolean;
+  maxExistingTags?: number;
   onProgress?: (event: KtvStyleTaggingProgressEvent) => void;
 }
 
@@ -185,6 +186,31 @@ export class KtvStyleTaggingService {
   }
 
   private async selectSongs(input: KtvStyleTaggingRunInput): Promise<KtvSongRow[]> {
+    if (input.maxExistingTags !== undefined) {
+      const result = await this.db.query<KtvSongRow>(
+        `WITH existing_tags AS (
+           SELECT s.id AS song_id,
+                  count(DISTINCT st.tag_id)::integer AS tag_count
+           FROM ktv_songs s
+           LEFT JOIN ktv_song_style_tags st ON st.song_id = s.id
+           GROUP BY s.id
+         )
+         SELECT s.id, s.title, s.primary_artist_name
+         FROM ktv_songs s
+         JOIN ktv_song_assets a ON a.song_id = s.id AND a.missing_at IS NULL
+         JOIN existing_tags ON existing_tags.song_id = s.id
+         LEFT JOIN ktv_song_tagging_status status
+           ON status.song_id = s.id AND status.source = $1
+         WHERE ($2::boolean = false OR status.song_id IS NULL OR NOT (status.status = 'tagged'))
+           AND existing_tags.tag_count <= $4
+         GROUP BY s.id, s.title, s.primary_artist_name, s.updated_at, existing_tags.tag_count
+         ORDER BY existing_tags.tag_count ASC, s.updated_at DESC, s.id ASC
+         LIMIT $3`,
+        [input.source, input.onlyMissing, input.limit, input.maxExistingTags]
+      );
+      return result.rows;
+    }
+
     const result = await this.db.query<KtvSongRow>(
       `SELECT s.id, s.title, s.primary_artist_name
        FROM ktv_songs s
@@ -213,7 +239,8 @@ export class KtvStyleTaggingService {
         JSON.stringify({
           apply: input.apply,
           onlyMissing: input.onlyMissing,
-          limit: input.limit
+          limit: input.limit,
+          maxExistingTags: input.maxExistingTags ?? null
         })
       ]
     );
