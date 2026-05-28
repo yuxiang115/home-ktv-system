@@ -76,6 +76,14 @@ bash deploy/docker/ktv.sh tag-styles -- \
 
 `--source llm` 默认只处理已经有 `netease-playlist-v1` 状态、且当前聚合标签数 `<= 1` 的歌曲，并写入独立来源 `llm-style-v1`。如需调整阈值，使用 `--max-existing-tags <n>`；如需改成其它主来源，使用 `--fallback-from-source <source>`。
 
+全量曲库标签长任务使用：
+
+```bash
+nohup pnpm ktv:tags:full >> logs/tagging/full-library.log 2>&1 &
+```
+
+这个脚本先分批跑网易云主标签，直到没有未处理歌曲；然后再用 LLM 每批 30 首补低覆盖歌曲。
+
 容器内 API 会使用 `DOCKER_DATABASE_URL` 连接 Compose 内的 PostgreSQL。源码部署才使用 `DATABASE_URL`。
 
 当前 Compose 会启动：
