@@ -1,35 +1,16 @@
-import { languageName, statusText, useI18n, vocalModeName } from "../i18n.js";
-import { SongDetailEditor } from "./SongDetailEditor.js";
-import { languageOptions, songStatusOptions, useSongCatalogRuntime } from "./use-song-catalog-runtime.js";
-import type { KtvIndexDiagnosticsResponse, KtvIndexNasSampleResult, KtvIndexSyncedSourceRecord } from "@home-ktv/domain";
-import type { AdminCatalogAsset, AdminCatalogSong, Language, SongStatus } from "./types.js";
+import type { KtvIndexDiagnosticsResponse, KtvIndexNasSampleResult } from "@home-ktv/domain";
+import { useI18n } from "../i18n.js";
+import { useSongCatalogRuntime } from "./use-song-catalog-runtime.js";
 
 export function SongCatalogView() {
   const { t } = useI18n();
   const {
-    status,
-    setStatus,
-    language,
-    setLanguage,
-    songs,
-    selectedSong,
-    setSelectedSongId,
-    evaluation,
-    validation,
     ktvIndexDiagnostics,
     ktvIndexIsError,
     ktvIndexIsLoading,
     ktvIndexQuery,
     refreshKtvIndexDiagnostics,
-    queryIsError,
-    queryIsLoading,
-    isBusy,
-    revalidateSong,
-    saveMetadata,
-    setDefaultAsset,
-    setKtvIndexQuery,
-    updateAsset,
-    validateSong
+    setKtvIndexQuery
   } = useSongCatalogRuntime();
 
   return (
@@ -41,7 +22,7 @@ export function SongCatalogView() {
         </div>
       </header>
 
-      <KtvIndexDiagnosticsPanel
+      <NasLibraryDiagnosticsPanel
         diagnostics={ktvIndexDiagnostics}
         isError={ktvIndexIsError}
         isLoading={ktvIndexIsLoading}
@@ -49,91 +30,11 @@ export function SongCatalogView() {
         onQueryChange={setKtvIndexQuery}
         onRefresh={refreshKtvIndexDiagnostics}
       />
-
-      <section className="catalog-workbench" aria-label={t("songs.catalogAria")}>
-        <aside className="catalog-list-pane" aria-label={t("songs.listAria")}>
-          <p className="pane-title">{t("songs.formalSongs")}</p>
-          <div className="catalog-filters">
-            <label>
-              <span>{t("songs.status")}</span>
-              <select value={status} onChange={(event) => setStatus(event.target.value as SongStatus | "")}>
-                {songStatusOptions.map((option) => (
-                  <option key={option || "all"} value={option}>
-                    {option ? statusText(option, t) : t("songs.allStatuses")}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>{t("candidate.language")}</span>
-              <select value={language} onChange={(event) => setLanguage(event.target.value as Language | "")}>
-                {languageOptions.map((option) => (
-                  <option key={option || "all"} value={option}>
-                    {option ? languageName(option, t) : languageName("all", t)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          {queryIsError ? <p className="queue-error-text">歌曲加载失败，请稍后重试。</p> : null}
-          {queryIsLoading ? <p className="queue-empty-text">{t("songs.loading")}</p> : null}
-          <div className="song-list">
-            {songs.map((song) => (
-              <button
-                className={song.id === selectedSong?.id ? "song-row selected" : "song-row"}
-                key={song.id}
-                type="button"
-                onClick={() => setSelectedSongId(song.id)}
-              >
-                <span className="song-row-main">
-                  <strong>{song.title}</strong>
-                  <small>
-                    {song.artistName} · {languageName(song.language, t)} · {statusText(song.status, t)} · {song.assets.length}{" "}
-                    {t("songs.assets")}
-                  </small>
-                </span>
-                <span className={`status-dot ${song.status}`} aria-hidden="true" />
-              </button>
-            ))}
-          </div>
-        </aside>
-
-        <section className="catalog-detail-pane" aria-label={t("songs.detailAria")}>
-          {selectedSong ? (
-            <>
-              <SongDetailEditor
-                evaluation={evaluation}
-                isBusy={isBusy}
-                song={selectedSong}
-                validation={validation}
-                onRevalidate={async (songId) => {
-                  await revalidateSong(songId);
-                }}
-                onSaveMetadata={async (songId, input) => {
-                  await saveMetadata(songId, input);
-                }}
-                onSetDefaultAsset={async (songId, assetId) => {
-                  await setDefaultAsset(songId, assetId);
-                }}
-                onUpdateAsset={async (assetId, patch) => {
-                  await updateAsset(assetId, patch);
-                }}
-                onValidate={async (songId) => {
-                  await validateSong(songId);
-                }}
-              />
-              <KtvSyncedSourcesPanel song={selectedSong} />
-            </>
-          ) : (
-            <EmptySongDetail />
-          )}
-        </section>
-      </section>
     </main>
   );
 }
 
-function KtvIndexDiagnosticsPanel({
+function NasLibraryDiagnosticsPanel({
   diagnostics,
   isError,
   isLoading,
@@ -321,133 +222,10 @@ function sampleStatusText(status: KtvIndexNasSampleResult["status"], t: ReturnTy
   return t(`ktvIndex.sampleStatus.${status}`);
 }
 
-function KtvSyncedSourcesPanel({ song }: { song: AdminCatalogSong }) {
-  const { t } = useI18n();
-  const sources = song.assets
-    .map((asset) => asset.ktvIndexSource ?? null)
-    .filter((source): source is KtvIndexSyncedSourceRecord => source !== null);
-
-  if (sources.length === 0) {
-    return null;
-  }
-
-  return (
-    <section className="ktv-synced-sources" aria-label={t("ktvIndex.syncedSources")}>
-      <header>
-        <p className="pane-title">{t("ktvIndex.sectionLabel")}</p>
-        <h2>{t("ktvIndex.syncedSources")}</h2>
-      </header>
-      <div className="ktv-synced-source-list">
-        {sources.map((source) => (
-          <article className="ktv-synced-source-card" key={source.assetId}>
-            <header>
-              <strong>{source.title}</strong>
-              <span className="badge">{source.category}</span>
-            </header>
-            <dl>
-              <div>
-                <dt>ktv_songs.id</dt>
-                <dd>
-                  <code>{source.indexedSongId}</code>
-                </dd>
-              </div>
-              <div>
-                <dt>ktv_song_assets.id</dt>
-                <dd>
-                  <code>{source.indexedAssetId}</code>
-                </dd>
-              </div>
-              <div className="wide">
-                <dt>{t("ktvIndex.sourceFilePath")}</dt>
-                <dd>
-                  <code>{source.filePath}</code>
-                </dd>
-              </div>
-              <div>
-                <dt>{t("ktvIndex.parseConfidence")}</dt>
-                <dd>{formatNullableNumber(source.parseConfidence)}</dd>
-              </div>
-            </dl>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function formatNumber(value: number | null | undefined): string {
   return value == null ? "0" : value.toLocaleString();
 }
 
 function formatPercent(value: number | null | undefined): string {
   return value == null ? "0%" : `${value}%`;
-}
-
-function formatNullableNumber(value: number | null | undefined): string {
-  return value == null ? "-" : String(value);
-}
-
-function SongResourceSummary({ song }: { song: AdminCatalogSong }) {
-  const { t } = useI18n();
-  return (
-    <article className="song-detail-shell">
-      <header className="editor-header">
-        <div>
-          <p className="status-label">{statusText(song.status, t)}</p>
-          <h2>
-            {song.artistName} - {song.title}
-          </h2>
-          <p className="action-note">
-            {t("songs.defaultAsset")}: <strong>{song.defaultAssetId ?? t("common.none")}</strong>
-          </p>
-        </div>
-      </header>
-
-      <section className="asset-summary-grid" aria-label={t("asset.summaryAria")}>
-        {song.assets.map((asset) => (
-          <AssetSummary key={asset.id} asset={asset} />
-        ))}
-      </section>
-    </article>
-  );
-}
-
-function AssetSummary({ asset }: { asset: AdminCatalogAsset }) {
-  const { t } = useI18n();
-  return (
-    <article className="asset-summary">
-      <header>
-        <strong>{asset.id}</strong>
-        <span className="badge">{statusText(asset.status, t)}</span>
-      </header>
-      <dl className="asset-facts">
-        <div>
-          <dt>{t("asset.vocal")}</dt>
-          <dd>{vocalModeName(asset.vocalMode, t)}</dd>
-        </div>
-        <div>
-          <dt>{t("asset.lyric")}</dt>
-          <dd>{asset.lyricMode}</dd>
-        </div>
-        <div>
-          <dt>{t("asset.switchFamily")}</dt>
-          <dd>{asset.switchFamily ?? t("common.none")}</dd>
-        </div>
-        <div>
-          <dt>{t("asset.switchQuality")}</dt>
-          <dd>{asset.switchQualityStatus}</dd>
-        </div>
-      </dl>
-    </article>
-  );
-}
-
-function EmptySongDetail() {
-  const { t } = useI18n();
-  return (
-    <div className="editor-empty">
-      <h2>{t("songs.emptyTitle")}</h2>
-      <p>{t("songs.emptyBody")}</p>
-    </div>
-  );
 }
