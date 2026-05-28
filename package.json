@@ -13,6 +13,7 @@
     "tv:visual-check": "node scripts/tools/tv-visual-check.mjs",
     "real-mv:risk-spike": "node scripts/tools/real-mv-playback-risk-spike.mjs",
     "ktv:probe": "pnpm -F @home-ktv/api probe:ktv-index",
+    "ktv:tags": "pnpm -F @home-ktv/api tag:ktv-styles",
     "deploy:doctor": "node scripts/tools/deploy-doctor.mjs",
     "repo:hygiene": "node scripts/tools/repo-hygiene-check.mjs",
     "deploy:docker": "bash deploy/docker/ktv.sh",

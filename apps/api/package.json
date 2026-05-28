@@ -13,6 +13,7 @@
     "migrate": "node scripts/apply-migrations.mjs",
     "index:ktv": "tsx src/scripts/ktv-full-index.ts",
     "probe:ktv-index": "tsx src/scripts/ktv-index-probe.ts",
+    "tag:ktv-styles": "tsx src/scripts/ktv-style-tags.ts",
     "sample:ktv-index": "tsx src/scripts/ktv-sample-index.ts",
     "test": "vitest run",
     "start": "node dist/server.js"
