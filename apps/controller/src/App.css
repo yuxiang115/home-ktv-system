@@ -1249,7 +1249,9 @@ button:not(:disabled):hover {
 }
 
 .bottom-tab {
+  position: relative;
   display: grid;
+  place-items: center;
   gap: 2px;
   min-height: 46px;
   border: 0;
@@ -1259,6 +1261,17 @@ button:not(:disabled):hover {
   background: transparent;
   font-size: 0.74rem;
   font-weight: 900;
+}
+
+.bottom-tab--queue-pulse::after {
+  position: absolute;
+  inset: 4px 18px;
+  border: 1px solid rgba(248, 113, 113, 0.68);
+  border-radius: 8px;
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  animation: queue-tab-pulse 680ms ease-out;
 }
 
 .bottom-tab.active {
@@ -1271,6 +1284,26 @@ button:not(:disabled):hover {
   justify-self: center;
   width: 22px;
   height: 22px;
+}
+
+.bottom-tab__badge {
+  position: absolute;
+  top: 3px;
+  right: calc(50% - 35px);
+  display: grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  border: 2px solid rgba(15, 23, 42, 0.96);
+  border-radius: 999px;
+  padding: 0 4px;
+  color: #fff;
+  background: linear-gradient(135deg, #ff365f, #ef4444);
+  box-shadow: 0 8px 18px rgba(239, 68, 68, 0.36);
+  font-size: 0.62rem;
+  font-weight: 950;
+  line-height: 1;
+  animation: queue-badge-pop 420ms cubic-bezier(0.2, 1.35, 0.36, 1);
 }
 
 .bottom-tab__icon--home::before {
@@ -1310,6 +1343,116 @@ button:not(:disabled):hover {
 
 .bottom-tab__icon--control::after {
   right: 6px;
+}
+
+.queue-add-flyer {
+  position: fixed;
+  right: max(22px, calc((100vw - 430px) / 2 + 22px));
+  bottom: calc(92px + env(safe-area-inset-bottom));
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(248, 113, 113, 0.34);
+  border-radius: 50%;
+  color: #fff;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.82), transparent 22%),
+    linear-gradient(135deg, #ff365f, #f97316);
+  box-shadow:
+    0 0 0 8px rgba(248, 113, 113, 0.1),
+    0 18px 34px rgba(239, 68, 68, 0.42);
+  font-size: 1.32rem;
+  font-weight: 950;
+  pointer-events: none;
+  animation: queue-add-fly 880ms cubic-bezier(0.17, 0.84, 0.28, 1) forwards;
+}
+
+.queue-add-flyer::before,
+.queue-add-flyer::after {
+  position: absolute;
+  border-radius: 999px;
+  content: "";
+  pointer-events: none;
+}
+
+.queue-add-flyer::before {
+  right: -8px;
+  bottom: 7px;
+  width: 28px;
+  height: 8px;
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.95), rgba(37, 245, 139, 0.92));
+  filter: blur(0.2px);
+  transform: rotate(-18deg);
+}
+
+.queue-add-flyer::after {
+  inset: -9px;
+  border: 1px solid rgba(248, 250, 252, 0.46);
+  opacity: 0.72;
+}
+
+.queue-add-flyer span {
+  position: relative;
+  z-index: 1;
+  transform: translateY(-1px);
+}
+
+@keyframes queue-add-fly {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.72) rotate(-10deg);
+  }
+
+  14% {
+    opacity: 1;
+    transform: translate3d(-4px, -14px, 0) scale(1.12) rotate(6deg);
+  }
+
+  58% {
+    opacity: 1;
+    transform: translate3d(-42px, -58px, 0) scale(0.92) rotate(15deg);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(-80px, 58px, 0) scale(0.38) rotate(24deg);
+  }
+}
+
+@keyframes queue-badge-pop {
+  0% {
+    transform: scale(0.72);
+  }
+
+  58% {
+    transform: scale(1.18);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes queue-tab-pulse {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.88);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.18);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bottom-tab--queue-pulse::after,
+  .bottom-tab__badge,
+  .queue-add-flyer {
+    animation: none;
+  }
 }
 
 .modal-backdrop {

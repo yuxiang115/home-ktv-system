@@ -69,8 +69,8 @@ export interface RoomControllerState {
   confirmDuplicateAdd(): Promise<void>;
   deleteQueueEntry(queueEntryId: string): Promise<void>;
   promoteQueueEntry(queueEntryId: string): Promise<void>;
-  requestAddSongVersion(songId: string, assetId: string, title: string, queueState: SongSearchQueueState): void;
-  requestAddIndexedAsset(indexedAssetId: string, title: string, queueState: SongSearchIndexedQueueState): void;
+  requestAddSongVersion(songId: string, assetId: string, title: string, queueState: SongSearchQueueState): boolean;
+  requestAddIndexedAsset(indexedAssetId: string, title: string, queueState: SongSearchIndexedQueueState): boolean;
   sendInteraction(kind: RoomInteractionKind, message: string): Promise<void>;
   requestSupplement(provider: string, providerCandidateId: string): Promise<void>;
   requestSkip(): void;
@@ -508,18 +508,20 @@ export function useRoomControllerRuntime(): RoomControllerState {
     requestAddSongVersion: (songId, assetId, title, queueState) => {
       if (queueState === "queued") {
         setDuplicateConfirm({ kind: "canonical", songId, assetId, title });
-        return;
+        return false;
       }
 
       void addSongVersion(songId, assetId);
+      return true;
     },
     requestAddIndexedAsset: (indexedAssetId, title, queueState) => {
       if (queueState === "queued") {
         setDuplicateConfirm({ kind: "indexed", indexedAssetId, title });
-        return;
+        return false;
       }
 
       void addIndexedAsset(indexedAssetId);
+      return true;
     },
     sendInteraction,
     requestSupplement: requestOnlineSupplement,

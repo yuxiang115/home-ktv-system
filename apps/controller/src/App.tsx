@@ -43,9 +43,33 @@ function ControllerApp() {
   const [browseView, setBrowseView] = useState<BrowseView>({ kind: "home" });
   const [activeTab, setActiveTab] = useState<ControllerTab>("home");
   const [interactionComposer, setInteractionComposer] = useState<RoomInteractionKind | null>(null);
+  const [queueAddFeedback, setQueueAddFeedback] = useState<QueueAddFeedback | null>(null);
+  const queueFeedbackIdRef = useRef(0);
+  const queueFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const discovery = controller.songDiscovery;
   const visibleArtists = discovery?.artists.slice(0, 6) ?? [];
   const visibleGenres = discovery?.genres.slice(0, 6) ?? [];
+  const queueCount = snapshot?.queue.filter((entry) => entry.status !== "removed").length ?? 0;
+  const triggerQueueAddFeedback = useCallback(() => {
+    if (queueFeedbackTimerRef.current) {
+      clearTimeout(queueFeedbackTimerRef.current);
+    }
+
+    queueFeedbackIdRef.current += 1;
+    const feedback = { id: queueFeedbackIdRef.current };
+    setQueueAddFeedback(feedback);
+    queueFeedbackTimerRef.current = setTimeout(() => {
+      setQueueAddFeedback((current) => (current?.id === feedback.id ? null : current));
+    }, 900);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (queueFeedbackTimerRef.current) {
+        clearTimeout(queueFeedbackTimerRef.current);
+      }
+    };
+  }, []);
 
   return (
     <main className={`app-shell app-shell--${activeTab}`} aria-label={t("app.aria")}>
@@ -56,6 +80,7 @@ function ControllerApp() {
           controller={controller}
           discovery={discovery}
           browseView={browseView}
+          onQueueAddFeedback={triggerQueueAddFeedback}
           setBrowseView={setBrowseView}
           setInteractionComposer={setInteractionComposer}
           setSearchOpen={setSearchOpen}
@@ -138,7 +163,19 @@ function ControllerApp() {
         </div>
       ) : null}
 
-      <BottomTabs activeTab={activeTab} setActiveTab={setActiveTab} t={t} />
+      {queueAddFeedback ? (
+        <div className="queue-add-flyer" data-testid="queue-add-flyer" key={queueAddFeedback.id} aria-hidden="true">
+          <span>+</span>
+        </div>
+      ) : null}
+
+      <BottomTabs
+        activeTab={activeTab}
+        queueCount={queueCount}
+        queueFeedbackActive={queueAddFeedback !== null}
+        setActiveTab={setActiveTab}
+        t={t}
+      />
     </main>
   );
 }
@@ -167,6 +204,7 @@ function HomeScreen({
   browseView,
   controller,
   discovery,
+  onQueueAddFeedback,
   setBrowseView,
   setInteractionComposer,
   setSearchOpen,
@@ -177,6 +215,7 @@ function HomeScreen({
   browseView: BrowseView;
   controller: RoomControllerState;
   discovery: RoomControllerState["songDiscovery"];
+  onQueueAddFeedback(): void;
   setBrowseView(view: BrowseView): void;
   setInteractionComposer(kind: RoomInteractionKind): void;
   setSearchOpen(open: boolean): void;
@@ -189,6 +228,7 @@ function HomeScreen({
       <DiscoveryBrowseView
         controller={controller}
         discovery={discovery}
+        onQueueAddFeedback={onQueueAddFeedback}
         setBrowseView={setBrowseView}
         t={t}
         view={browseView}
@@ -238,7 +278,13 @@ function HomeScreen({
         </div>
         <div className="song-list recommendation-list">
           {discovery?.recommended.map((song) => (
-            <DiscoverySongRow controller={controller} key={song.songId} song={song} t={t} />
+            <DiscoverySongRow
+              controller={controller}
+              key={song.songId}
+              onQueueAddFeedback={onQueueAddFeedback}
+              song={song}
+              t={t}
+            />
           ))}
           {controller.songDiscoveryStatus === "loading" && !discovery ? (
             <p className="empty-state local-empty">{t("discovery.loading")}</p>
@@ -694,13 +740,18 @@ function ControlScreen({
 
 function BottomTabs({
   activeTab,
+  queueCount,
+  queueFeedbackActive,
   setActiveTab,
   t
 }: {
   activeTab: ControllerTab;
+  queueCount: number;
+  queueFeedbackActive: boolean;
   setActiveTab(tab: ControllerTab): void;
   t: TFunction;
 }) {
+  const badgeLabel = queueCount > 99 ? "99+" : String(queueCount);
   return (
     <nav className="bottom-tabs" aria-label={t("nav.aria")}>
       <button
@@ -713,12 +764,17 @@ function BottomTabs({
         <span>{t("nav.home")}</span>
       </button>
       <button
-        className={`bottom-tab ${activeTab === "control" ? "active" : ""}`}
+        className={`bottom-tab ${activeTab === "control" ? "active" : ""} ${queueFeedbackActive ? "bottom-tab--queue-pulse" : ""}`}
         type="button"
         aria-current={activeTab === "control" ? "page" : undefined}
         onClick={() => setActiveTab("control")}
       >
         <span className="bottom-tab__icon bottom-tab__icon--control" aria-hidden="true" />
+        {queueCount > 0 ? (
+          <span className="bottom-tab__badge" aria-hidden="true">
+            {badgeLabel}
+          </span>
+        ) : null}
         <span>{t("nav.control")}</span>
       </button>
     </nav>
@@ -728,6 +784,10 @@ function BottomTabs({
 type TFunction = ReturnType<typeof useI18n>["t"];
 
 type ControllerTab = "home" | "control";
+
+type QueueAddFeedback = {
+  id: number;
+};
 
 type BrowseView =
   | { kind: "home" }
@@ -1066,12 +1126,14 @@ function SearchLocalSongRow({
 function DiscoveryBrowseView({
   controller,
   discovery,
+  onQueueAddFeedback,
   setBrowseView,
   t,
   view
 }: {
   controller: RoomControllerState;
   discovery: RoomControllerState["songDiscovery"];
+  onQueueAddFeedback(): void;
   setBrowseView(view: BrowseView): void;
   t: TFunction;
   view: BrowseView;
@@ -1125,7 +1187,13 @@ function DiscoveryBrowseView({
       </div>
       <div className="song-list recommendation-list">
         {songs.map((song) => (
-          <DiscoverySongRow controller={controller} key={song.songId} song={song} t={t} />
+          <DiscoverySongRow
+            controller={controller}
+            key={song.songId}
+            onQueueAddFeedback={onQueueAddFeedback}
+            song={song}
+            t={t}
+          />
         ))}
       </div>
     </section>
@@ -1134,10 +1202,12 @@ function DiscoveryBrowseView({
 
 function DiscoverySongRow({
   controller,
+  onQueueAddFeedback,
   song,
   t
 }: {
   controller: RoomControllerState;
+  onQueueAddFeedback(): void;
   song: SongDiscoverySong;
   t: TFunction;
 }) {
@@ -1166,11 +1236,15 @@ function DiscoverySongRow({
           }
 
           if (isIndexedDiscoveryVersion(primaryVersion)) {
-            controller.requestAddIndexedAsset(primaryVersion.indexedAssetId, song.title, primaryVersion.queueState);
+            if (controller.requestAddIndexedAsset(primaryVersion.indexedAssetId, song.title, primaryVersion.queueState)) {
+              onQueueAddFeedback();
+            }
             return;
           }
 
-          controller.requestAddSongVersion(song.songId, primaryVersion.assetId, song.title, song.queueState);
+          if (controller.requestAddSongVersion(song.songId, primaryVersion.assetId, song.title, song.queueState)) {
+            onQueueAddFeedback();
+          }
         }}
       >
         {canQueue ? "+" : "·"}

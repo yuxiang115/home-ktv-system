@@ -1,6 +1,6 @@
 import type { SongDiscoveryResponse, SongDiscoverySong } from "@home-ktv/domain";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect } from "react";
 import { DEFAULT_ROOM_VOLUME_PERCENT, type RoomControlSnapshot } from "@home-ktv/player-contracts";
@@ -250,6 +250,23 @@ describe("mobile controller runtime", () => {
     expect(refreshedDiscoveryRequests.length).toBeGreaterThan(initialDiscoveryRequests.length);
   });
 
+  it("shows the current queue count on the control tab", async () => {
+    installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))]
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    await screen.findByText("歌手点歌");
+
+    const controlTab = screen.getByRole("button", { name: "控制" });
+    await waitFor(() => {
+      const badge = controlTab.querySelector(".bottom-tab__badge");
+      expect(badge?.textContent).toBe("1");
+    });
+  });
+
   it("adds indexed discovery recommendations through the indexed queue command", async () => {
     const user = userEvent.setup();
     const { requests } = installControllerFetchMock({
@@ -264,6 +281,7 @@ describe("mobile controller runtime", () => {
     expect(await within(recommendations).findByText("索引晴天")).toBeTruthy();
 
     await user.click(within(recommendations).getByRole("button", { name: "点歌 索引晴天" }));
+    expect(screen.getByTestId("queue-add-flyer")).toBeTruthy();
     await flush();
 
     const addRequest = requests.find((request) => request.url === "/rooms/living-room/commands/add-queue-entry");
