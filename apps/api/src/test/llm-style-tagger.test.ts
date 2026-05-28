@@ -57,10 +57,17 @@ describe("LlmStyleTagger", () => {
           method: "POST",
           headers: expect.objectContaining({
             authorization: "Bearer test-key",
-            "content-type": "application/json"
+            "content-type": "application/json",
+            "user-agent": "HomeKTVStyleTagger/0.1"
           })
         })
       );
+      const [, init] = fetchMock.mock.calls[0]!;
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        model: "local-model",
+        max_tokens: 96,
+        temperature: 0.1
+      });
     } finally {
       vi.unstubAllGlobals();
     }

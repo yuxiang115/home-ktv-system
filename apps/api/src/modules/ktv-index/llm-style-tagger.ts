@@ -16,6 +16,7 @@ export interface HttpLlmStyleTaggerClientOptions {
   baseUrl: string;
   apiKey: string;
   model: string;
+  maxTokens?: number;
   timeoutMs?: number;
 }
 
@@ -55,7 +56,8 @@ export class HttpLlmStyleTaggerClient implements LlmStyleTaggerClient {
         method: "POST",
         headers: {
           authorization: `Bearer ${this.options.apiKey}`,
-          "content-type": "application/json"
+          "content-type": "application/json",
+          "user-agent": "HomeKTVStyleTagger/0.1"
         },
         body: JSON.stringify({
           model: this.options.model,
@@ -64,6 +66,7 @@ export class HttpLlmStyleTaggerClient implements LlmStyleTaggerClient {
             { role: "user", content: input.userPrompt }
           ],
           temperature: 0.1,
+          max_tokens: this.options.maxTokens ?? 96,
           response_format: { type: "json_object" }
         }),
         signal: controller.signal
