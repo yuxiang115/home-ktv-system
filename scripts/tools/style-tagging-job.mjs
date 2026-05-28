@@ -212,6 +212,13 @@ export function containerPathToHostPath(containerPath, deployment) {
   throw new Error(`Path is not under MEDIA_ROOT: ${containerPath}`);
 }
 
+export function selectOutputPath(options, state) {
+  if (!options.outputExplicit && state?.output) {
+    return state.output;
+  }
+  return options.output;
+}
+
 export function summarizeResultsText(text, totalExpected = DEFAULT_TOTAL) {
   const summary = {
     total: 0,
@@ -305,7 +312,7 @@ function logsJob({ exists, options, readFile, run }) {
 
 function statsJob({ deployment, exists, log, options, readFile }) {
   const state = readState(options, exists, readFile);
-  const output = options.output || state?.output;
+  const output = selectOutputPath(options, state);
   if (!output) {
     throw new Error("No output path available. Pass --output or start a job first.");
   }
@@ -316,9 +323,7 @@ function statsJob({ deployment, exists, log, options, readFile }) {
 
 function importResults({ deployment, exists, options, readFile, run }) {
   const state = readState(options, exists, readFile);
-  if (!options.outputExplicit && state?.output) {
-    options.output = state.output;
-  }
+  options.output = selectOutputPath(options, state);
   const result = run("docker", buildImportRunArgs(options, deployment, options.command === "import-dry-run"), {
     cwd: options.rootDir
   });

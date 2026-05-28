@@ -6,6 +6,7 @@ import {
   parseArgs,
   parseEnvText,
   resolveDeploymentEnv,
+  selectOutputPath,
   summarizeResultsText
 } from "./style-tagging-job.mjs";
 
@@ -139,6 +140,15 @@ test("containerPathToHostPath maps media container paths to host paths", () => {
     containerPathToHostPath("/data/home-ktv-media/tagging/full/results.jsonl", deployment),
     "/srv/home-ktv-media/tagging/full/results.jsonl"
   );
+});
+
+test("selectOutputPath prefers state output unless the user passed --output", () => {
+  const generated = parseArgs(["stats"], {}, new Date("2026-05-28T12:00:00.000Z"));
+  const explicit = parseArgs(["stats", "--output", "/data/home-ktv-media/tagging/full/manual.jsonl"]);
+  const state = { output: "/data/home-ktv-media/tagging/full/state.jsonl" };
+
+  assert.equal(selectOutputPath(generated, state), "/data/home-ktv-media/tagging/full/state.jsonl");
+  assert.equal(selectOutputPath(explicit, state), "/data/home-ktv-media/tagging/full/manual.jsonl");
 });
 
 test("summarizeResultsText counts JSONL statuses and tag counts", () => {
