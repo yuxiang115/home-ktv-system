@@ -63,7 +63,7 @@ import { registerRealtimeRoutes } from "./routes/realtime.js";
 import { registerRoomInteractionRoutes } from "./routes/room-interactions.js";
 import { registerRoomSnapshotRoutes } from "./routes/room-snapshots.js";
 import { registerSongDiscoveryRoutes } from "./routes/song-discovery.js";
-import { PgIndexedSourceIdentityLookup, registerSongSearchRoutes } from "./routes/song-search.js";
+import { registerSongSearchRoutes } from "./routes/song-search.js";
 
 export interface CreateServerOptions {
   onlineProviders?: OnlineCandidateProvider[];
@@ -242,18 +242,14 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
   });
   await registerSongSearchRoutes(server, {
     rooms: repositories.rooms,
-    songs: repositories.songs,
     queueEntries: repositories.queueEntries,
     online: onlineRuntime.tasks,
-    ...(repositories.ktvIndex ? { ktvIndex: repositories.ktvIndex } : {}),
-    ...(pool ? { indexedSources: new PgIndexedSourceIdentityLookup(pool) } : {})
+    ...(repositories.ktvIndex ? { ktvIndex: repositories.ktvIndex } : {})
   });
   await registerSongDiscoveryRoutes(server, {
     rooms: repositories.rooms,
-    songs: repositories.songs,
     queueEntries: repositories.queueEntries,
     ...(repositories.ktvIndex ? { ktvIndex: repositories.ktvIndex } : {}),
-    ...(pool ? { indexedSources: new PgIndexedSourceIdentityLookup(pool) } : {}),
     ...(repositories.songCovers ? { coverCache: repositories.songCovers } : {})
   });
   await registerRoomInteractionRoutes(server, {

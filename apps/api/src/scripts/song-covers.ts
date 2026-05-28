@@ -66,8 +66,8 @@ function parseArgs(args: readonly string[]): CliOptions {
       continue;
     }
     if (arg === "--source" && next) {
-      if (next !== "formal" && next !== "ktv-index") {
-        throw new Error("--source must be formal or ktv-index");
+      if (next !== "nas" && next !== "online") {
+        throw new Error("--source must be nas or online");
       }
       options.source = next;
       index += 1;
@@ -115,7 +115,7 @@ function printHelp() {
 
 Options:
   --limit <n>             Max songs to process, default 300
-  --source <kind>         formal or ktv-index, default both
+  --source <kind>         nas or online, default all available sources
   --retry-failed          Retry rows currently marked failed
   --delay-ms <n>          Delay between provider requests, default 600
   --providers <list>      Comma list, default tencent,kugou,netease,kuwo

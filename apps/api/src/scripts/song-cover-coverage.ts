@@ -3,7 +3,7 @@ import { Pool } from "pg";
 import { MetingCoverProvider, type MetingCoverProviderOptions, type MetingProviderId } from "../modules/covers/meting-cover-provider.js";
 import type { SongCoverBackfillCandidate, SongCoverProvider } from "../modules/covers/types.js";
 
-export type SongCoverCoverageSource = "formal" | "ktv-index";
+export type SongCoverCoverageSource = "nas" | "online";
 
 export interface SongCoverCoverageCliOptions {
   databaseUrl: string;
@@ -52,7 +52,7 @@ interface CoverageStats {
 }
 
 const defaultProviders: MetingProviderId[] = ["tencent", "kugou", "netease", "kuwo"];
-const defaultSource: SongCoverCoverageSource = "ktv-index";
+const defaultSource: SongCoverCoverageSource = "nas";
 
 const defaultOptions = {
   delayMs: 250,
@@ -228,18 +228,17 @@ async function listSampleSongs(
   db: SongCoverCoverageDbClient,
   options: Pick<SongCoverCoverageCliOptions, "limit" | "source">
 ): Promise<SampleSongRow[]> {
-  if (options.source === "formal") {
+  if (options.source === "online") {
     const result = await db.query<SampleSongRow>(
       `SELECT s.id AS "sourceSongId",
               s.title,
-              s.artist_name AS "artistName"
-       FROM songs s
-       WHERE s.status = 'ready'
-         AND trim(s.title) <> ''
-         AND trim(s.artist_name) <> ''
+              s.primary_artist_name AS "artistName"
+       FROM online_songs s
+       WHERE trim(s.title) <> ''
+         AND trim(s.primary_artist_name) <> ''
          AND EXISTS (
            SELECT 1
-           FROM assets a
+           FROM online_song_assets a
            WHERE a.song_id = s.id
              AND a.status = 'ready'
          )
@@ -331,10 +330,10 @@ function percent(numerator: number, denominator: number): string {
 }
 
 function readSource(value: string): SongCoverCoverageSource {
-  if (value === "formal" || value === "ktv-index") {
+  if (value === "nas" || value === "online") {
     return value;
   }
-  throw new Error("--source must be formal or ktv-index");
+  throw new Error("--source must be nas or online");
 }
 
 function readProvider(value: string): MetingProviderId {
@@ -372,7 +371,7 @@ function helpText(): string {
 
 Options:
   --limit <n>                 Random sample size, default 100
-  --source <kind>             formal or ktv-index, default ktv-index
+  --source <kind>             nas or online, default nas
   --delay-ms <n>              Delay between lookups, default 250
   --providers <list>          Comma list, default tencent,kugou,netease,kuwo
   --progress-every <n>        Progress log cadence, default 20

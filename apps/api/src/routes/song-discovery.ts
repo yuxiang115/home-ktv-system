@@ -7,7 +7,6 @@ import type {
   SongId,
   SongSearchIndexedResult
 } from "@home-ktv/domain";
-import type { AdminCatalogSongRepository, SearchFormalSongRecord } from "../modules/catalog/repositories/song-repository.js";
 import { songCoverCacheKey } from "../modules/covers/types.js";
 import type { SongCoverCacheRepository } from "../modules/covers/song-cover-cache-repository.js";
 import type { KtvIndexReadRepository } from "../modules/ktv-index/ktv-index-read-repository.js";
@@ -16,15 +15,9 @@ import type { RoomRepository } from "../modules/rooms/repositories/room-reposito
 
 export interface SongDiscoveryRouteDependencies {
   rooms: RoomRepository;
-  songs: AdminCatalogSongRepository;
   queueEntries: QueueEntryRepository;
   ktvIndex?: Pick<KtvIndexReadRepository, "searchIndexedSongs">;
-  indexedSources?: IndexedSourceIdentityLookup;
   coverCache?: Pick<SongCoverCacheRepository, "findBySongKeys">;
-}
-
-export interface IndexedSourceIdentityLookup {
-  findIndexedAssetIdsForCanonicalAssets(assetIds: readonly string[]): Promise<string[]>;
 }
 
 interface SongDiscoveryQuery {
@@ -48,15 +41,12 @@ export async function registerSongDiscoveryRoutes(
       const seed = String(request.query.seed ?? Date.now());
       const limit = parseLimit(request.query.limit);
       const queue = await dependencies.queueEntries.listEffectiveQueue(room.id);
-      const songs =
-        (await listIndexedDiscoverySongs({
-          dependencies,
-          queuedAssetIds: queue.map((entry) => entry.assetId)
-        })) ??
-        (await listFormalDiscoverySongs({
-          dependencies,
-          queuedSongIds: queue.map((entry) => entry.songId)
-        }));
+      const songs = await listNasDiscoverySongs({
+        dependencies,
+        queuedAssetIds: queue
+          .filter((entry) => (entry.source?.sourceType ?? "nas") === "nas")
+          .map((entry) => entry.source?.assetId ?? entry.assetId)
+      });
       const songsWithCovers = await attachCoverImageUrls(songs, dependencies.coverCache);
       const weightedRecommendations = selectWeightedSongs(songsWithCovers, limit, seed);
 
@@ -103,110 +93,77 @@ function parseLimit(rawLimit: string | number | undefined): number {
   return Math.min(30, Math.max(1, Number.isFinite(parsedLimit) ? parsedLimit : 30));
 }
 
-async function listIndexedDiscoverySongs(input: {
+async function listNasDiscoverySongs(input: {
   dependencies: SongDiscoveryRouteDependencies;
   queuedAssetIds: readonly string[];
-}): Promise<SongDiscoverySong[] | null> {
+}): Promise<SongDiscoverySong[]> {
   if (!input.dependencies.ktvIndex) {
-    return null;
+    return [];
   }
 
-  const queuedIndexedAssetIds =
-    (await input.dependencies.indexedSources?.findIndexedAssetIdsForCanonicalAssets(input.queuedAssetIds)) ?? [];
   const records = await input.dependencies.ktvIndex.searchIndexedSongs({
     query: "",
     limit: 500,
     shuffle: true,
     versionsPerSong: 1,
-    queuedIndexedAssetIds,
+    queuedIndexedAssetIds: input.queuedAssetIds,
     unreadableIndexedAssetIds: []
   });
-  if (records.length === 0) {
-    return null;
-  }
 
-  const songIds = records.map((record) => ktvCanonicalSongId(record.indexedSongId));
+  const songIds = records.map((record) => record.indexedSongId as SongId);
   const requestCounts = (await input.dependencies.queueEntries.listGlobalSongRequestCounts?.(songIds)) ?? new Map<SongId, number>();
-  return records.map((record) => indexedDiscoverySong(record, requestCounts.get(ktvCanonicalSongId(record.indexedSongId)) ?? 0));
+  return records.map((record) => nasDiscoverySong(record, requestCounts.get(record.indexedSongId as SongId) ?? 0));
 }
 
-async function listFormalDiscoverySongs(input: {
-  dependencies: SongDiscoveryRouteDependencies;
-  queuedSongIds: readonly SongId[];
-}): Promise<SongDiscoverySong[]> {
-  const records = await input.dependencies.songs.searchFormalSongs({
-    query: "",
-    limit: 500,
-    queuedSongIds: input.queuedSongIds
-  });
-  const songIds = records.map((record) => record.song.id);
-  const requestCounts = (await input.dependencies.queueEntries.listGlobalSongRequestCounts?.(songIds)) ?? new Map<SongId, number>();
-  return records.map((record) => discoverySong(record, requestCounts.get(record.song.id) ?? 0));
-}
-
-function discoverySong(record: SearchFormalSongRecord, playCount: number): SongDiscoverySong {
+function nasDiscoverySong(record: SongSearchIndexedResult, playCount: number): SongDiscoverySong {
+  const genre = nasGenre(record);
   return {
-    source: "formal",
-    songId: record.song.id,
-    title: record.song.title,
-    artistId: record.song.artistId,
-    artistName: record.song.artistName,
-    language: record.song.language,
-    genre: record.song.genre,
-    matchReason: record.matchReason,
-    queueState: record.queueState,
-    versions: record.versions,
-    playCount,
-    recommendationWeight: recommendationWeight(record, playCount)
-  };
-}
-
-function indexedDiscoverySong(record: SongSearchIndexedResult, playCount: number): SongDiscoverySong {
-  const genre = indexedGenre(record);
-  return {
-    source: "ktv-index",
-    songId: ktvCanonicalSongId(record.indexedSongId),
-    indexedSongId: record.indexedSongId,
+    source: "nas",
+    songId: record.indexedSongId,
     title: record.title,
-    artistId: indexedArtistId(record.artistName),
+    artistId: nasArtistId(record.artistName),
     artistName: record.artistName,
     language: "mandarin",
     genre,
     matchReason: record.matchReason === "style" ? "default" : record.matchReason,
     queueState: record.versions.some((version) => version.queueState === "queued") ? "queued" : "not_queued",
-    versions: record.versions,
+    versions: record.versions.map((version) => ({
+      assetId: version.indexedAssetId,
+      displayName: version.displayName,
+      sourceLabel: "NAS曲库",
+      extension: version.extension,
+      sizeBytes: version.sizeBytes,
+      audioTrackCount: version.audioTrackCount,
+      ...(version.styleTags ? { styleTags: version.styleTags } : {}),
+      category: version.category,
+      queueState: version.queueState,
+      canQueue: version.canQueue,
+      disabledLabel: version.disabledLabel
+    })),
     playCount,
-    recommendationWeight: indexedRecommendationWeight(playCount)
+    recommendationWeight: nasRecommendationWeight(playCount)
   };
 }
 
-function recommendationWeight(record: SearchFormalSongRecord, playCount: number): number {
-  return Math.max(1, record.song.searchWeight) + playCount * 4;
-}
-
-function indexedRecommendationWeight(playCount: number): number {
+function nasRecommendationWeight(playCount: number): number {
   return 1 + playCount * 4;
 }
 
-function ktvCanonicalSongId(indexedSongId: string): SongId {
-  return `song-ktv-${indexedSongId}` as SongId;
-}
-
 function discoverySourceSongId(song: SongDiscoverySong): string {
-  return song.source === "ktv-index" ? song.indexedSongId ?? song.songId.replace(/^song-ktv-/u, "") : song.songId;
+  return song.songId;
 }
 
-function indexedArtistId(artistName: string): string {
+function nasArtistId(artistName: string): string {
   const normalized = artistName
     .trim()
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
     .replace(/^-+|-+$/gu, "");
-  return `ktv-index-artist-${normalized || "unknown"}`;
+  return `nas-artist-${normalized || "unknown"}`;
 }
 
-function indexedGenre(record: SongSearchIndexedResult): string[] {
+function nasGenre(record: SongSearchIndexedResult): string[] {
   const tags = record.styleTags?.filter((tag) => tag.trim().length > 0) ?? [];
   return tags.length > 0 ? tags : [record.category || "未打标签"];
 }
