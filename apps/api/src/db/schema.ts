@@ -135,8 +135,11 @@ export interface RoomRow {
 export interface QueueEntryRow {
   id: string;
   room_id: string;
-  song_id: string;
-  asset_id: string;
+  source_type: string;
+  nas_song_id: string | null;
+  nas_asset_id: string | null;
+  online_song_id: string | null;
+  online_asset_id: string | null;
   requested_by: string;
   queue_position: number;
   status: string;

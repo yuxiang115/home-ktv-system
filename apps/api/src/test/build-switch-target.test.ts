@@ -23,6 +23,7 @@ describe("buildSwitchTarget", () => {
       sessionVersion: 7,
       queueEntryId: "queue-current",
       switchKind: "asset",
+      sourceType: "nas",
       fromAssetId: "asset-original",
       toAssetId: "asset-instrumental",
       playbackUrl: "http://ktv.local/media/asset-instrumental",
@@ -192,11 +193,17 @@ function createRepositories(
         return null;
       },
       async append(input: AppendQueueEntryInput) {
+        const source = input.source ?? {
+          sourceType: "nas" as const,
+          songId: input.songId ?? "song-new",
+          assetId: input.assetId ?? "asset-new"
+        };
         return {
           id: "queue-new",
           roomId: input.roomId,
-          songId: input.songId,
-          assetId: input.assetId,
+          source,
+          songId: source.songId,
+          assetId: source.assetId,
           requestedBy: input.requestedBy,
           queuePosition: input.queuePosition,
           status: input.status ?? "queued",

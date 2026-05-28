@@ -5,6 +5,7 @@ import type {
   QueueEntryStatus,
   PlaybackProfile,
   RoomId,
+  SongSourceType,
   SongId,
   SwitchFamily,
   TrackRef,
@@ -24,6 +25,8 @@ export interface PlaybackTarget {
   roomId: RoomId;
   sessionVersion: number;
   queueEntryId: QueueEntryId;
+  sourceType: SongSourceType;
+  songId: SongId;
   assetId: AssetId;
   currentQueueEntryPreview: QueueEntryPreview;
   playbackUrl: string;
@@ -40,6 +43,7 @@ export interface SwitchTarget {
   sessionVersion: number;
   queueEntryId: QueueEntryId;
   switchKind: "asset" | "audio_track";
+  sourceType: SongSourceType;
   fromAssetId: AssetId;
   toAssetId: AssetId;
   playbackUrl: string;
@@ -56,6 +60,7 @@ export interface PlayerTelemetryEvent {
   roomId: RoomId;
   sessionVersion: number;
   queueEntryId: QueueEntryId;
+  sourceType: SongSourceType;
   assetId: AssetId;
   switchFamily: SwitchFamily | null;
   vocalMode: VocalMode;
@@ -104,6 +109,7 @@ export interface ControllerPresenceSummary {
 
 export interface RoomQueueEntryPreview {
   queueEntryId: QueueEntryId;
+  sourceType: SongSourceType;
   songId: SongId;
   assetId: AssetId;
   songTitle: string;

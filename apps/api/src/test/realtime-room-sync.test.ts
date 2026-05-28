@@ -321,6 +321,7 @@ function indexedAddSnapshot(): RoomControlSnapshot {
     queue: [
       {
         queueEntryId: "queue-indexed-1",
+        sourceType: "nas",
         songId: "song-ktv-ktv-song-1",
         assetId: "asset-ktv-ktv-asset-1",
         songTitle: "七里香",

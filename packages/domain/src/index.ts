@@ -84,6 +84,13 @@ export type OnlineCandidateTaskState = (typeof onlineCandidateTaskStates)[number
 export type OnlineCandidateType = "mv" | "karaoke" | "audio" | "unknown";
 export type OnlineCandidateRiskLabel = "normal" | "risky" | "blocked";
 export type OnlineCandidateReliabilityLabel = "high" | "medium" | "low" | "unknown";
+export type SongSourceType = "nas" | "online";
+
+export interface MediaSourceRef {
+  sourceType: SongSourceType;
+  songId: SongId;
+  assetId: AssetId;
+}
 
 export interface SongCapabilities {
   canSwitchVocalMode: boolean;
@@ -483,6 +490,7 @@ export interface PlaybackOptions {
 export interface QueueEntry {
   id: QueueEntryId;
   roomId: RoomId;
+  source?: MediaSourceRef;
   songId: SongId;
   assetId: AssetId;
   requestedBy: string;

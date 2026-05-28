@@ -194,6 +194,7 @@ function queueEntryPreview(
 
   return {
     queueEntryId: queueEntry.id,
+    sourceType: queueEntry.source?.sourceType ?? "nas",
     songId: queueEntry.songId,
     assetId: queueEntry.assetId,
     songTitle: song.title,

@@ -52,6 +52,8 @@ export async function buildPlaybackTarget(input: BuildPlaybackTargetInput): Prom
     roomId: room.id,
     sessionVersion: session.version,
     queueEntryId: queueEntry.id,
+    sourceType: queueEntry.source?.sourceType ?? "nas",
+    songId: queueEntry.songId,
     assetId: asset.id,
     currentQueueEntryPreview: queuePreview(queueEntry, currentSong),
     playbackUrl: input.assetGateway.createPlaybackUrl(asset.id),
@@ -141,6 +143,8 @@ export function buildPlaybackTargetFromResolvedState(input: {
     roomId: input.room.id,
     sessionVersion: input.sessionVersion,
     queueEntryId: input.queueEntry.id,
+    sourceType: input.queueEntry.source?.sourceType ?? "nas",
+    songId: input.queueEntry.songId,
     assetId: input.asset.id,
     currentQueueEntryPreview: input.nextQueueEntryPreview?.queueEntryId === input.queueEntry.id
       ? input.nextQueueEntryPreview
