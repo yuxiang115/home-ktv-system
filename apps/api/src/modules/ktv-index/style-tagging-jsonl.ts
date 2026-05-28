@@ -65,6 +65,7 @@ export interface RunStyleTaggingJsonlInput {
   outputPath: string;
   source: string;
   tagger: StyleTaggingJsonlTagger;
+  concurrency?: number;
   limit?: number;
   now?: () => number;
   onProgress?: (event: StyleTaggingJsonlProgressEvent) => void;
@@ -212,11 +213,34 @@ export async function runStyleTaggingJsonl(input: RunStyleTaggingJsonlInput): Pr
 
   await mkdir(path.dirname(input.outputPath), { recursive: true });
 
-  for (const song of songs) {
+  let nextIndex = 0;
+  const concurrency = Math.min(normalizeConcurrency(input.concurrency), songs.length);
+  const workers = Array.from({ length: concurrency }, async () => {
+    while (nextIndex < songs.length) {
+      const song = songs[nextIndex++];
+      if (song) {
+        await processSong(song);
+      }
+    }
+  });
+  await Promise.all(workers);
+
+  return {
+    selected,
+    processed,
+    skipped,
+    tagged,
+    empty,
+    failed,
+    elapsedMs: now(input) - startedAt
+  };
+
+  async function processSong(song: StyleTaggingJsonlSong): Promise<void> {
     if (processedKeys.has(song.songKey)) {
       skipped += 1;
-      continue;
+      return;
     }
+    processedKeys.add(song.songKey);
 
     const rowStartedAt = now(input);
     try {
@@ -238,7 +262,6 @@ export async function runStyleTaggingJsonl(input: RunStyleTaggingJsonlInput): Pr
         processedAt: new Date(now(input)).toISOString(),
         elapsedMs: now(input) - rowStartedAt
       }));
-      processedKeys.add(song.songKey);
       input.onProgress?.({
         selected,
         processed,
@@ -264,7 +287,6 @@ export async function runStyleTaggingJsonl(input: RunStyleTaggingJsonlInput): Pr
         elapsedMs: now(input) - rowStartedAt,
         errorMessage
       }));
-      processedKeys.add(song.songKey);
       input.onProgress?.({
         selected,
         processed,
@@ -278,16 +300,6 @@ export async function runStyleTaggingJsonl(input: RunStyleTaggingJsonlInput): Pr
       });
     }
   }
-
-  return {
-    selected,
-    processed,
-    skipped,
-    tagged,
-    empty,
-    failed,
-    elapsedMs: now(input) - startedAt
-  };
 }
 
 export async function importStyleTaggingJsonlResults(
@@ -645,6 +657,13 @@ function average(values: readonly number[]): number {
 
 function clampConfidence(value: number): number {
   return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
+}
+
+function normalizeConcurrency(value: number | undefined): number {
+  if (!Number.isInteger(value) || value === undefined || value <= 0) {
+    return 1;
+  }
+  return Math.min(value, 20);
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

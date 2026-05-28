@@ -103,6 +103,46 @@ describe("style tagging JSONL staging", () => {
     expect(tagSong).toHaveBeenCalledTimes(1);
   });
 
+  it("processes JSONL rows with bounded concurrency", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "ktv-tags-jsonl-concurrency-"));
+    const inputPath = path.join(dir, "songs.jsonl");
+    const outputPath = path.join(dir, "results.jsonl");
+
+    await writeFile(
+      inputPath,
+      [
+        JSON.stringify({ schemaVersion: 1, title: "稻香", artistName: "周杰伦" }),
+        JSON.stringify({ schemaVersion: 1, title: "晴天", artistName: "周杰伦" }),
+        JSON.stringify({ schemaVersion: 1, title: "七里香", artistName: "周杰伦" })
+      ].join("\n") + "\n",
+      "utf8"
+    );
+
+    let active = 0;
+    let maxActive = 0;
+    const tagSong = vi.fn(async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      active -= 1;
+      return {
+        tags: [{ tag: "华语", confidence: 0.8, evidence: ["fixture"] }],
+        evidence: { provider: "fixture" }
+      };
+    });
+
+    const result = await runStyleTaggingJsonl({
+      inputPath,
+      outputPath,
+      source: "netease-playlist-v1",
+      tagger: { tagSong },
+      concurrency: 2
+    });
+
+    expect(result).toMatchObject({ selected: 3, processed: 3, skipped: 0, tagged: 3 });
+    expect(maxActive).toBe(2);
+  });
+
   it("imports staged results by current database identity", async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "ktv-tags-import-"));
     const inputPath = path.join(dir, "results.jsonl");

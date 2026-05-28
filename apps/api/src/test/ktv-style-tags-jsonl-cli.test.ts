@@ -28,6 +28,8 @@ describe("KTV style tags JSONL CLI options", () => {
         "netease",
         "--base-url",
         "http://127.0.0.1:3301",
+        "--concurrency",
+        "5",
         "--progress-every",
         "25"
       ],
@@ -40,6 +42,7 @@ describe("KTV style tags JSONL CLI options", () => {
       source: "netease",
       taggingSource: "netease-playlist-v1",
       baseUrl: "http://127.0.0.1:3301",
+      concurrency: 5,
       progressEvery: 25
     });
   });

@@ -15,6 +15,7 @@ import {
 
 export interface KtvStyleTagsJsonlCliOptions {
   baseUrl: string;
+  concurrency: number;
   help: boolean;
   inputPath: string;
   limit: number | undefined;
@@ -56,6 +57,7 @@ export async function runKtvStyleTagsJsonlCli(
     outputPath: options.outputPath,
     source: options.taggingSource,
     tagger: (dependencies.createTagger ?? createTagger)(options),
+    concurrency: options.concurrency,
     ...(options.limit === undefined ? {} : { limit: options.limit }),
     onProgress: (event: StyleTaggingJsonlProgressEvent) => {
       if (event.processed === event.selected - event.skipped || event.processed % options.progressEvery === 0) {
@@ -80,6 +82,7 @@ export function parseKtvStyleTagsJsonlCliOptions(
 ): KtvStyleTagsJsonlCliOptions {
   const options: KtvStyleTagsJsonlCliOptions = {
     baseUrl: clean(env.NETEASE_API_BASE_URL) ?? "http://127.0.0.1:3301",
+    concurrency: 1,
     help: false,
     inputPath: "",
     limit: undefined,
@@ -116,6 +119,10 @@ export function parseKtvStyleTagsJsonlCliOptions(
         break;
       case "--progress-every":
         options.progressEvery = parsePositiveInteger(requireValue(args, index, arg), arg);
+        index += 1;
+        break;
+      case "--concurrency":
+        options.concurrency = parsePositiveInteger(requireValue(args, index, arg), arg);
         index += 1;
         break;
       case "--base-url":
@@ -215,6 +222,7 @@ Options:
   --input <path>        Input song snapshot JSONL path.
   --output <path>       Output result JSONL path. Existing rows are used for resume.
   --limit <count>       Optional number of input rows to consider.
+  --concurrency <n>     Concurrent tagger calls in one process. Default: 1.
   --progress-every <n>  Print one progress line every n processed songs. Default: 10.
   --source netease      Use Netease playlist semantics. Default.
   --base-url <url>      NeteaseCloudMusicApi URL. Default: NETEASE_API_BASE_URL or http://127.0.0.1:3301.

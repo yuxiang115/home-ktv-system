@@ -44,7 +44,7 @@ bash deploy/source/ktv.sh logs
 bash deploy/source/ktv.sh logs api
 bash deploy/source/ktv.sh probe-index -- --limit 300 --concurrency 2
 bash deploy/source/ktv.sh tag-styles-export -- --out runtime/media/tagging/full/songs.jsonl
-bash deploy/source/ktv.sh tag-styles-jsonl -- --input runtime/media/tagging/full/songs.jsonl --output runtime/media/tagging/full/results.jsonl --source netease
+bash deploy/source/ktv.sh tag-styles-jsonl -- --input runtime/media/tagging/full/songs.jsonl --output runtime/media/tagging/full/results.jsonl --source netease --concurrency 5
 bash deploy/source/ktv.sh tag-styles-import -- --input runtime/media/tagging/full/results.jsonl --dry-run
 bash deploy/source/ktv.sh stop
 ```

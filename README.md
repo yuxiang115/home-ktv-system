@@ -134,7 +134,7 @@ pnpm hot-songs:update
 
 ```bash
 pnpm ktv:tags:export -- --out runtime/media/tagging/full/songs.jsonl
-pnpm ktv:tags:jsonl -- --input runtime/media/tagging/full/songs.jsonl --output runtime/media/tagging/full/results.jsonl --source netease
+pnpm ktv:tags:jsonl -- --input runtime/media/tagging/full/songs.jsonl --output runtime/media/tagging/full/results.jsonl --source netease --concurrency 5
 pnpm ktv:tags:import -- --input runtime/media/tagging/full/results.jsonl --dry-run
 pnpm ktv:tags:import -- --input runtime/media/tagging/full/results.jsonl --apply
 ```
