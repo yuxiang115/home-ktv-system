@@ -8,6 +8,8 @@ import type {
   SongSearchIndexedResult
 } from "@home-ktv/domain";
 import type { AdminCatalogSongRepository, SearchFormalSongRecord } from "../modules/catalog/repositories/song-repository.js";
+import { songCoverCacheKey } from "../modules/covers/types.js";
+import type { SongCoverCacheRepository } from "../modules/covers/song-cover-cache-repository.js";
 import type { KtvIndexReadRepository } from "../modules/ktv-index/ktv-index-read-repository.js";
 import type { QueueEntryRepository } from "../modules/playback/repositories/queue-entry-repository.js";
 import type { RoomRepository } from "../modules/rooms/repositories/room-repository.js";
@@ -18,6 +20,7 @@ export interface SongDiscoveryRouteDependencies {
   queueEntries: QueueEntryRepository;
   ktvIndex?: Pick<KtvIndexReadRepository, "searchIndexedSongs">;
   indexedSources?: IndexedSourceIdentityLookup;
+  coverCache?: Pick<SongCoverCacheRepository, "findBySongKeys">;
 }
 
 export interface IndexedSourceIdentityLookup {
@@ -54,17 +57,43 @@ export async function registerSongDiscoveryRoutes(
           dependencies,
           queuedSongIds: queue.map((entry) => entry.songId)
         }));
+      const songsWithCovers = await attachCoverImageUrls(songs, dependencies.coverCache);
 
       const response: SongDiscoveryResponse = {
         seed,
-        recommended: selectWeightedSongs(songs, limit, seed),
-        artists: buildArtistModules(songs),
-        genres: buildGenreModules(songs)
+        recommended: selectWeightedSongs(songsWithCovers, limit, seed),
+        artists: buildArtistModules(songsWithCovers),
+        genres: buildGenreModules(songsWithCovers)
       };
 
       await reply.send(response);
     }
   );
+}
+
+async function attachCoverImageUrls(
+  songs: readonly SongDiscoverySong[],
+  coverCache: Pick<SongCoverCacheRepository, "findBySongKeys"> | undefined
+): Promise<SongDiscoverySong[]> {
+  if (!coverCache || songs.length === 0) {
+    return [...songs];
+  }
+
+  const keys = songs.map((song) => ({
+    source: song.source,
+    sourceSongId: discoverySourceSongId(song)
+  }));
+  const covers = await coverCache.findBySongKeys(keys);
+
+  return songs.map((song) => {
+    const cover = covers.get(
+      songCoverCacheKey({
+        source: song.source,
+        sourceSongId: discoverySourceSongId(song)
+      })
+    );
+    return cover?.imageUrl ? { ...song, coverImageUrl: cover.imageUrl } : song;
+  });
 }
 
 function parseLimit(rawLimit: string | number | undefined): number {
@@ -160,6 +189,10 @@ function indexedRecommendationWeight(playCount: number): number {
 
 function ktvCanonicalSongId(indexedSongId: string): SongId {
   return `song-ktv-${indexedSongId}` as SongId;
+}
+
+function discoverySourceSongId(song: SongDiscoverySong): string {
+  return song.source === "ktv-index" ? song.indexedSongId ?? song.songId.replace(/^song-ktv-/u, "") : song.songId;
 }
 
 function indexedArtistId(artistName: string): string {

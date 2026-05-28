@@ -3,9 +3,11 @@ import type {
   QueueEntry,
   Room,
   SongDiscoveryResponse,
+  SongDiscoverySource,
   SongSearchIndexedResult,
   SongSearchVersionOption
 } from "@home-ktv/domain";
+import type { SongCoverCacheRepository } from "../modules/covers/song-cover-cache-repository.js";
 import type {
   AdminCatalogSongRepository,
   SearchFormalSongRecord,
@@ -173,6 +175,73 @@ describe("song discovery routes", () => {
       ])
     );
   });
+
+  it("attaches cached cover image urls to discovery songs", async () => {
+    const { server, coverCache } = await createHarness({
+      searchResults: [
+        createSearchRecord({ id: "song-hot", title: "晴天", artistId: "artist-jay", artistName: "周杰伦", genre: ["流行"] }),
+        createSearchRecord({ id: "song-rock", title: "倔强", artistId: "artist-mayday", artistName: "五月天", genre: ["摇滚"] })
+      ],
+      coverEntries: {
+        "formal:song-hot": "https://cover.example/jay-qingtian.jpg"
+      }
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/rooms/living-room/songs/discovery?seed=covers&limit=2"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(coverCache.lookupCalls).toEqual([
+      [
+        { source: "formal", sourceSongId: "song-hot" },
+        { source: "formal", sourceSongId: "song-rock" }
+      ]
+    ]);
+
+    const body = response.json<SongDiscoveryResponse>();
+    const coveredSong = body.recommended.find((song) => song.songId === "song-hot");
+    const uncoveredSong = body.recommended.find((song) => song.songId === "song-rock");
+    expect(coveredSong?.coverImageUrl).toBe("https://cover.example/jay-qingtian.jpg");
+    expect(uncoveredSong?.coverImageUrl).toBeUndefined();
+    expect(body.artists.flatMap((artist) => artist.songs).find((song) => song.songId === "song-hot")?.coverImageUrl).toBe(
+      "https://cover.example/jay-qingtian.jpg"
+    );
+    expect(body.genres.flatMap((genre) => genre.songs).find((song) => song.songId === "song-hot")?.coverImageUrl).toBe(
+      "https://cover.example/jay-qingtian.jpg"
+    );
+  });
+
+  it("uses indexed song ids when looking up cached KTV index covers", async () => {
+    const { server, coverCache } = await createHarness({
+      searchResults: [],
+      indexedResults: [
+        createIndexedResult({
+          indexedSongId: "indexed-qingtian",
+          indexedAssetId: "indexed-asset-qingtian",
+          title: "晴天",
+          artistName: "周杰伦",
+          styleTags: ["流行"]
+        })
+      ],
+      coverEntries: {
+        "ktv-index:indexed-qingtian": "https://cover.example/indexed-qingtian.jpg"
+      }
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/rooms/living-room/songs/discovery?seed=indexed-covers&limit=1"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(coverCache.lookupCalls).toEqual([[{ source: "ktv-index", sourceSongId: "indexed-qingtian" }]]);
+    expect(response.json<SongDiscoveryResponse>().recommended[0]).toMatchObject({
+      indexedSongId: "indexed-qingtian",
+      coverImageUrl: "https://cover.example/indexed-qingtian.jpg"
+    });
+  });
 });
 
 async function createHarness(input: {
@@ -182,6 +251,7 @@ async function createHarness(input: {
   indexedAssetIdsForCanonicalAssets?: string[];
   queueEntries?: QueueEntry[];
   playCounts?: Record<string, number>;
+  coverEntries?: Record<string, string>;
 } = {}) {
   const server = Fastify({ logger: false });
   const rooms = new FakeRoomRepository(input.room === undefined ? createRoom() : input.room);
@@ -189,16 +259,18 @@ async function createHarness(input: {
   const ktvIndex = new FakeKtvIndexReadRepository(input.indexedResults ?? []);
   const indexedSources = new FakeIndexedSourceIdentityLookup(input.indexedAssetIdsForCanonicalAssets ?? []);
   const queueEntries = new FakeQueueEntryRepository(input.queueEntries ?? [], input.playCounts ?? {});
+  const coverCache = new FakeSongCoverCacheRepository(input.coverEntries ?? {});
 
   await registerSongDiscoveryRoutes(server, {
     rooms,
     songs,
     queueEntries,
     ktvIndex,
-    indexedSources
+    indexedSources,
+    coverCache
   });
 
-  return { server, rooms, songs, ktvIndex, indexedSources, queueEntries };
+  return { server, rooms, songs, ktvIndex, indexedSources, queueEntries, coverCache };
 }
 
 class FakeRoomRepository implements RoomRepository {
@@ -263,6 +335,50 @@ class FakeIndexedSourceIdentityLookup implements IndexedSourceIdentityLookup {
   async findIndexedAssetIdsForCanonicalAssets(assetIds: readonly string[]) {
     this.lookupCalls.push([...assetIds]);
     return this.indexedAssetIds;
+  }
+}
+
+class FakeSongCoverCacheRepository implements Pick<SongCoverCacheRepository, "findBySongKeys"> {
+  readonly lookupCalls: Array<Array<{ source: SongDiscoverySource; sourceSongId: string }>> = [];
+
+  constructor(private readonly entries: Record<string, string>) {}
+
+  async findBySongKeys(keys: readonly { source: SongDiscoverySource; sourceSongId: string }[]) {
+    this.lookupCalls.push(keys.map((key) => ({ source: key.source, sourceSongId: key.sourceSongId })));
+    return new Map(
+      keys
+        .map((key) => {
+          const imageUrl = this.entries[`${key.source}:${key.sourceSongId}`];
+          return imageUrl
+            ? [
+                `${key.source}:${key.sourceSongId}`,
+                {
+                  source: key.source,
+                  sourceSongId: key.sourceSongId,
+                  imageUrl,
+                  provider: "test-provider",
+                  providerSongId: null,
+                  confidence: 100
+                }
+              ]
+            : null;
+        })
+        .filter(
+          (
+            entry
+          ): entry is [
+            string,
+            {
+              source: SongDiscoverySource;
+              sourceSongId: string;
+              imageUrl: string;
+              provider: string;
+              providerSongId: null;
+              confidence: number;
+            }
+          ] => Boolean(entry)
+        )
+    );
   }
 }
 

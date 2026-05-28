@@ -292,6 +292,7 @@ export type SongDiscoveryVersionOption = SongSearchVersionOption | SongSearchInd
 export interface SongDiscoverySong extends Omit<SongSearchLocalResult, "versions"> {
   source: SongDiscoverySource;
   indexedSongId?: string;
+  coverImageUrl?: string;
   artistId: EntityId;
   genre: readonly string[];
   playCount: number;

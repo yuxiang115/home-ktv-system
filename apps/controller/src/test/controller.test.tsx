@@ -243,6 +243,8 @@ describe("mobile controller runtime", () => {
     expect(within(recommendations).queryByText("流行")).toBeNull();
     expect(within(recommendations).queryByText(/次点歌/u)).toBeNull();
     expect(recommendations.querySelector(".result-meta")).toBeNull();
+    expect(recommendations.querySelector('img[src="https://cover.example/recommend-1.jpg"]')).toBeTruthy();
+    expect(recommendations.querySelector(".song-art--fallback")).toBeTruthy();
 
     const initialDiscoveryRequests = requests.filter((request) => request.url.startsWith("/rooms/living-room/songs/discovery?"));
     await user.click(screen.getByRole("button", { name: "换一批" }));
@@ -1878,16 +1880,17 @@ function songSearchResponse(query: string) {
 }
 
 function songDiscoveryResponse(seed: string): SongDiscoveryResponse {
-  const recommended = Array.from({ length: 30 }, (_, index) =>
-    discoverySong({
+  const recommended = Array.from({ length: 30 }, (_, index) => {
+    const song = {
       songId: `song-recommend-${index + 1}`,
       title: `推荐歌曲${index + 1}`,
       artistId: index % 2 === 0 ? "artist-jay" : "artist-mayday",
       artistName: index % 2 === 0 ? "周杰伦" : "五月天",
       genre: index % 2 === 0 ? ["流行"] : ["摇滚"],
       playCount: 30 - index
-    })
-  );
+    };
+    return discoverySong(index === 0 ? { ...song, coverImageUrl: "https://cover.example/recommend-1.jpg" } : song);
+  });
 
   return {
     seed,
@@ -1980,6 +1983,7 @@ function discoverySong(input: {
   artistName: string;
   genre: string[];
   playCount: number;
+  coverImageUrl?: string;
 }): SongDiscoverySong {
   return {
     source: "formal",
@@ -1993,6 +1997,7 @@ function discoverySong(input: {
     queueState: "not_queued",
     playCount: input.playCount,
     recommendationWeight: input.playCount + 1,
+    ...(input.coverImageUrl ? { coverImageUrl: input.coverImageUrl } : {}),
     versions: [
       {
         assetId: `asset-${input.songId}`,

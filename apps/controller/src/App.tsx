@@ -1272,11 +1272,29 @@ function DiscoverySongRow({
   const canQueue = primaryVersion ? primaryVersion.canQueue !== false : false;
   const disabledLabel = primaryVersion ? disabledVersionLabel(primaryVersion) : "暂不可播放";
   const addLabel = canQueue ? (song.queueState === "queued" ? t("button.addAgain") : t("button.add")) : disabledLabel;
+  const [coverFailed, setCoverFailed] = useState(false);
+  const showCover = Boolean(song.coverImageUrl && !coverFailed);
+
+  useEffect(() => {
+    setCoverFailed(false);
+  }, [song.coverImageUrl]);
 
   return (
     <article className="song-row recommendation-row">
-      <div className="song-art" aria-hidden="true">
-        <span>{song.title.trim().slice(0, 1) || "K"}</span>
+      <div className={`song-art ${showCover ? "song-art--image" : "song-art--fallback"}`} aria-hidden="true">
+        {showCover ? (
+          <img
+            alt=""
+            decoding="async"
+            draggable={false}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            src={song.coverImageUrl}
+            onError={() => setCoverFailed(true)}
+          />
+        ) : (
+          <span>{song.title.trim().slice(0, 1) || "K"}</span>
+        )}
       </div>
       <div className="result-main">
         <strong>{song.title}</strong>

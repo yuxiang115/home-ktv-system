@@ -14,6 +14,7 @@
     "index:ktv": "tsx src/scripts/ktv-full-index.ts",
     "probe:ktv-index": "tsx src/scripts/ktv-index-probe.ts",
     "tag:ktv-styles": "tsx src/scripts/ktv-style-tags.ts",
+    "covers:songs": "tsx src/scripts/song-covers.ts",
     "sample:ktv-index": "tsx src/scripts/ktv-sample-index.ts",
     "test": "vitest run",
     "start": "node dist/server.js"
@@ -24,6 +25,7 @@
     "@home-ktv/player-contracts": "workspace:*",
     "@home-ktv/protocol": "workspace:*",
     "@home-ktv/session-engine": "workspace:*",
+    "@meting/core": "1.6.1",
     "chokidar": "5.0.0",
     "fastify": "5.8.5",
     "opencc-js": "1.3.0",

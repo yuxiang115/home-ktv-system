@@ -37,7 +37,7 @@ describe("LlmStyleTagger", () => {
   });
 
   it("calls an OpenAI-compatible chat completions endpoint", async () => {
-    const fetchMock = vi.fn(async () => new Response(
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
       JSON.stringify({ choices: [{ message: { content: "{\"tags\":[\"流行\"]}" } }] }),
       { status: 200, headers: { "content-type": "application/json" } }
     ));

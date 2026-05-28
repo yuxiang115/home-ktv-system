@@ -247,7 +247,8 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     songs: repositories.songs,
     queueEntries: repositories.queueEntries,
     ...(repositories.ktvIndex ? { ktvIndex: repositories.ktvIndex } : {}),
-    ...(pool ? { indexedSources: new PgIndexedSourceIdentityLookup(pool) } : {})
+    ...(pool ? { indexedSources: new PgIndexedSourceIdentityLookup(pool) } : {}),
+    ...(repositories.songCovers ? { coverCache: repositories.songCovers } : {})
   });
   await registerRoomInteractionRoutes(server, {
     rooms: repositories.rooms,

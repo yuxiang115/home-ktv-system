@@ -5,6 +5,7 @@ import {
   type AdminCatalogSongRepository,
   type SongRepository
 } from "../modules/catalog/repositories/song-repository.js";
+import { PgSongCoverCacheRepository, type SongCoverCacheRepository } from "../modules/covers/song-cover-cache-repository.js";
 import type { MediaPathMapping } from "../modules/assets/media-path-mapping.js";
 import {
   PgControlSessionRepository,
@@ -28,6 +29,7 @@ export type RuntimeRepositories = PlayerRouteRepositories & {
   assets: AssetRepository;
   controlSessions: ControlSessionRepository;
   controlCommands: RoomSessionCommandRepository;
+  songCovers?: SongCoverCacheRepository;
   ktvIndex?: KtvIndexReadRepository;
 };
 
@@ -47,6 +49,7 @@ export function createPgRuntimeRepositories(
     queueEntries: new PgQueueEntryRepository(db),
     assets: new PgAssetRepository(db),
     songs: new PgSongRepository(db),
+    songCovers: new PgSongCoverCacheRepository(db),
     pairingTokens: new PgRoomPairingTokenRepository(db),
     controlSessions: new PgControlSessionRepository(db),
     controlCommands: new PgRoomSessionCommandRepository(db),

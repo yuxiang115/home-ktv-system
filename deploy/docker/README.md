@@ -18,6 +18,7 @@ bash deploy/docker/ktv.sh logs
 bash deploy/docker/ktv.sh logs api
 bash deploy/docker/ktv.sh probe-index -- --limit 300 --concurrency 2
 bash deploy/docker/ktv.sh tag-styles -- --limit 300 --dry-run
+bash deploy/docker/ktv.sh fetch-covers -- --limit 300
 bash deploy/docker/ktv.sh stop
 ```
 
@@ -52,6 +53,14 @@ bash deploy/docker/ktv.sh probe-index -- --concurrency 8 --retry-failed
 ```
 
 探测只保存 `mediaInfoSummary`、`mediaInfoProvenance` 和失败摘要，不保存完整 ffprobe raw JSON。探测失败不会影响搜索、点歌或播放。
+
+真实曲库封面图按批次抓取并缓存 URL，不在首页请求里访问外部音乐源：
+
+```bash
+bash deploy/docker/ktv.sh fetch-covers -- --limit 300
+```
+
+默认优先使用腾讯音乐、酷狗、网易云、酷我。封面任务只处理尚未有缓存记录的歌曲；网络错误会标记为 `failed`，可用 `--retry-failed` 续跑。
 
 真实曲库风格标签先跑网易云 API 小样本：
 
