@@ -177,6 +177,74 @@ describe("PgIndexedQueueCommandService", () => {
     ]);
   });
 
+  it("returns session conflicts before syncing indexed media", async () => {
+    const client = new FakeIndexedTransactionClient();
+    const prepareCalls: PrepareKtvIndexedMediaInput[] = [];
+    const service = createIndexedQueueCommandService({
+      client,
+      playbackSession: { version: 2 },
+      prepareKtvIndexedMedia: async (input) => {
+        prepareCalls.push(input);
+        return createPreparedKtvIndexedMedia();
+      }
+    });
+
+    const result = await service.executeIndexedAddQueueEntry({
+      commandId: "command-stale-version-indexed",
+      roomSlug: "living-room",
+      sessionVersion: 1,
+      deviceId: "phone-1",
+      indexedAssetId: "ktv-asset-1",
+      cookieHeader: "ktv_control_session=control-session-1"
+    });
+
+    expect(result.status).toBe("conflict");
+    if (result.status !== "conflict") {
+      throw new Error("Expected stale indexed add command to conflict");
+    }
+    expect(result.latestSessionVersion).toBe(2);
+    expect(result.snapshot.sessionVersion).toBe(2);
+    expect(prepareCalls).toEqual([]);
+    expect(client.assets.size).toBe(0);
+    expect(client.sourceRecords).toEqual([]);
+  });
+
+  it("returns duplicate indexed commands before syncing indexed media", async () => {
+    const client = new FakeIndexedTransactionClient();
+    const prepareCalls: PrepareKtvIndexedMediaInput[] = [];
+    const service = createIndexedQueueCommandService({
+      client,
+      controlCommands: new FakeRoomSessionCommandRepository([
+        createCommandRecord({
+          commandId: "command-duplicate-indexed",
+          sessionVersion: 9
+        })
+      ]),
+      prepareKtvIndexedMedia: async (input) => {
+        prepareCalls.push(input);
+        return createPreparedKtvIndexedMedia();
+      }
+    });
+
+    const result = await service.executeIndexedAddQueueEntry({
+      commandId: "command-duplicate-indexed",
+      roomSlug: "living-room",
+      sessionVersion: 1,
+      deviceId: "phone-1",
+      indexedAssetId: "ktv-asset-1",
+      cookieHeader: "ktv_control_session=control-session-1"
+    });
+
+    expect(result).toEqual({
+      status: "duplicate",
+      commandId: "command-duplicate-indexed",
+      sessionVersion: 9
+    });
+    expect(prepareCalls).toEqual([]);
+    expect(client.assets.size).toBe(0);
+    expect(client.sourceRecords).toEqual([]);
+  });
+
   it("prepares indexed media through the web-compatible pipeline before queueing", async () => {
     const client = new FakeIndexedTransactionClient({
       row: createIndexedAssetRow({
@@ -563,8 +631,10 @@ class FakeQueryExecutor implements QueryExecutor {
 
 function createIndexedQueueCommandService(input: {
   client: FakeIndexedTransactionClient;
+  controlCommands?: FakeRoomSessionCommandRepository;
   queueEntries?: InMemoryQueueEntryRepository;
   config?: ApiConfig;
+  playbackSession?: Partial<PlaybackSession>;
   prepareKtvIndexedMedia?: (input: PrepareKtvIndexedMediaInput) => Promise<PreparedKtvIndexedMedia>;
 }): PgIndexedQueueCommandService {
   const queueEntries = input.queueEntries ?? new InMemoryQueueEntryRepository();
@@ -580,6 +650,8 @@ function createIndexedQueueCommandService(input: {
     createRepositories: () =>
       createRuntimeRepositories({
         queueEntries,
+        ...(input.controlCommands !== undefined ? { controlCommands: input.controlCommands } : {}),
+        ...(input.playbackSession !== undefined ? { playbackSession: input.playbackSession } : {}),
         songs: [createSyncedSong()],
         assets: [
           createQueueableSyncedAsset(),
@@ -610,6 +682,7 @@ async function createControlCommandServer(input: {
 }
 
 function createRuntimeRepositories(input: {
+  controlCommands?: FakeRoomSessionCommandRepository;
   queueEntries?: InMemoryQueueEntryRepository;
   songs?: Song[];
   assets?: Asset[];
@@ -626,7 +699,7 @@ function createRuntimeRepositories(input: {
     songs: createSongRepository(input.songs ?? [createSong("song-ready", "Ready Song", "Artist Ready", "asset-ready")]) as RuntimeRepositories["songs"],
     pairingTokens: new InMemoryRoomPairingTokenRepository(),
     controlSessions: new InMemoryControlSessionRepository([createControlSession()]),
-    controlCommands: new FakeRoomSessionCommandRepository(),
+    controlCommands: input.controlCommands ?? new FakeRoomSessionCommandRepository(),
     deviceSessions: new FakeDeviceSessionRepository(),
     playbackEvents: new FakePlaybackEventRepository()
   };
@@ -847,6 +920,12 @@ class FakePlaybackSessionRepository implements PlaybackSessionRepository {
 class FakeRoomSessionCommandRepository {
   private readonly records = new Map<string, RoomSessionCommandRecord>();
 
+  constructor(records: readonly RoomSessionCommandRecord[] = []) {
+    for (const record of records) {
+      this.records.set(record.commandId, record);
+    }
+  }
+
   async findCommand(commandId: string): Promise<RoomSessionCommandRecord | null> {
     return this.records.get(commandId) ?? null;
   }
@@ -860,6 +939,21 @@ class FakeRoomSessionCommandRepository {
   async updateCommandResult(): Promise<null> {
     return null;
   }
+}
+
+function createCommandRecord(input: Partial<RoomSessionCommandRecord> = {}): RoomSessionCommandRecord {
+  return {
+    commandId: "command-record",
+    roomId: "living-room",
+    controlSessionId: "control-session-1",
+    sessionVersion: 1,
+    type: "add-queue-entry",
+    payload: {},
+    resultStatus: "accepted",
+    resultPayload: {},
+    createdAt: nowIso,
+    ...input
+  };
 }
 
 class FakeDeviceSessionRepository implements PlayerDeviceSessionRepository {
