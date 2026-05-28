@@ -403,35 +403,45 @@ function playlistQueries(artistName: string, title: string): string[] {
 function collectTagEvidence(input: NeteaseStyleTaggerInput, playlists: readonly NeteasePlaylistDetail[]): KtvStyleTagEvidence[] {
   const scores = new Map<string, number>();
   const evidence = new Map<string, string[]>();
+  const normalizedTitle = normalizeText(input.title);
 
   for (const [keyword, tag] of titleKeywordRules) {
     if (input.title.includes(keyword)) {
-      addTagEvidence(scores, evidence, tag, 2, `title.keyword:${keyword}`);
+      addTagEvidence(scores, evidence, tag, 3, `title.keyword:${keyword}`);
     }
   }
 
   for (const playlist of playlists) {
     const name = playlist.name ?? "";
+    const titleSpecific = normalizedTitle.length > 0 && normalizeText(name).includes(normalizedTitle);
     for (const rawTag of playlist.tags ?? []) {
       const tag = directTagMap.get(rawTag);
       if (tag) {
-        addTagEvidence(scores, evidence, tag, 4, `playlist.tag:${rawTag} <${name}>`);
+        addTagEvidence(scores, evidence, tag, titleSpecific ? 4 : 1, `playlist.tag:${rawTag} <${name}>`);
       }
     }
     for (const [keyword, tag] of keywordRules) {
       if (name.includes(keyword)) {
-        addTagEvidence(scores, evidence, tag, 2, `playlist.name:${keyword} <${name}>`);
+        addTagEvidence(scores, evidence, tag, titleSpecific ? 2 : 1, `playlist.name:${keyword} <${name}>`);
       }
     }
   }
 
   return Array.from(scores.entries())
+    .filter(([, score]) => score >= 2)
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], "zh-Hans-CN"))
     .map(([tag, score]) => ({
       tag,
       confidence: Math.min(1, Math.max(0.35, score / 16)),
       evidence: evidence.get(tag)?.slice(0, 5) ?? []
     }));
+}
+
+function normalizeText(value: string): string {
+  return value
+    .toLocaleLowerCase()
+    .replace(/[\s_·・/\\|]+/gu, "")
+    .replace(/[()（）【】\[\]《》<>"'“”‘’\-—:：,，.。!！?？]/gu, "");
 }
 
 function addTagEvidence(
