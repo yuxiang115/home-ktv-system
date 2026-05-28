@@ -23,6 +23,7 @@ export interface KtvStyleTaggingRunInput {
   apply: boolean;
   onlyMissing: boolean;
   maxExistingTags?: number;
+  requiredStatusSource?: string;
   onProgress?: (event: KtvStyleTaggingProgressEvent) => void;
 }
 
@@ -187,6 +188,15 @@ export class KtvStyleTaggingService {
 
   private async selectSongs(input: KtvStyleTaggingRunInput): Promise<KtvSongRow[]> {
     if (input.maxExistingTags !== undefined) {
+      const requiredStatusJoin = input.requiredStatusSource
+        ? `JOIN ktv_song_tagging_status base_status
+           ON base_status.song_id = s.id
+          AND base_status.source = $5
+          AND base_status.status IN ('tagged', 'empty', 'failed')`
+        : "";
+      const values = input.requiredStatusSource
+        ? [input.source, input.onlyMissing, input.limit, input.maxExistingTags, input.requiredStatusSource]
+        : [input.source, input.onlyMissing, input.limit, input.maxExistingTags];
       const result = await this.db.query<KtvSongRow>(
         `WITH existing_tags AS (
            SELECT s.id AS song_id,
@@ -198,6 +208,7 @@ export class KtvStyleTaggingService {
          SELECT s.id, s.title, s.primary_artist_name
          FROM ktv_songs s
          JOIN ktv_song_assets a ON a.song_id = s.id AND a.missing_at IS NULL
+         ${requiredStatusJoin}
          JOIN existing_tags ON existing_tags.song_id = s.id
          LEFT JOIN ktv_song_tagging_status status
            ON status.song_id = s.id AND status.source = $1
@@ -206,7 +217,7 @@ export class KtvStyleTaggingService {
          GROUP BY s.id, s.title, s.primary_artist_name, s.updated_at, existing_tags.tag_count
          ORDER BY existing_tags.tag_count ASC, s.updated_at DESC, s.id ASC
          LIMIT $3`,
-        [input.source, input.onlyMissing, input.limit, input.maxExistingTags]
+        values
       );
       return result.rows;
     }
@@ -240,7 +251,8 @@ export class KtvStyleTaggingService {
           apply: input.apply,
           onlyMissing: input.onlyMissing,
           limit: input.limit,
-          maxExistingTags: input.maxExistingTags ?? null
+          maxExistingTags: input.maxExistingTags ?? null,
+          requiredStatusSource: input.requiredStatusSource ?? null
         })
       ]
     );

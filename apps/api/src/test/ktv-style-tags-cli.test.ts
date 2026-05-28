@@ -55,6 +55,7 @@ describe("ktv-style-tags CLI options", () => {
       llmApiKey: "test-key",
       llmModel: "local-model",
       maxExistingTags: 1,
+      requiredStatusSource: "netease-playlist-v1",
       limit: 50,
       apply: true
     });
@@ -69,6 +70,7 @@ describe("ktv-style-tags CLI options", () => {
     });
 
     expect(options.maxExistingTags).toBe(1);
+    expect(options.requiredStatusSource).toBe("netease-playlist-v1");
     expect(options.llmBaseUrl).toBe("http://llm.local:8317");
     expect(options.llmApiKey).toBe("test-key");
     expect(options.llmModel).toBe("local-model");

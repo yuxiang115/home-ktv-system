@@ -10,6 +10,7 @@ import {
 import { HttpLlmStyleTaggerClient, LlmStyleTagger } from "../modules/ktv-index/llm-style-tagger.js";
 import {
   KtvStyleTaggingService,
+  type KtvStyleTaggingRunInput,
   type KtvStyleTaggingProgressEvent
 } from "../modules/ktv-index/ktv-style-tagging-service.js";
 
@@ -28,6 +29,7 @@ export interface KtvStyleTagsCliOptions {
   maxExistingTags: number | undefined;
   onlyMissing: boolean;
   progressEvery: number;
+  requiredStatusSource: string | undefined;
   source: "netease" | "llm";
   taggingSource: string;
 }
@@ -69,7 +71,7 @@ export async function runKtvStyleTagsCli(
     const service = new KtvStyleTaggingService(db, {
       tagger: createTagger(options, db)
     });
-    const runInput = {
+    const runInput: KtvStyleTaggingRunInput = {
       source: options.taggingSource,
       limit: options.limit,
       apply: options.apply,
@@ -82,9 +84,13 @@ export async function runKtvStyleTagsCli(
         }
       }
     };
-    const result = await service.run(
-      options.maxExistingTags === undefined ? runInput : { ...runInput, maxExistingTags: options.maxExistingTags }
-    );
+    if (options.maxExistingTags !== undefined) {
+      runInput.maxExistingTags = options.maxExistingTags;
+    }
+    if (options.requiredStatusSource !== undefined) {
+      runInput.requiredStatusSource = options.requiredStatusSource;
+    }
+    const result = await service.run(runInput);
     stdout("KTV style tagging summary");
     stdout(`mode=${options.apply ? "apply" : "dry-run"} source=${options.taggingSource}`);
     stdout(
@@ -113,6 +119,7 @@ export function parseKtvStyleTagsCliOptions(
     maxExistingTags: undefined,
     onlyMissing: true,
     progressEvery: 10,
+    requiredStatusSource: undefined,
     source: "netease",
     taggingSource: NETEASE_SOURCE
   };
@@ -158,6 +165,10 @@ export function parseKtvStyleTagsCliOptions(
         options.maxExistingTags = parseNonNegativeInteger(requireValue(args, index, arg), arg);
         index += 1;
         break;
+      case "--fallback-from-source":
+        options.requiredStatusSource = requireValue(args, index, arg);
+        index += 1;
+        break;
       case "--database-url":
         options.databaseUrl = requireValue(args, index, arg);
         index += 1;
@@ -187,6 +198,9 @@ export function parseKtvStyleTagsCliOptions(
 
   if (options.source === "llm" && options.maxExistingTags === undefined) {
     options.maxExistingTags = 1;
+  }
+  if (options.source === "llm" && options.requiredStatusSource === undefined) {
+    options.requiredStatusSource = NETEASE_SOURCE;
   }
 
   return options;
@@ -275,6 +289,8 @@ Options:
   --llm-model <model>   Chat model name. Defaults to LLM_MODEL or KTV_LLM_MODEL.
   --max-existing-tags <n>
                         With --source llm, process songs whose aggregate tag count is <= n. Default: 1.
+  --fallback-from-source <source>
+                        With --source llm, require an existing status row from this source. Default: netease-playlist-v1.
   --database-url <url>  PostgreSQL URL. Defaults to DATABASE_URL.
 `;
 }

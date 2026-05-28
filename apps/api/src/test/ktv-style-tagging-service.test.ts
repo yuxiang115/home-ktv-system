@@ -124,12 +124,14 @@ describe("KtvStyleTaggingService", () => {
       limit: 10,
       apply: false,
       onlyMissing: true,
-      maxExistingTags: 1
+      maxExistingTags: 1,
+      requiredStatusSource: "netease-playlist-v1"
     });
 
     expect(db.lastSelectSql).toContain("existing_tags.tag_count <= $4");
+    expect(db.lastSelectSql).toContain("base_status.source = $5");
     expect(db.lastSelectSql).toContain("status.status = 'tagged'");
-    expect(db.lastSelectValues).toEqual(["llm-style-v1", true, 10, 1]);
+    expect(db.lastSelectValues).toEqual(["llm-style-v1", true, 10, 1, "netease-playlist-v1"]);
   });
 });
 
