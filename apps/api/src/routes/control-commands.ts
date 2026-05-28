@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { ApiConfig } from "../config.js";
 import type { AssetGateway } from "../modules/assets/asset-gateway.js";
+import type { MediaGateway } from "../modules/media/media-gateway.js";
 import type { ControlSessionRepository } from "../modules/controller/repositories/control-session-repository.js";
 import { restoreControlSession, serializeControlSessionCookie } from "../modules/controller/control-session-service.js";
 import type { CandidateTaskService } from "../modules/online/candidate-task-service.js";
@@ -20,6 +21,7 @@ export interface ControlCommandsRouteDependencies {
   config: ApiConfig;
   repositories: ControlCommandsRouteRepositories;
   assetGateway: AssetGateway;
+  mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   broadcaster?: RoomSnapshotBroadcaster;
   online?: Pick<CandidateTaskService, "listActiveForRoom" | "requestSupplement">;
   indexedQueueCommands?: Pick<PgIndexedQueueCommandService, "executeIndexedAddQueueEntry">;
@@ -188,7 +190,8 @@ async function handleRequestSupplement(
         ...dependencies.repositories,
         ...(dependencies.online ? { onlineTasks: dependencies.online } : {})
       },
-      assetGateway: dependencies.assetGateway
+      assetGateway: dependencies.assetGateway,
+      ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
     });
     if (snapshot) {
       dependencies.broadcaster.broadcastRoomSnapshot(room.slug, snapshot);

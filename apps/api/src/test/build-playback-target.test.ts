@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { AssetGateway } from "../modules/assets/asset-gateway.js";
 import { MediaPathResolver } from "../modules/assets/media-path-resolver.js";
 import type { AssetRepository } from "../modules/catalog/repositories/asset-repository.js";
+import type { MediaGateway } from "../modules/media/media-gateway.js";
+import type { PlayableMediaAsset, PlayableMediaLookup, PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
 import { buildPlaybackTarget } from "../modules/playback/build-playback-target.js";
 import type { BuildPlaybackTargetRepositories } from "../modules/playback/build-playback-target.js";
 import type { AppendQueueEntryInput } from "../modules/playback/repositories/queue-entry-repository.js";
@@ -10,6 +12,50 @@ import type { AppendQueueEntryInput } from "../modules/playback/repositories/que
 const now = "2026-04-28T00:00:00.000Z";
 
 describe("buildPlaybackTarget", () => {
+  it("builds a NAS playback target from queue source identity without activeAssetId", async () => {
+    const room = createRoom("living-room");
+    const current = createPlayableMediaAsset("ktv-song-current", "ktv-asset-current", "七里香", "周杰伦");
+    const next = createPlayableMediaAsset("ktv-song-next", "ktv-asset-next", "后来", "刘若英");
+    const queueEntries = [
+      createQueueEntry("queue-current", room.id, current.songId, current.assetId, "playing"),
+      createQueueEntry("queue-next", room.id, next.songId, next.assetId, "queued")
+    ];
+    const repositories = createRepositories({
+      room,
+      session: { ...createPlaybackSession(room.id, current.assetId), activeAssetId: null },
+      assets: [],
+      queueEntries,
+      songs: [],
+      playableMedia: [current, next]
+    });
+
+    const target = await buildPlaybackTarget({
+      roomSlug: "living-room",
+      repositories,
+      mediaGateway: createMediaGateway()
+    });
+
+    expect(target).toMatchObject({
+      roomId: "living-room",
+      sessionVersion: 11,
+      queueEntryId: "queue-current",
+      sourceType: "nas",
+      songId: "ktv-song-current",
+      assetId: "ktv-asset-current",
+      playbackUrl: "http://ktv.local/media/nas/ktv-asset-current",
+      currentQueueEntryPreview: {
+        queueEntryId: "queue-current",
+        songTitle: "七里香",
+        artistName: "周杰伦"
+      },
+      nextQueueEntryPreview: {
+        queueEntryId: "queue-next",
+        songTitle: "后来",
+        artistName: "刘若英"
+      }
+    });
+  });
+
   it("builds a living-room playback target with the current asset URL and next queue preview", async () => {
     const room = createRoom("living-room");
     const currentAsset = createAsset("asset-current", "instrumental", "family-main");
@@ -171,6 +217,7 @@ interface RepositoryState {
   assets: Asset[];
   queueEntries: QueueEntry[];
   songs: Song[];
+  playableMedia?: PlayableMediaAsset[];
 }
 
 function createRepositories(state: RepositoryState): BuildPlaybackTargetRepositories {
@@ -261,6 +308,7 @@ function createRepositories(state: RepositoryState): BuildPlaybackTargetReposito
         return null;
       }
     },
+    ...(state.playableMedia ? { playableMedia: new FakePlayableMediaRepository(state.playableMedia) } : {}),
     assets: assetRepository,
     songs: {
       async findById(songId) {
@@ -268,6 +316,22 @@ function createRepositories(state: RepositoryState): BuildPlaybackTargetReposito
       }
     }
   };
+}
+
+function createMediaGateway(): Pick<MediaGateway, "createPlaybackUrl"> {
+  return {
+    createPlaybackUrl(source: PlayableMediaLookup) {
+      return `http://ktv.local/media/${source.sourceType}/${source.assetId}`;
+    }
+  };
+}
+
+class FakePlayableMediaRepository implements PlayableMediaRepository {
+  constructor(private readonly assets: readonly PlayableMediaAsset[]) {}
+
+  async findPlayableBySource(source: PlayableMediaLookup): Promise<PlayableMediaAsset | null> {
+    return this.assets.find((asset) => asset.sourceType === source.sourceType && asset.assetId === source.assetId) ?? null;
+  }
 }
 
 function createAssetGateway(assetRepository: AssetRepository): AssetGateway {
@@ -380,5 +444,54 @@ function createAsset(id: string, vocalMode: Asset["vocalMode"], switchFamily: st
     switchQualityStatus: "verified",
     createdAt: now,
     updatedAt: now
+  };
+}
+
+function createPlayableMediaAsset(
+  songId: string,
+  assetId: string,
+  title: string,
+  artistName: string
+): PlayableMediaAsset {
+  return {
+    sourceType: "nas",
+    songId,
+    assetId,
+    title,
+    artistName,
+    displayName: `${title}.mkv`,
+    filePath: `/nas/${title}.mkv`,
+    status: "ready",
+    durationMs: 180000,
+    compatibilityStatus: "playable",
+    compatibilityReasons: [],
+    mediaInfoSummary: {
+      container: "matroska,webm",
+      durationMs: 180000,
+      videoCodec: "h264",
+      resolution: null,
+      fileSizeBytes: 100,
+      audioTracks: [
+        { index: 0, id: "0x1100", label: "Original", language: null, codec: "aac", channels: 2 },
+        { index: 1, id: "0x1101", label: "Instrumental", language: null, codec: "aac", channels: 2 }
+      ]
+    },
+    mediaInfoProvenance: {
+      source: "ffprobe",
+      sourceVersion: null,
+      probedAt: null,
+      importedFrom: null
+    },
+    trackRoles: {
+      original: { index: 0, id: "0x1100", label: "Original" },
+      instrumental: { index: 1, id: "0x1101", label: "Instrumental" }
+    },
+    playbackProfile: {
+      kind: "single_file_audio_tracks",
+      container: "matroska,webm",
+      videoCodec: "h264",
+      audioCodecs: ["aac"],
+      requiresAudioTrackSelection: true
+    }
   };
 }

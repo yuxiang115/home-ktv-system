@@ -5,6 +5,8 @@ import type { ApiConfig } from "../config.js";
 import type { AssetGateway } from "../modules/assets/asset-gateway.js";
 import type { AssetRepository } from "../modules/catalog/repositories/asset-repository.js";
 import type { SongRepository } from "../modules/catalog/repositories/song-repository.js";
+import type { MediaGateway } from "../modules/media/media-gateway.js";
+import type { PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
 import { buildPlaybackTarget } from "../modules/playback/build-playback-target.js";
 import { buildSwitchTarget } from "../modules/playback/build-switch-target.js";
 import type { PlaybackSessionRepository } from "../modules/playback/repositories/playback-session-repository.js";
@@ -19,6 +21,7 @@ export interface RoomSnapshotRepositories {
   queueEntries: QueueEntryRepository;
   assets: AssetRepository;
   songs: SongRepository;
+  playableMedia?: PlayableMediaRepository;
   pairingTokens: RoomPairingTokenRepository;
 }
 
@@ -27,6 +30,7 @@ export interface BuildRoomSnapshotInput {
   config: ApiConfig;
   repositories: RoomSnapshotRepositories;
   assetGateway: AssetGateway;
+  mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   conflict?: PlayerConflictState | null;
   notice?: RoomSnapshot["notice"];
   now?: Date;
@@ -70,14 +74,16 @@ export async function buildRoomSnapshot(input: BuildRoomSnapshotInput): Promise<
     buildPlaybackTarget({
       roomSlug: room.slug,
       repositories: input.repositories,
-      assetGateway: input.assetGateway
+      assetGateway: input.assetGateway,
+      ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {})
     })
   ]);
   const switchTarget = currentTarget
     ? await buildSwitchTarget({
         roomSlug: room.slug,
         repositories: input.repositories,
-        assetGateway: input.assetGateway
+        assetGateway: input.assetGateway,
+        ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {})
       })
     : null;
 

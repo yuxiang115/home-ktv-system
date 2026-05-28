@@ -10,6 +10,7 @@ import type { ControlSessionRepository } from "../modules/controller/repositorie
 import type { RoomPairingTokenRepository } from "../modules/rooms/repositories/pairing-token-repository.js";
 import type { RoomRepository } from "../modules/rooms/repositories/room-repository.js";
 import type { AssetGateway } from "../modules/assets/asset-gateway.js";
+import type { MediaGateway } from "../modules/media/media-gateway.js";
 import type { AssetRepository } from "../modules/catalog/repositories/asset-repository.js";
 import type { SongRepository } from "../modules/catalog/repositories/song-repository.js";
 import type { PlaybackSessionRepository } from "../modules/playback/repositories/playback-session-repository.js";
@@ -31,6 +32,7 @@ export interface ControlSessionRouteDependencies {
   config: ApiConfig;
   repositories: ControlSessionRouteRepositories;
   assetGateway: AssetGateway;
+  mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
 }
 
 interface ControlSessionsBody {
@@ -66,7 +68,8 @@ export async function registerControlSessionRoutes(
           roomSlug: room.slug,
           config: dependencies.config,
           repositories: dependencies.repositories,
-          assetGateway: dependencies.assetGateway
+          assetGateway: dependencies.assetGateway,
+          ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
         });
 
         reply.header("Set-Cookie", serializeControlSessionCookie({ session: { id: controlSession.id } }));
@@ -106,7 +109,8 @@ export async function registerControlSessionRoutes(
         roomSlug: room.slug,
         config: dependencies.config,
         repositories: dependencies.repositories,
-        assetGateway: dependencies.assetGateway
+        assetGateway: dependencies.assetGateway,
+        ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
       });
 
       reply.header("Set-Cookie", serializeControlSessionCookie({ session: { id: controlSession.id } }));

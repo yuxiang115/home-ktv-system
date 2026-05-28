@@ -1,5 +1,6 @@
 import type { PlaybackNotice, ReconnectRecoveryResult } from "@home-ktv/player-contracts";
 import type { AssetGateway } from "../assets/asset-gateway.js";
+import type { MediaGateway } from "../media/media-gateway.js";
 import type { PlaybackEventRepository } from "./repositories/playback-event-repository.js";
 import { buildPlaybackTarget, type BuildPlaybackTargetRepositories } from "./build-playback-target.js";
 
@@ -12,6 +13,7 @@ export interface ApplyReconnectRecoveryInput {
   deviceId: string;
   repositories: ApplyReconnectRecoveryRepositories;
   assetGateway: AssetGateway;
+  mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
 }
 
 export async function applyReconnectRecovery(input: ApplyReconnectRecoveryInput): Promise<ReconnectRecoveryResult> {
@@ -27,7 +29,8 @@ export async function applyReconnectRecovery(input: ApplyReconnectRecoveryInput)
   const target = await buildPlaybackTarget({
     roomSlug: input.roomSlug,
     repositories: input.repositories,
-    assetGateway: input.assetGateway
+    assetGateway: input.assetGateway,
+    ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {})
   });
 
   if (!target) {

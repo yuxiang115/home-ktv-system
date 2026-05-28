@@ -8,12 +8,11 @@ import type {
 } from "@home-ktv/domain";
 import { DEFAULT_ROOM_VOLUME_PERCENT } from "@home-ktv/player-contracts";
 import type { QueryExecutor } from "../../../db/query-executor.js";
-import type { PlaybackSessionRow } from "../../../db/schema.js";
 
 export interface StartQueueEntryInput {
   roomId: RoomId;
   queueEntryId: QueueEntryId;
-  activeAssetId: AssetId;
+  activeAssetId?: AssetId | null;
   targetVocalMode?: VocalMode;
   playerState?: PlayerState;
   playerPositionMs?: number;
@@ -55,20 +54,31 @@ export interface UpdatePlayerPositionInput {
 export interface UpdatePlaybackFactsInput {
   roomId: RoomId;
   queueEntryId: QueueEntryId;
-  activeAssetId: AssetId | null;
+  activeAssetId?: AssetId | null;
   playerState: PlayerState;
   playerPositionMs: number;
   targetVocalMode?: VocalMode;
 }
 
-type PlaybackSessionRowWithVolume = PlaybackSessionRow & { volume_percent?: number | null };
+interface PlaybackSessionRowWithVolume {
+  room_id: string;
+  current_queue_entry_id: string | null;
+  target_vocal_mode: string;
+  player_state: string;
+  player_position_ms: number;
+  next_queue_entry_id: string | null;
+  version: number;
+  volume_percent?: number | null;
+  media_started_at: Date | null;
+  updated_at: Date;
+}
 
 function mapPlaybackSessionRow(row: PlaybackSessionRowWithVolume): PlaybackSession {
   return {
     roomId: row.room_id as RoomId,
     currentQueueEntryId: row.current_queue_entry_id as QueueEntryId | null,
     nextQueueEntryId: row.next_queue_entry_id as QueueEntryId | null,
-    activeAssetId: row.active_asset_id as AssetId | null,
+    activeAssetId: null,
     targetVocalMode: row.target_vocal_mode as VocalMode,
     playerState: row.player_state as PlayerState,
     playerPositionMs: row.player_position_ms,
@@ -84,7 +94,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
 
   async findByRoomId(roomId: RoomId): Promise<PlaybackSession | null> {
     const result = await this.db.query<PlaybackSessionRowWithVolume>(
-      `SELECT room_id, current_queue_entry_id, active_asset_id, target_vocal_mode,
+      `SELECT room_id, current_queue_entry_id, target_vocal_mode,
               player_state, player_position_ms, next_queue_entry_id, version,
               volume_percent, media_started_at, updated_at
        FROM playback_sessions
@@ -101,25 +111,23 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
     const result = await this.db.query<PlaybackSessionRowWithVolume>(
       `UPDATE playback_sessions
        SET current_queue_entry_id = $2,
-           active_asset_id = $3,
-           target_vocal_mode = COALESCE($4, target_vocal_mode),
-           player_state = COALESCE($5, 'playing'),
-           player_position_ms = COALESCE($6, 0),
-           next_queue_entry_id = $7,
+           target_vocal_mode = COALESCE($3, target_vocal_mode),
+           player_state = COALESCE($4, 'playing'),
+           player_position_ms = COALESCE($5, 0),
+           next_queue_entry_id = $6,
            media_started_at = CASE
-             WHEN COALESCE($5, 'playing') = 'playing' THEN COALESCE($8, now())
-             ELSE $8
+             WHEN COALESCE($4, 'playing') = 'playing' THEN COALESCE($7, now())
+             ELSE $7
            END,
            version = version + 1,
            updated_at = now()
        WHERE room_id = $1
-       RETURNING room_id, current_queue_entry_id, active_asset_id, target_vocal_mode,
+       RETURNING room_id, current_queue_entry_id, target_vocal_mode,
                  player_state, player_position_ms, next_queue_entry_id, version,
                  volume_percent, media_started_at, updated_at`,
       [
         input.roomId,
         input.queueEntryId,
-        input.activeAssetId,
         input.targetVocalMode ?? null,
         input.playerState ?? null,
         input.playerPositionMs ?? 0,
@@ -136,7 +144,6 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
     const result = await this.db.query<PlaybackSessionRowWithVolume>(
       `UPDATE playback_sessions
        SET current_queue_entry_id = NULL,
-           active_asset_id = NULL,
            next_queue_entry_id = NULL,
            player_state = 'idle',
            player_position_ms = 0,
@@ -144,7 +151,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
            version = version + 1,
            updated_at = now()
        WHERE room_id = $1
-       RETURNING room_id, current_queue_entry_id, active_asset_id, target_vocal_mode,
+       RETURNING room_id, current_queue_entry_id, target_vocal_mode,
                  player_state, player_position_ms, next_queue_entry_id, version,
                  volume_percent, media_started_at, updated_at`,
       [roomId]
@@ -162,7 +169,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
            version = version + 1,
            updated_at = now()
        WHERE room_id = $1
-       RETURNING room_id, current_queue_entry_id, active_asset_id, target_vocal_mode,
+       RETURNING room_id, current_queue_entry_id, target_vocal_mode,
                  player_state, player_position_ms, next_queue_entry_id, version,
                  volume_percent, media_started_at, updated_at`,
       [input.roomId, input.targetVocalMode, input.playerPositionMs ?? null]
@@ -179,7 +186,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
            version = version + 1,
            updated_at = now()
        WHERE room_id = $1
-       RETURNING room_id, current_queue_entry_id, active_asset_id, target_vocal_mode,
+       RETURNING room_id, current_queue_entry_id, target_vocal_mode,
                  player_state, player_position_ms, next_queue_entry_id, version,
                  volume_percent, media_started_at, updated_at`,
       [input.roomId, input.volumePercent]
@@ -195,7 +202,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
        SET version = version + 1,
            updated_at = now()
        WHERE room_id = $1
-       RETURNING room_id, current_queue_entry_id, active_asset_id, target_vocal_mode,
+       RETURNING room_id, current_queue_entry_id, target_vocal_mode,
                  player_state, player_position_ms, next_queue_entry_id, version,
                  volume_percent, media_started_at, updated_at`,
       [roomId]
@@ -213,7 +220,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
            updated_at = now()
        WHERE room_id = $1
          AND ($4::text IS NULL OR current_queue_entry_id = $4)
-       RETURNING room_id, current_queue_entry_id, active_asset_id, target_vocal_mode,
+       RETURNING room_id, current_queue_entry_id, target_vocal_mode,
                  player_state, player_position_ms, next_queue_entry_id, version,
                  volume_percent, media_started_at, updated_at`,
       [input.roomId, input.playerPositionMs, input.playerState ?? null, input.currentQueueEntryId]
@@ -226,25 +233,23 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
   async updatePlaybackFacts(input: UpdatePlaybackFactsInput): Promise<PlaybackSession | null> {
     const result = await this.db.query<PlaybackSessionRowWithVolume>(
       `UPDATE playback_sessions
-       SET active_asset_id = COALESCE($3, active_asset_id),
-           target_vocal_mode = COALESCE($6, target_vocal_mode),
-           player_state = $4,
-           player_position_ms = $5,
+       SET target_vocal_mode = COALESCE($5, target_vocal_mode),
+           player_state = $3,
+           player_position_ms = $4,
            media_started_at = CASE
-             WHEN $4 = 'playing' THEN COALESCE(media_started_at, now())
+             WHEN $3 = 'playing' THEN COALESCE(media_started_at, now())
              ELSE media_started_at
            END,
            version = version + 1,
            updated_at = now()
        WHERE room_id = $1
          AND current_queue_entry_id = $2
-       RETURNING room_id, current_queue_entry_id, active_asset_id, target_vocal_mode,
+       RETURNING room_id, current_queue_entry_id, target_vocal_mode,
                  player_state, player_position_ms, next_queue_entry_id, version,
                  volume_percent, media_started_at, updated_at`,
       [
         input.roomId,
         input.queueEntryId,
-        input.activeAssetId,
         input.playerState,
         input.playerPositionMs,
         input.targetVocalMode ?? null

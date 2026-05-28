@@ -408,7 +408,7 @@ class FakePlaybackSessionRepository {
     this.session = {
       ...this.session,
       currentQueueEntryId: input.queueEntryId,
-      activeAssetId: input.activeAssetId,
+      activeAssetId: input.activeAssetId ?? this.session.activeAssetId,
       playerState: input.playerState,
       playerPositionMs: input.playerPositionMs,
       targetVocalMode: input.targetVocalMode ?? this.session.targetVocalMode

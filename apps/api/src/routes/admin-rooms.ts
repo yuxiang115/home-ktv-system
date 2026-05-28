@@ -3,6 +3,8 @@ import type { ApiConfig } from "../config.js";
 import { buildEmptyOnlineTaskSummary, buildRoomControlSnapshot } from "../modules/rooms/build-control-snapshot.js";
 import { getOrCreatePairingInfo, refreshPairingToken } from "../modules/rooms/pairing-token-service.js";
 import type { AssetGateway } from "../modules/assets/asset-gateway.js";
+import type { MediaGateway } from "../modules/media/media-gateway.js";
+import type { PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
 import type { AssetRepository } from "../modules/catalog/repositories/asset-repository.js";
 import type { SongRepository } from "../modules/catalog/repositories/song-repository.js";
 import type { ControlSessionRepository } from "../modules/controller/repositories/control-session-repository.js";
@@ -24,8 +26,10 @@ export interface AdminRoomsRouteDependencies {
   queueEntries: QueueEntryRepository;
   assets: AssetRepository;
   songs: SongRepository;
+  playableMedia?: PlayableMediaRepository;
   controlSessions: ControlSessionRepository;
   assetGateway: AssetGateway;
+  mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   deviceSessions: PlayerDeviceSessionRepository;
   playbackEvents?: Pick<PlaybackEventRepository, "listRecentByRoom"> | undefined;
   online?: Pick<CandidateTaskService, "listActiveForRoom" | "retryTask" | "purgeTask" | "promoteTask"> | undefined;
@@ -54,13 +58,15 @@ export async function registerAdminRoomsRoutes(
         queueEntries: dependencies.queueEntries,
         assets: dependencies.assets,
         songs: dependencies.songs,
+        ...(dependencies.playableMedia ? { playableMedia: dependencies.playableMedia } : {}),
         pairingTokens: dependencies.pairingTokens,
         controlSessions: dependencies.controlSessions,
         deviceSessions: dependencies.deviceSessions,
         playbackEvents: dependencies.playbackEvents,
         onlineTasks
       },
-      assetGateway: dependencies.assetGateway
+      assetGateway: dependencies.assetGateway,
+      ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
     });
 
     if (snapshot) {
@@ -142,13 +148,15 @@ async function handleOnlineTaskAction(
         queueEntries: dependencies.queueEntries,
         assets: dependencies.assets,
         songs: dependencies.songs,
+        ...(dependencies.playableMedia ? { playableMedia: dependencies.playableMedia } : {}),
         pairingTokens: dependencies.pairingTokens,
         controlSessions: dependencies.controlSessions,
         deviceSessions: dependencies.deviceSessions,
         playbackEvents: dependencies.playbackEvents,
         onlineTasks
       },
-      assetGateway: dependencies.assetGateway
+      assetGateway: dependencies.assetGateway,
+      ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
     });
     if (snapshot) {
       dependencies.broadcaster.broadcastRoomSnapshot(room.slug, snapshot);

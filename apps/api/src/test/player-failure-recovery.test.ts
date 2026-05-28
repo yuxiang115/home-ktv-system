@@ -187,7 +187,7 @@ class FakePlaybackSessionRepository implements PlaybackSessionRepository {
     this.session = {
       ...this.session,
       currentQueueEntryId: input.queueEntryId,
-      activeAssetId: input.activeAssetId,
+      activeAssetId: input.activeAssetId ?? null,
       targetVocalMode: input.targetVocalMode ?? this.session.targetVocalMode,
       playerState: input.playerState ?? this.session.playerState,
       playerPositionMs: input.playerPositionMs ?? 0,

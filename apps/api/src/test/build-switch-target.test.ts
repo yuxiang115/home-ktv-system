@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { AssetGateway } from "../modules/assets/asset-gateway.js";
 import { MediaPathResolver } from "../modules/assets/media-path-resolver.js";
 import type { AssetRepository } from "../modules/catalog/repositories/asset-repository.js";
+import type { MediaGateway } from "../modules/media/media-gateway.js";
+import type { PlayableMediaAsset, PlayableMediaLookup, PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
 import { buildSwitchTarget } from "../modules/playback/build-switch-target.js";
 import type { BuildSwitchTargetRepositories } from "../modules/playback/build-switch-target.js";
 import type { AppendQueueEntryInput } from "../modules/playback/repositories/queue-entry-repository.js";
@@ -11,6 +13,36 @@ const now = "2026-04-28T00:00:00.000Z";
 const livingRoom = createRoom("living-room");
 
 describe("buildSwitchTarget", () => {
+  it("builds a NAS audio-track switch target from queue source identity without activeAssetId", async () => {
+    const playableAsset = createPlayableMediaAsset();
+    const context = createSwitchContext([], {
+      session: { ...createPlaybackSession({ activeAssetId: playableAsset.assetId }), activeAssetId: null },
+      queueEntry: createQueueEntry({
+        assetId: playableAsset.assetId,
+        playbackOptions: { preferredVocalMode: "instrumental" }
+      }),
+      playableMedia: [playableAsset],
+      mediaGateway: createMediaGateway()
+    });
+
+    const target = await buildSwitchTarget(context);
+
+    expect(target).toMatchObject({
+      roomId: "living-room",
+      sessionVersion: 7,
+      queueEntryId: "queue-current",
+      switchKind: "audio_track",
+      sourceType: "nas",
+      fromAssetId: "ktv-asset-main",
+      toAssetId: "ktv-asset-main",
+      playbackUrl: "http://ktv.local/media/nas/ktv-asset-main",
+      switchFamily: "real-mv-audio-track",
+      vocalMode: "original",
+      rollbackAssetId: "ktv-asset-main",
+      selectedTrackRef: { index: 0, id: "0x1100", label: "Original" }
+    });
+  });
+
   it("builds a switch target for a verified original/instrumental pair in the same switch family", async () => {
     const currentAsset = createAsset("asset-original", "original", "family-main", "verified");
     const targetAsset = createAsset("asset-instrumental", "instrumental", "family-main", "verified");
@@ -132,21 +164,32 @@ describe("buildSwitchTarget", () => {
   });
 });
 
-function createSwitchContext(assets: Asset[], options: { activeAssetId?: string; queueEntry?: QueueEntry } = {}) {
+function createSwitchContext(
+  assets: Asset[],
+  options: {
+    activeAssetId?: string;
+    queueEntry?: QueueEntry;
+    session?: PlaybackSession;
+    playableMedia?: PlayableMediaAsset[];
+    mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
+  } = {}
+) {
   const repositories = createRepositories(assets, options);
   return {
     roomSlug: "living-room",
     repositories,
-    assetGateway: createAssetGateway(repositories.assets)
+    assetGateway: createAssetGateway(repositories.assets),
+    ...(options.mediaGateway ? { mediaGateway: options.mediaGateway } : {})
   };
 }
 
 function createRepositories(
   assets: Asset[],
-  options: { activeAssetId?: string; queueEntry?: QueueEntry } = {}
+  options: { activeAssetId?: string; queueEntry?: QueueEntry; session?: PlaybackSession; playableMedia?: PlayableMediaAsset[] } = {}
 ): BuildSwitchTargetRepositories {
-  const createSession = () =>
-    options.activeAssetId ? createPlaybackSession({ activeAssetId: options.activeAssetId }) : createPlaybackSession();
+  const createSession = () => options.session ?? (
+    options.activeAssetId ? createPlaybackSession({ activeAssetId: options.activeAssetId }) : createPlaybackSession()
+  );
   const assetRepository: AssetRepository = {
     async findById(assetId) {
       return assets.find((asset) => asset.id === assetId) ?? null;
@@ -234,8 +277,25 @@ function createRepositories(
         return null;
       }
     },
+    ...(options.playableMedia ? { playableMedia: new FakePlayableMediaRepository(options.playableMedia) } : {}),
     assets: assetRepository
   };
+}
+
+function createMediaGateway(): Pick<MediaGateway, "createPlaybackUrl"> {
+  return {
+    createPlaybackUrl(source: PlayableMediaLookup) {
+      return `http://ktv.local/media/${source.sourceType}/${source.assetId}`;
+    }
+  };
+}
+
+class FakePlayableMediaRepository implements PlayableMediaRepository {
+  constructor(private readonly assets: readonly PlayableMediaAsset[]) {}
+
+  async findPlayableBySource(source: PlayableMediaLookup): Promise<PlayableMediaAsset | null> {
+    return this.assets.find((asset) => asset.sourceType === source.sourceType && asset.assetId === source.assetId) ?? null;
+  }
 }
 
 function createAssetGateway(assetRepository: AssetRepository): AssetGateway {
@@ -355,5 +415,49 @@ function createRealMvAsset(overrides: Partial<Asset> = {}): Asset {
     createdAt: now,
     updatedAt: now,
     ...overrides
+  };
+}
+
+function createPlayableMediaAsset(): PlayableMediaAsset {
+  return {
+    sourceType: "nas",
+    songId: "song-main",
+    assetId: "ktv-asset-main",
+    title: "七里香",
+    artistName: "周杰伦",
+    displayName: "七里香.mkv",
+    filePath: "/nas/七里香.mkv",
+    status: "ready",
+    durationMs: 180000,
+    compatibilityStatus: "playable",
+    compatibilityReasons: [],
+    mediaInfoSummary: {
+      container: "matroska,webm",
+      durationMs: 180000,
+      videoCodec: "h264",
+      resolution: null,
+      fileSizeBytes: 100,
+      audioTracks: [
+        { index: 0, id: "0x1100", label: "Original", language: null, codec: "aac", channels: 2 },
+        { index: 1, id: "0x1101", label: "Instrumental", language: null, codec: "aac", channels: 2 }
+      ]
+    },
+    mediaInfoProvenance: {
+      source: "ffprobe",
+      sourceVersion: null,
+      probedAt: null,
+      importedFrom: null
+    },
+    trackRoles: {
+      original: { index: 0, id: "0x1100", label: "Original" },
+      instrumental: { index: 1, id: "0x1101", label: "Instrumental" }
+    },
+    playbackProfile: {
+      kind: "single_file_audio_tracks",
+      container: "matroska,webm",
+      videoCodec: "h264",
+      audioCodecs: ["aac"],
+      requiresAudioTrackSelection: true
+    }
   };
 }

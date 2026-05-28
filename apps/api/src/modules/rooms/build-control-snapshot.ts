@@ -5,6 +5,8 @@ import type { PlaybackSessionRepository } from "../playback/repositories/playbac
 import type { QueueEntryRepository } from "../playback/repositories/queue-entry-repository.js";
 import type { AssetRepository } from "../catalog/repositories/asset-repository.js";
 import type { SongRepository } from "../catalog/repositories/song-repository.js";
+import type { MediaGateway } from "../media/media-gateway.js";
+import type { PlayableMediaRepository } from "../media/playable-media-repository.js";
 import type { RoomPairingTokenRepository } from "./repositories/pairing-token-repository.js";
 import type { ControlSessionRepository } from "../controller/repositories/control-session-repository.js";
 import type { PlayerDeviceSessionRepository } from "../player/register-player.js";
@@ -70,6 +72,7 @@ export interface ControlSnapshotRepositories {
   queueEntries: QueueEntryRepository;
   assets: AssetRepository;
   songs: SongRepository;
+  playableMedia?: PlayableMediaRepository;
   pairingTokens: RoomPairingTokenRepository;
   controlSessions: ControlSessionRepository;
   deviceSessions: PlayerDeviceSessionRepository;
@@ -82,6 +85,7 @@ export interface BuildRoomControlSnapshotInput {
   config: ApiConfig;
   repositories: ControlSnapshotRepositories;
   assetGateway: AssetGateway;
+  mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   notice?: PlaybackNotice | null;
   now?: Date;
 }
@@ -93,6 +97,7 @@ export async function buildRoomControlSnapshot(input: BuildRoomControlSnapshotIn
     config: input.config,
     repositories: input.repositories,
     assetGateway: input.assetGateway,
+    ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {}),
     now
   };
   const baseSnapshot = await buildRoomSnapshot({

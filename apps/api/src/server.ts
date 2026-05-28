@@ -206,22 +206,26 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     queueEntries: repositories.queueEntries,
     assets: repositories.assets,
     songs: repositories.songs,
+    ...(repositories.playableMedia ? { playableMedia: repositories.playableMedia } : {}),
     controlSessions: repositories.controlSessions,
     deviceSessions: repositories.deviceSessions,
     playbackEvents: repositories.playbackEvents,
     assetGateway,
+    ...(mediaGateway ? { mediaGateway } : {}),
     online: onlineRuntime.tasks,
     broadcaster
   });
   await registerRoomSnapshotRoutes(server, {
     config: resolvedConfig,
     repositories,
-    assetGateway
+    assetGateway,
+    ...(mediaGateway ? { mediaGateway } : {})
   });
   await registerControlSessionRoutes(server, {
     config: resolvedConfig,
     repositories,
-    assetGateway
+    assetGateway,
+    ...(mediaGateway ? { mediaGateway } : {})
   });
   await registerRealtimeRoutes(server, {
     config: resolvedConfig,
@@ -230,12 +234,14 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
       onlineTasks: onlineRuntime.tasks
     },
     assetGateway,
+    ...(mediaGateway ? { mediaGateway } : {}),
     broadcaster
   });
   await registerPlayerRoutes(server, {
     config: resolvedConfig,
     repositories,
     assetGateway,
+    ...(mediaGateway ? { mediaGateway } : {}),
     broadcaster
   });
   await registerAvailableSongsRoutes(server, {
@@ -269,6 +275,7 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     config: resolvedConfig,
     repositories,
     assetGateway,
+    ...(mediaGateway ? { mediaGateway } : {}),
     broadcaster,
     online: onlineRuntime.tasks,
     ...(indexedQueueCommands ? { indexedQueueCommands } : {})
