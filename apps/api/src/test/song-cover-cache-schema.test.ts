@@ -23,4 +23,10 @@ describe("song cover cache schema", () => {
     expect(migrationSql).toContain("CHECK (source_kind IN ('nas', 'online'))");
     expect(tableNames.songCoverCache).toBe("song_cover_cache");
   });
+
+  it("drops the legacy source_kind check before rewriting legacy values", () => {
+    expect(migrationSql.indexOf("DROP CONSTRAINT IF EXISTS song_cover_cache_source_kind_check")).toBeLessThan(
+      migrationSql.indexOf("SET source_kind = 'nas'")
+    );
+  });
 });

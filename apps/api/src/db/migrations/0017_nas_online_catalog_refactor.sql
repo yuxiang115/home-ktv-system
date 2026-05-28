@@ -131,15 +131,15 @@ ALTER TABLE playback_sessions
   DROP CONSTRAINT IF EXISTS playback_sessions_active_asset_id_fkey,
   DROP COLUMN IF EXISTS active_asset_id;
 
+ALTER TABLE song_cover_cache
+  DROP CONSTRAINT IF EXISTS song_cover_cache_source_kind_check;
+
 UPDATE song_cover_cache
 SET source_kind = 'nas'
 WHERE source_kind = 'ktv-index';
 
 DELETE FROM song_cover_cache
 WHERE source_kind = 'formal';
-
-ALTER TABLE song_cover_cache
-  DROP CONSTRAINT IF EXISTS song_cover_cache_source_kind_check;
 
 ALTER TABLE song_cover_cache
   ADD CONSTRAINT song_cover_cache_source_kind_check
