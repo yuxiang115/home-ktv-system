@@ -44,13 +44,16 @@ function ControllerApp() {
   const [activeTab, setActiveTab] = useState<ControllerTab>("home");
   const [interactionComposer, setInteractionComposer] = useState<RoomInteractionKind | null>(null);
   const [queueAddFeedback, setQueueAddFeedback] = useState<QueueAddFeedback | null>(null);
+  const [optimisticQueueAdds, setOptimisticQueueAdds] = useState<OptimisticQueueAdd[]>([]);
   const queueFeedbackIdRef = useRef(0);
   const queueFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previousServerQueueCountRef = useRef(0);
   const discovery = controller.songDiscovery;
   const visibleArtists = discovery?.artists.slice(0, 6) ?? [];
   const visibleGenres = discovery?.genres.slice(0, 6) ?? [];
-  const queueCount = snapshot?.queue.filter((entry) => entry.status !== "removed").length ?? 0;
-  const triggerQueueAddFeedback = useCallback(() => {
+  const serverQueueCount = snapshot?.queue.filter((entry) => entry.status !== "removed").length ?? 0;
+  const queueCount = serverQueueCount + optimisticQueueAdds.length;
+  const triggerQueueAddFeedback = useCallback((song: Pick<SongDiscoverySong, "artistName" | "title">) => {
     if (queueFeedbackTimerRef.current) {
       clearTimeout(queueFeedbackTimerRef.current);
     }
@@ -58,10 +61,44 @@ function ControllerApp() {
     queueFeedbackIdRef.current += 1;
     const feedback = { id: queueFeedbackIdRef.current };
     setQueueAddFeedback(feedback);
+    setOptimisticQueueAdds((current) => [
+      ...current,
+      {
+        artistName: song.artistName,
+        id: feedback.id,
+        title: song.title
+      }
+    ]);
     queueFeedbackTimerRef.current = setTimeout(() => {
       setQueueAddFeedback((current) => (current?.id === feedback.id ? null : current));
     }, 900);
   }, []);
+
+  useEffect(() => {
+    const previousCount = previousServerQueueCountRef.current;
+    previousServerQueueCountRef.current = serverQueueCount;
+    if (optimisticQueueAdds.length === 0) {
+      return;
+    }
+
+    if (serverQueueCount > previousCount) {
+      const confirmedCount = Math.min(serverQueueCount - previousCount, optimisticQueueAdds.length);
+      if (confirmedCount > 0) {
+        setOptimisticQueueAdds((current) => current.slice(confirmedCount));
+      }
+      return;
+    }
+
+    if (serverQueueCount < previousCount) {
+      setOptimisticQueueAdds([]);
+    }
+  }, [optimisticQueueAdds.length, serverQueueCount]);
+
+  useEffect(() => {
+    if (controller.errorMessage) {
+      setOptimisticQueueAdds([]);
+    }
+  }, [controller.errorMessage]);
 
   useEffect(() => {
     return () => {
@@ -93,6 +130,7 @@ function ControllerApp() {
           controller={controller}
           current={current}
           currentModeLabel={currentModeLabel}
+          optimisticQueueAdds={optimisticQueueAdds}
           playbackLabel={playbackLabel}
           snapshot={snapshot}
           switchLabel={switchLabel}
@@ -215,7 +253,7 @@ function HomeScreen({
   browseView: BrowseView;
   controller: RoomControllerState;
   discovery: RoomControllerState["songDiscovery"];
-  onQueueAddFeedback(): void;
+  onQueueAddFeedback(song: Pick<SongDiscoverySong, "artistName" | "title">): void;
   setBrowseView(view: BrowseView): void;
   setInteractionComposer(kind: RoomInteractionKind): void;
   setSearchOpen(open: boolean): void;
@@ -627,6 +665,7 @@ function ControlScreen({
   controller,
   current,
   currentModeLabel,
+  optimisticQueueAdds,
   playbackLabel,
   snapshot,
   switchLabel,
@@ -636,6 +675,7 @@ function ControlScreen({
   controller: RoomControllerState;
   current: NonNullable<RoomControllerState["snapshot"]>["currentTarget"] | undefined;
   currentModeLabel: string;
+  optimisticQueueAdds: readonly OptimisticQueueAdd[];
   playbackLabel: string;
   snapshot: RoomControllerState["snapshot"];
   switchLabel: string;
@@ -701,34 +741,45 @@ function ControlScreen({
       <section className="panel" aria-label={t("queue.aria")}>
         <h2>{t("queue.title")}</h2>
         <div className="queue-list">
-          {snapshot?.queue.length ? (
-            snapshot.queue.map((entry) => {
-              const undoExpiresAt =
-                entry.undoExpiresAt ??
-                (controller.pendingUndo?.queueEntryId === entry.queueEntryId ? controller.pendingUndo.undoExpiresAt : null);
-              return (
-                <article className="queue-row" key={entry.queueEntryId}>
-                  <div>
-                    <strong>{entry.songTitle}</strong>
-                    <p>{entry.artistName}</p>
-                    {undoExpiresAt ? <small>{t("queue.undoUntil", { time: formatTime(undoExpiresAt) })}</small> : null}
-                  </div>
-                  <div className="row-actions">
-                    <button className="secondary-button" type="button" disabled={!entry.canPromote} onClick={() => void controller.promoteQueueEntry(entry.queueEntryId)}>
-                      {t("button.promote")}
-                    </button>
-                    <button className="danger-button" type="button" disabled={!entry.canDelete} onClick={() => void controller.deleteQueueEntry(entry.queueEntryId)}>
-                      {t("button.delete")}
-                    </button>
-                    {undoExpiresAt ? (
-                      <button className="secondary-button" type="button" onClick={() => void controller.undoDelete(entry.queueEntryId)}>
-                        {t("button.undo")}
+          {snapshot?.queue.length || optimisticQueueAdds.length ? (
+            <>
+              {snapshot?.queue.map((entry) => {
+                const undoExpiresAt =
+                  entry.undoExpiresAt ??
+                  (controller.pendingUndo?.queueEntryId === entry.queueEntryId ? controller.pendingUndo.undoExpiresAt : null);
+                return (
+                  <article className="queue-row" key={entry.queueEntryId}>
+                    <div>
+                      <strong>{entry.songTitle}</strong>
+                      <p>{entry.artistName}</p>
+                      {undoExpiresAt ? <small>{t("queue.undoUntil", { time: formatTime(undoExpiresAt) })}</small> : null}
+                    </div>
+                    <div className="row-actions">
+                      <button className="secondary-button" type="button" disabled={!entry.canPromote} onClick={() => void controller.promoteQueueEntry(entry.queueEntryId)}>
+                        {t("button.promote")}
                       </button>
-                    ) : null}
+                      <button className="danger-button" type="button" disabled={!entry.canDelete} onClick={() => void controller.deleteQueueEntry(entry.queueEntryId)}>
+                        {t("button.delete")}
+                      </button>
+                      {undoExpiresAt ? (
+                        <button className="secondary-button" type="button" onClick={() => void controller.undoDelete(entry.queueEntryId)}>
+                          {t("button.undo")}
+                        </button>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+              {optimisticQueueAdds.map((entry) => (
+                <article className="queue-row queue-row--pending" key={`pending-${entry.id}`}>
+                  <div>
+                    <strong>{entry.title}</strong>
+                    <p>{entry.artistName}</p>
+                    <small>{t("queue.pending")}</small>
                   </div>
                 </article>
-              );
-            })
+              ))}
+            </>
           ) : (
             <p className="empty-state">{t("queue.empty")}</p>
           )}
@@ -787,6 +838,12 @@ type ControllerTab = "home" | "control";
 
 type QueueAddFeedback = {
   id: number;
+};
+
+type OptimisticQueueAdd = {
+  artistName: string;
+  id: number;
+  title: string;
 };
 
 type BrowseView =
@@ -1133,7 +1190,7 @@ function DiscoveryBrowseView({
 }: {
   controller: RoomControllerState;
   discovery: RoomControllerState["songDiscovery"];
-  onQueueAddFeedback(): void;
+  onQueueAddFeedback(song: Pick<SongDiscoverySong, "artistName" | "title">): void;
   setBrowseView(view: BrowseView): void;
   t: TFunction;
   view: BrowseView;
@@ -1207,7 +1264,7 @@ function DiscoverySongRow({
   t
 }: {
   controller: RoomControllerState;
-  onQueueAddFeedback(): void;
+  onQueueAddFeedback(song: Pick<SongDiscoverySong, "artistName" | "title">): void;
   song: SongDiscoverySong;
   t: TFunction;
 }) {
@@ -1237,13 +1294,13 @@ function DiscoverySongRow({
 
           if (isIndexedDiscoveryVersion(primaryVersion)) {
             if (controller.requestAddIndexedAsset(primaryVersion.indexedAssetId, song.title, primaryVersion.queueState)) {
-              onQueueAddFeedback();
+              onQueueAddFeedback(song);
             }
             return;
           }
 
           if (controller.requestAddSongVersion(song.songId, primaryVersion.assetId, song.title, song.queueState)) {
-            onQueueAddFeedback();
+            onQueueAddFeedback(song);
           }
         }}
       >

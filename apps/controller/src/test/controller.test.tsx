@@ -24,6 +24,8 @@ type RequestRecord = {
   body: unknown;
 };
 
+type MockResponse = Response | Promise<Response>;
+
 beforeEach(() => {
   vi.stubGlobal("localStorage", createMemoryStorage());
   vi.stubGlobal("crypto", { randomUUID: () => "test-uuid" });
@@ -290,6 +292,66 @@ describe("mobile controller runtime", () => {
     });
     expect(addRequest?.body).not.toHaveProperty("songId");
     expect(addRequest?.body).not.toHaveProperty("assetId");
+  });
+
+  it("increments the control tab queue badge immediately while a recommendation add is pending", async () => {
+    const user = userEvent.setup();
+    const indexedCommand = deferred<Response>();
+    installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot())), json(sessionResponse(roomSnapshot({ queueLength: 2, sessionVersion: 3 })))],
+      commandResponses: {
+        "/rooms/living-room/commands/add-queue-entry": indexedCommand.promise
+      },
+      songDiscoveryResponse: indexedSongDiscoveryResponse
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    const recommendations = await screen.findByRole("region", { name: "推荐歌曲" });
+    const controlTab = screen.getByRole("button", { name: "控制" });
+    await waitFor(() => {
+      expect(controlTab.querySelector(".bottom-tab__badge")?.textContent).toBe("1");
+    });
+
+    await user.click(within(recommendations).getByRole("button", { name: "点歌 索引晴天" }));
+
+    expect(controlTab.querySelector(".bottom-tab__badge")?.textContent).toBe("2");
+    await user.click(controlTab);
+    const queue = screen.getByRole("region", { name: "播放队列" });
+    expect(within(queue).getByText("索引晴天")).toBeTruthy();
+
+    indexedCommand.resolve(json({ status: "accepted", snapshot: roomSnapshot({ queueLength: 2, sessionVersion: 2 }) }));
+    await flush();
+    await waitFor(() => {
+      expect(controlTab.querySelector(".bottom-tab__badge")?.textContent).toBe("2");
+    });
+  });
+
+  it("retries recommendation queueing once with the latest snapshot after a session version conflict", async () => {
+    const user = userEvent.setup();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))],
+      commandResponses: {
+        "/rooms/living-room/commands/add-queue-entry": [
+          json({ code: "SESSION_VERSION_CONFLICT", latestSessionVersion: 2, snapshot: roomSnapshot({ sessionVersion: 2 }) }, 409),
+          json({ status: "accepted", snapshot: roomSnapshot({ queueLength: 2, sessionVersion: 3 }) })
+        ]
+      },
+      songDiscoveryResponse: indexedSongDiscoveryResponse
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    const recommendations = await screen.findByRole("region", { name: "推荐歌曲" });
+    await user.click(within(recommendations).getByRole("button", { name: "点歌 索引晴天" }));
+    await flush();
+
+    const addRequests = requests.filter((request) => request.url === "/rooms/living-room/commands/add-queue-entry");
+    expect(addRequests).toHaveLength(2);
+    expect(addRequests[0]?.body).toMatchObject({ indexedAssetId: "ktv-asset-discovery-sunny", sessionVersion: 1 });
+    expect(addRequests[1]?.body).toMatchObject({ indexedAssetId: "ktv-asset-discovery-sunny", sessionVersion: 2 });
   });
 
   it("sends emoji, bullet, and blessing shortcut interactions", async () => {
@@ -1612,7 +1674,7 @@ async function typeSearchQuery(user: ReturnType<typeof userEvent.setup>, query: 
 function installControllerFetchMock(options: {
   restoreResponses?: Response[];
   createResponses?: Response[];
-  commandResponses?: Record<string, Response | Promise<Response>>;
+  commandResponses?: Record<string, MockResponse | MockResponse[]>;
   songSearchResponse?: (query: string) => unknown;
   songDiscoveryResponse?: (seed: string) => unknown;
 } = {}) {
@@ -1673,7 +1735,7 @@ function installControllerFetchMock(options: {
 
       const commandResponse = commandResponses[requestUrl.pathname];
       if (method === "POST" && commandResponse) {
-        return commandResponse;
+        return Array.isArray(commandResponse) ? commandResponse.shift() ?? json({ code: "NOT_FOUND" }, 404) : commandResponse;
       }
 
       if (method === "POST" && requestUrl.pathname.includes("/commands/")) {
@@ -2031,12 +2093,14 @@ function deferred<T>() {
 }
 
 function roomSnapshot(options: {
+  queueLength?: number;
   queueStatus?: "queued" | "removed";
   queueUndoExpiresAt?: string | null;
   sessionVersion?: number;
   volumePercent?: number;
 } = {}): RoomControlSnapshot {
   const queueStatus = options.queueStatus ?? "queued";
+  const queueLength = options.queueLength ?? 1;
   return {
     type: "room.control.snapshot",
     roomId: "living-room",
@@ -2078,21 +2142,19 @@ function roomSnapshot(options: {
       resumePositionMs: 1234,
       rollbackAssetId: "asset-current"
     },
-    queue: [
-      {
-        queueEntryId: "queue-next",
-        songId: "song-next",
-        assetId: "asset-next",
-        songTitle: "下一首",
-        artistName: "歌手",
-        requestedBy: "phone-1",
-        queuePosition: 2,
-        status: queueStatus,
-        canPromote: queueStatus === "queued",
-        canDelete: queueStatus === "queued",
-        undoExpiresAt: options.queueUndoExpiresAt ?? null
-      }
-    ],
+    queue: Array.from({ length: queueLength }, (_, index) => ({
+      queueEntryId: index === 0 ? "queue-next" : `queue-extra-${index + 1}`,
+      songId: index === 0 ? "song-next" : `song-extra-${index + 1}`,
+      assetId: index === 0 ? "asset-next" : `asset-extra-${index + 1}`,
+      songTitle: index === 0 ? "下一首" : `新增歌曲 ${index + 1}`,
+      artistName: index === 0 ? "歌手" : "新增歌手",
+      requestedBy: "phone-1",
+      queuePosition: index + 2,
+      status: queueStatus,
+      canPromote: queueStatus === "queued",
+      canDelete: queueStatus === "queued",
+      undoExpiresAt: index === 0 ? options.queueUndoExpiresAt ?? null : null
+    })),
     notice: null,
     generatedAt: "2026-05-04T10:00:00.000Z"
   };

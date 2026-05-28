@@ -334,11 +334,23 @@ export function useRoomControllerRuntime(): RoomControllerState {
   }, [pendingVolumePercent, snapshot?.volumePercent]);
 
   const runCommand = useCallback(
-    async <TResponse extends ControllerCommandResponse>(command: (input: ControllerCommandInput) => Promise<TResponse>) => {
+    async <TResponse extends ControllerCommandResponse>(
+      command: (input: ControllerCommandInput) => Promise<TResponse>,
+      options: { retryOnConflict?: boolean } = {}
+    ) => {
       const current = snapshotRef.current;
       if (!current) {
         return null;
       }
+
+      const applyResponse = (response: TResponse) => {
+        if (response?.snapshot) {
+          setSnapshot(response.snapshot);
+        }
+        if (response?.undo) {
+          setPendingUndo(response.undo);
+        }
+      };
 
       try {
         const response = await command({
@@ -346,12 +358,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
           deviceId,
           sessionVersion: current.sessionVersion
         });
-        if (response?.snapshot) {
-          setSnapshot(response.snapshot);
-        }
-        if (response?.undo) {
-          setPendingUndo(response.undo);
-        }
+        applyResponse(response);
         return response;
       } catch (error) {
         if (isApiCode(error, "SESSION_VERSION_CONFLICT") && error instanceof ControllerApiError) {
@@ -359,7 +366,29 @@ export function useRoomControllerRuntime(): RoomControllerState {
           if (payload.snapshot) {
             setSnapshot(payload.snapshot);
           }
-          return null;
+          if (!options.retryOnConflict || !payload.snapshot) {
+            return null;
+          }
+
+          try {
+            const response = await command({
+              roomSlug: initial.roomSlug,
+              deviceId,
+              sessionVersion: payload.snapshot.sessionVersion
+            });
+            applyResponse(response);
+            return response;
+          } catch (retryError) {
+            if (isApiCode(retryError, "SESSION_VERSION_CONFLICT") && retryError instanceof ControllerApiError) {
+              const retryPayload = retryError.payload as { snapshot?: RoomControlSnapshot };
+              if (retryPayload.snapshot) {
+                setSnapshot(retryPayload.snapshot);
+              }
+              return null;
+            }
+
+            throw retryError;
+          }
         }
 
         throw error;
@@ -370,7 +399,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
 
   const addSongVersion = useCallback(
     async (songId: string, assetId: string) => {
-      await runCommand((input) => addQueueEntry({ ...input, songId, assetId }));
+      await runCommand((input) => addQueueEntry({ ...input, songId, assetId }), { retryOnConflict: true });
     },
     [runCommand]
   );
@@ -379,7 +408,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
     async (indexedAssetId: string) => {
       setPendingIndexedAssetId(indexedAssetId);
       try {
-        await runCommand((input) => addQueueEntry({ ...input, indexedAssetId }));
+        await runCommand((input) => addQueueEntry({ ...input, indexedAssetId }), { retryOnConflict: true });
         const restored = await restoreControlSession({ roomSlug: initial.roomSlug, deviceId });
         setSnapshot(restored.snapshot);
         await runSongSearch(songSearchQueryRef.current);
