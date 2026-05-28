@@ -1,7 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { ControlSession } from "@home-ktv/domain";
 import type { ApiConfig } from "../config.js";
-import type { AssetGateway } from "../modules/assets/asset-gateway.js";
 import type { MediaGateway } from "../modules/media/media-gateway.js";
 import { restoreControlSession, touchControlSession } from "../modules/controller/control-session-service.js";
 import type { ControlSnapshotRepositories } from "../modules/rooms/build-control-snapshot.js";
@@ -17,7 +16,6 @@ const PING_INTERVAL_MS = 30 * 1000;
 interface RealtimeRouteDependencies {
   config: ApiConfig;
   repositories: ControlSnapshotRepositories;
-  assetGateway: AssetGateway;
   mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   broadcaster: RoomSnapshotBroadcaster;
 }
@@ -78,7 +76,6 @@ export async function registerRealtimeRoutes(
         roomSlug: room.slug,
         config: dependencies.config,
         repositories: dependencies.repositories,
-        assetGateway: dependencies.assetGateway,
         ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
       });
       if (!snapshot) {

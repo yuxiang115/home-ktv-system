@@ -2,9 +2,6 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { PlayerState, Room, RoomId } from "@home-ktv/domain";
 import { DEFAULT_ROOM_VOLUME_PERCENT, type PlayerConflictState, type RoomSnapshot } from "@home-ktv/player-contracts";
 import type { ApiConfig } from "../config.js";
-import type { AssetGateway } from "../modules/assets/asset-gateway.js";
-import type { AssetRepository } from "../modules/catalog/repositories/asset-repository.js";
-import type { SongRepository } from "../modules/catalog/repositories/song-repository.js";
 import type { MediaGateway } from "../modules/media/media-gateway.js";
 import type { PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
 import { buildPlaybackTarget } from "../modules/playback/build-playback-target.js";
@@ -19,8 +16,6 @@ export interface RoomSnapshotRepositories {
   rooms: RoomRepository;
   playbackSessions: PlaybackSessionRepository;
   queueEntries: QueueEntryRepository;
-  assets: AssetRepository;
-  songs: SongRepository;
   playableMedia?: PlayableMediaRepository;
   pairingTokens: RoomPairingTokenRepository;
 }
@@ -29,7 +24,6 @@ export interface BuildRoomSnapshotInput {
   roomSlug: string;
   config: ApiConfig;
   repositories: RoomSnapshotRepositories;
-  assetGateway: AssetGateway;
   mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   conflict?: PlayerConflictState | null;
   notice?: RoomSnapshot["notice"];
@@ -74,7 +68,6 @@ export async function buildRoomSnapshot(input: BuildRoomSnapshotInput): Promise<
     buildPlaybackTarget({
       roomSlug: room.slug,
       repositories: input.repositories,
-      assetGateway: input.assetGateway,
       ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {})
     })
   ]);
@@ -82,7 +75,6 @@ export async function buildRoomSnapshot(input: BuildRoomSnapshotInput): Promise<
     ? await buildSwitchTarget({
         roomSlug: room.slug,
         repositories: input.repositories,
-        assetGateway: input.assetGateway,
         ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {})
       })
     : null;

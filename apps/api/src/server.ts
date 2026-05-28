@@ -2,27 +2,12 @@ import Fastify from "fastify";
 import websocket from "@fastify/websocket";
 import { pathToFileURL } from "node:url";
 import { Pool } from "pg";
-import type { Asset, DeviceSession, PlaybackEvent, PlaybackSession, QueueEntry, Room, Song } from "@home-ktv/domain";
+import type { DeviceSession, PlaybackEvent, PlaybackSession, Room } from "@home-ktv/domain";
 import { protocolMessageNames } from "@home-ktv/protocol";
 import { loadConfig, normalizeApiConfig, type ApiConfig, type ApiConfigInput } from "./config.js";
 import { MediaPathResolver } from "./modules/assets/media-path-resolver.js";
-import { AssetGateway } from "./modules/assets/asset-gateway.js";
 import { MediaGateway } from "./modules/media/media-gateway.js";
 import { NasPlayableMediaRepository } from "./modules/media/nas-playable-media-repository.js";
-import { CatalogAdmissionService, PgCatalogAdmissionWriter } from "./modules/catalog/admission-service.js";
-import { PgAssetRepository, type AssetRepository } from "./modules/catalog/repositories/asset-repository.js";
-import {
-  PgSongRepository,
-  type AdminCatalogSongRepository,
-  type SongRepository
-} from "./modules/catalog/repositories/song-repository.js";
-import { CandidateBuilder } from "./modules/ingest/candidate-builder.js";
-import { ImportScanner } from "./modules/ingest/import-scanner.js";
-import { resolveLibraryPaths } from "./modules/ingest/library-paths.js";
-import { PgImportCandidateRepository } from "./modules/ingest/repositories/import-candidate-repository.js";
-import { PgImportFileRepository } from "./modules/ingest/repositories/import-file-repository.js";
-import { PgScanRunRepository } from "./modules/ingest/repositories/scan-run-repository.js";
-import { createScanScheduler, type ScanScheduler, type ScanSchedulerOptions } from "./modules/ingest/scan-scheduler.js";
 import { createOnlineRuntime } from "./modules/online/runtime.js";
 import type { OnlineCandidateProvider } from "./modules/online/provider-registry.js";
 import type { PlayerDeviceSessionRepository } from "./modules/player/register-player.js";
@@ -47,14 +32,10 @@ import {
   createPgRuntimeRepositories,
   type RuntimeRepositories
 } from "./runtime/pg-runtime-repositories.js";
-import { createLocalMediaCatalog, type LocalMediaCatalog } from "./runtime/local-media-catalog.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerCors } from "./routes/cors.js";
-import { PgKtvIndexSyncedSourceLookup, registerAdminCatalogRoutes } from "./routes/admin-catalog.js";
-import { registerAdminImportRoutes } from "./routes/admin-imports.js";
 import { registerAdminKtvIndexRoutes } from "./routes/admin-ktv-index.js";
 import { registerAdminRoomsRoutes } from "./routes/admin-rooms.js";
-import { registerAvailableSongsRoutes } from "./routes/available-songs.js";
 import { registerControlCommandRoutes } from "./routes/control-commands.js";
 import { registerControlSessionRoutes } from "./routes/control-sessions.js";
 import { PgKtvIndexRawAssetRepository, registerMediaRoutes } from "./routes/media.js";
@@ -68,7 +49,6 @@ import { registerSongSearchRoutes } from "./routes/song-search.js";
 export interface CreateServerOptions {
   onlineProviders?: OnlineCandidateProvider[];
   poolFactory?: (databaseUrl: string) => Pool;
-  scanSchedulerFactory?: (options: ScanSchedulerOptions) => ScanScheduler;
 }
 
 function createLivingRoom(config: ApiConfig): Room {
@@ -114,41 +94,19 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     pool,
     providers: options.onlineProviders ?? []
   });
-  const assetRepository = repositories.assets;
   const mediaPathResolver = new MediaPathResolver({
     mediaRoot: resolvedConfig.mediaRoot,
     pathMappings: resolvedConfig.mediaPathMappings
   });
-  const assetGateway = new AssetGateway({
-    assetRepository,
+  const mediaGateway = new MediaGateway({
+    playableMedia: repositories.playableMedia ?? { findPlayableBySource: async () => null },
     mediaPathResolver,
     publicBaseUrl: resolvedConfig.publicBaseUrl
   });
-  const mediaGateway = pool
-    ? new MediaGateway({
-        playableMedia: new NasPlayableMediaRepository(pool),
-        mediaPathResolver,
-        publicBaseUrl: resolvedConfig.publicBaseUrl
-      })
-    : null;
   const broadcaster = new RoomSnapshotBroadcaster();
-  const ingest =
-    pool && resolvedConfig.mediaRoot
-      ? createRuntimeIngest({
-          config: resolvedConfig,
-          pool,
-          scanSchedulerFactory: options.scanSchedulerFactory ?? createScanScheduler
-        })
-      : null;
-  const scheduler = ingest?.scheduler ?? null;
-
-  if (scheduler) {
-    await scheduler.start();
-  }
 
   if (pool) {
     server.addHook("onClose", async () => {
-      await scheduler?.close();
       await pool.end();
     });
   }
@@ -162,8 +120,7 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     snapshotEventName: protocolMessageNames.snapshotUpdated
   });
   await registerMediaRoutes(server, {
-    assetGateway,
-    ...(mediaGateway ? { mediaGateway } : {}),
+    mediaGateway,
     ...(pool
       ? {
           ktvIndexRawAssets: new PgKtvIndexRawAssetRepository(pool),
@@ -171,20 +128,6 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
         }
       : {})
   });
-  if (ingest) {
-    await registerAdminImportRoutes(server, {
-      importCandidates: ingest.importCandidates,
-      scanScheduler: ingest.scheduler,
-      admissionService: ingest.admissionService,
-      paths: ingest.paths
-    });
-    await registerAdminCatalogRoutes(server, {
-      songs: ingest.catalogSongs,
-      admissionService: ingest.admissionService,
-      ...(pool ? { ktvIndexSources: new PgKtvIndexSyncedSourceLookup(pool) } : {}),
-      songsRoot: ingest.paths.songsRoot
-    });
-  }
   if (pool && repositories.ktvIndex) {
     await registerAdminKtvIndexRoutes(server, { ktvIndex: repositories.ktvIndex });
   }
@@ -194,13 +137,10 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     pairingTokens: repositories.pairingTokens,
     playbackSessions: repositories.playbackSessions,
     queueEntries: repositories.queueEntries,
-    assets: repositories.assets,
-    songs: repositories.songs,
     ...(repositories.playableMedia ? { playableMedia: repositories.playableMedia } : {}),
     controlSessions: repositories.controlSessions,
     deviceSessions: repositories.deviceSessions,
     playbackEvents: repositories.playbackEvents,
-    assetGateway,
     ...(mediaGateway ? { mediaGateway } : {}),
     online: onlineRuntime.tasks,
     broadcaster
@@ -208,13 +148,11 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
   await registerRoomSnapshotRoutes(server, {
     config: resolvedConfig,
     repositories,
-    assetGateway,
     ...(mediaGateway ? { mediaGateway } : {})
   });
   await registerControlSessionRoutes(server, {
     config: resolvedConfig,
     repositories,
-    assetGateway,
     ...(mediaGateway ? { mediaGateway } : {})
   });
   await registerRealtimeRoutes(server, {
@@ -223,22 +161,14 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
       ...repositories,
       onlineTasks: onlineRuntime.tasks
     },
-    assetGateway,
     ...(mediaGateway ? { mediaGateway } : {}),
     broadcaster
   });
   await registerPlayerRoutes(server, {
     config: resolvedConfig,
     repositories,
-    assetGateway,
     ...(mediaGateway ? { mediaGateway } : {}),
     broadcaster
-  });
-  await registerAvailableSongsRoutes(server, {
-    rooms: repositories.rooms,
-    songs: repositories.songs,
-    assets: repositories.assets,
-    assetGateway
   });
   await registerSongSearchRoutes(server, {
     rooms: repositories.rooms,
@@ -260,7 +190,6 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
   await registerControlCommandRoutes(server, {
     config: resolvedConfig,
     repositories,
-    assetGateway,
     ...(mediaGateway ? { mediaGateway } : {}),
     broadcaster,
     online: onlineRuntime.tasks
@@ -273,59 +202,8 @@ function createPgPool(databaseUrl: string): Pool {
   return new Pool({ connectionString: databaseUrl });
 }
 
-function createRuntimeIngest(input: {
-  config: ApiConfig;
-  pool: Pool;
-  scanSchedulerFactory: (options: ScanSchedulerOptions) => ScanScheduler;
-}): {
-  scheduler: ScanScheduler;
-  importCandidates: PgImportCandidateRepository;
-  catalogSongs: PgSongRepository;
-  paths: ReturnType<typeof resolveLibraryPaths>;
-  admissionService: CatalogAdmissionService;
-} {
-  const paths = resolveLibraryPaths(input.config.mediaRoot);
-  const importCandidates = new PgImportCandidateRepository(input.pool);
-  const importFiles = new PgImportFileRepository(input.pool);
-  const catalogSongs = new PgSongRepository(input.pool);
-  const catalogAssets = new PgAssetRepository(input.pool);
-  const candidateBuilder = new CandidateBuilder({ importCandidates });
-  const scanner = new ImportScanner({
-    paths,
-    importFiles,
-    scanRuns: new PgScanRunRepository(input.pool),
-    candidateBuilder
-  });
-  const admissionService = new CatalogAdmissionService({
-    paths,
-    importCandidates,
-    importFiles,
-    catalogWriter: new PgCatalogAdmissionWriter(input.pool),
-    formalSongs: catalogSongs,
-    formalAssets: catalogAssets
-  });
-
-  return {
-    admissionService,
-    catalogSongs,
-    paths,
-    importCandidates,
-    scheduler: input.scanSchedulerFactory({
-      scanner,
-      paths,
-      scanIntervalMinutes: input.config.scanIntervalMinutes
-    })
-  };
-}
-
-async function createInMemoryRepositories(room: Room, session: PlaybackSession, config: ApiConfig): Promise<RuntimeRepositories> {
-  const localCatalog = config.mediaRoot
-    ? await createLocalMediaCatalog({
-        mediaRoot: config.mediaRoot,
-        mediaPathMappings: config.mediaPathMappings
-      })
-    : null;
-  return new InMemoryRuntimeRepositories(room, session, localCatalog);
+async function createInMemoryRepositories(room: Room, session: PlaybackSession, _config: ApiConfig): Promise<RuntimeRepositories> {
+  return new InMemoryRuntimeRepositories(room, session);
 }
 
 class InMemoryRuntimeRepositories implements RuntimeRepositories {
@@ -333,10 +211,6 @@ class InMemoryRuntimeRepositories implements RuntimeRepositories {
     findById: async (roomId) => (roomId === this.room.id ? this.room : null),
     findBySlug: async (slug) => (slug === this.room.slug ? this.room : null)
   };
-
-  readonly assets: AssetRepository;
-
-  readonly songs: SongRepository & AdminCatalogSongRepository;
 
   readonly pairingTokens = new InMemoryRoomPairingTokenRepository();
   readonly controlSessions = new InMemoryControlSessionRepository();
@@ -367,26 +241,7 @@ class InMemoryRuntimeRepositories implements RuntimeRepositories {
   private readonly devices = new Map<string, DeviceSession>();
   private readonly events: PlaybackEvent[] = [];
 
-  constructor(
-    private readonly room: Room,
-    private session: PlaybackSession,
-    localCatalog: LocalMediaCatalog | null = null
-  ) {
-    this.assets = localCatalog?.assets ?? {
-      findById: async () => null,
-      findVerifiedSwitchCounterparts: async () => []
-    };
-
-    this.songs = localCatalog?.songs ?? {
-      findById: async () => null,
-      listFormalSongs: async () => [],
-      getFormalSongWithAssets: async () => null,
-      searchFormalSongs: async () => [],
-      updateSongMetadata: async () => null,
-      updateDefaultAsset: async () => null,
-      updateSongStatus: async () => null
-    };
-  }
+  constructor(private readonly room: Room, private session: PlaybackSession) {}
 
   async findByRoomId(roomId: string): Promise<PlaybackSession | null> {
     return roomId === this.room.id ? this.session : null;

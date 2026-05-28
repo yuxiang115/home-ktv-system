@@ -1,10 +1,8 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { PlayerTelemetryKind } from "@home-ktv/player-contracts";
 import type { ApiConfig } from "../config.js";
-import type { AssetGateway } from "../modules/assets/asset-gateway.js";
-import type { AssetRepository } from "../modules/catalog/repositories/asset-repository.js";
-import type { SongRepository } from "../modules/catalog/repositories/song-repository.js";
 import type { MediaGateway } from "../modules/media/media-gateway.js";
+import type { PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
 import { recordHeartbeat } from "../modules/player/heartbeat-service.js";
 import type { PlayerDeviceSessionRepository } from "../modules/player/register-player.js";
 import { registerPlayer } from "../modules/player/register-player.js";
@@ -39,8 +37,7 @@ export interface PlayerRouteRepositories {
     updatePlaybackFacts: Parameters<typeof ingestPlayerTelemetry>[0]["playbackSessions"]["updatePlaybackFacts"];
   };
   queueEntries: QueueEntryRepository;
-  assets: AssetRepository;
-  songs: SongRepository;
+  playableMedia?: PlayableMediaRepository;
   pairingTokens: RoomPairingTokenRepository;
   deviceSessions: PlayerDeviceSessionRepository;
   playbackEvents: PlaybackEventRepository;
@@ -51,7 +48,6 @@ export interface PlayerRouteRepositories {
 export interface PlayerRouteDependencies {
   config: ApiConfig;
   repositories: PlayerRouteRepositories;
-  assetGateway: AssetGateway;
   mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   broadcaster?: RoomSnapshotBroadcaster;
 }
@@ -122,7 +118,6 @@ export async function registerPlayerRoutes(server: FastifyInstance, dependencies
       roomSlug,
       config: dependencies.config,
       repositories: dependencies.repositories,
-      assetGateway: dependencies.assetGateway,
       ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {}),
       conflict: result.conflict
     });
@@ -157,7 +152,6 @@ export async function registerPlayerRoutes(server: FastifyInstance, dependencies
       roomSlug,
       config: dependencies.config,
       repositories: dependencies.repositories,
-      assetGateway: dependencies.assetGateway,
       ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {}),
       conflict: result.conflict
     });
@@ -194,14 +188,12 @@ export async function registerPlayerRoutes(server: FastifyInstance, dependencies
         sessionVersion: body.sessionVersion ?? 0,
         playbackEvents: dependencies.repositories.playbackEvents,
         repositories: dependencies.repositories,
-        assetGateway: dependencies.assetGateway,
         config: dependencies.config
       });
       const snapshot = await buildRoomSnapshot({
         roomSlug,
         config: dependencies.config,
         repositories: dependencies.repositories,
-        assetGateway: dependencies.assetGateway,
         ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
       });
 
@@ -231,7 +223,6 @@ export async function registerPlayerRoutes(server: FastifyInstance, dependencies
         sessionVersion: body.sessionVersion ?? 0,
         playbackEvents: dependencies.repositories.playbackEvents,
         repositories: dependencies.repositories,
-        assetGateway: dependencies.assetGateway,
         config: dependencies.config,
         failureCause,
         message: body.message,
@@ -242,7 +233,6 @@ export async function registerPlayerRoutes(server: FastifyInstance, dependencies
         roomSlug,
         config: dependencies.config,
         repositories: dependencies.repositories,
-        assetGateway: dependencies.assetGateway,
         ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {}),
         notice: result.notice
       });
@@ -284,7 +274,6 @@ export async function registerPlayerRoutes(server: FastifyInstance, dependencies
       roomSlug,
       config: dependencies.config,
       repositories: dependencies.repositories,
-      assetGateway: dependencies.assetGateway,
       ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {}),
       notice: noticeFromTelemetry(eventType)
     });
@@ -301,7 +290,6 @@ export async function registerPlayerRoutes(server: FastifyInstance, dependencies
         roomSlug: body.roomSlug ?? dependencies.config.roomSlug,
         playbackPositionMs: body.playbackPositionMs,
         repositories: dependencies.repositories,
-        assetGateway: dependencies.assetGateway,
         ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
       })
     );
@@ -314,14 +302,12 @@ export async function registerPlayerRoutes(server: FastifyInstance, dependencies
       roomSlug,
       deviceId: requiredString(body.deviceId, "deviceId"),
       repositories: dependencies.repositories,
-      assetGateway: dependencies.assetGateway,
       ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
     });
     const snapshot = await buildRoomSnapshot({
       roomSlug,
       config: dependencies.config,
       repositories: dependencies.repositories,
-      assetGateway: dependencies.assetGateway,
       ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {}),
       notice: result.notice
     });
@@ -367,7 +353,6 @@ async function broadcastControlSnapshot(dependencies: PlayerRouteDependencies, r
     roomSlug,
     config: dependencies.config,
     repositories: dependencies.repositories,
-    assetGateway: dependencies.assetGateway,
     ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
   });
   if (snapshot) {

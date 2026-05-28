@@ -1,12 +1,11 @@
 import { createReadStream } from "node:fs";
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { inferVideoContentType, type AssetGateway, type AssetGatewayResolution } from "../modules/assets/asset-gateway.js";
+import { inferVideoContentType } from "../modules/media/content-type.js";
 import type { MediaPathResolver, MediaPathResolution } from "../modules/assets/media-path-resolver.js";
 import type { QueryExecutor } from "../db/query-executor.js";
 import type { MediaGateway, MediaGatewayResolution } from "../modules/media/media-gateway.js";
 
 export interface MediaRouteContext {
-  assetGateway: Pick<AssetGateway, "resolveForStreaming">;
   mediaGateway?: Pick<MediaGateway, "resolveForStreaming">;
   ktvIndexRawAssets?: KtvIndexRawAssetRepository;
   mediaPathResolver?: MediaPathResolver;
@@ -81,19 +80,6 @@ export async function registerMediaRoutes(fastify: FastifyInstance, context: Med
     });
   });
 
-  fastify.get<{ Params: { assetId: string } }>("/media/:assetId", async (request, reply) => {
-    const resolution = await context.assetGateway.resolveForStreaming(request.params.assetId);
-    if (!resolution.ok) {
-      return sendMediaError(reply, resolution);
-    }
-
-    return sendResolvedMedia(reply, {
-      filePath: resolution.filePath,
-      contentLength: resolution.contentLength,
-      contentType: resolution.contentType,
-      rangeHeader: request.headers.range
-    });
-  });
 }
 
 export interface KtvIndexRawAssetRow {
@@ -118,15 +104,6 @@ export class PgKtvIndexRawAssetRepository implements KtvIndexRawAssetRepository 
     );
     return result.rows[0] ?? null;
   }
-}
-
-function sendMediaError(
-  reply: FastifyReply,
-  resolution: Extract<AssetGatewayResolution, { ok: false }>
-): FastifyReply {
-  return reply.status(resolution.statusCode).send({
-    error: resolution.code
-  });
 }
 
 function sendSourceMediaError(

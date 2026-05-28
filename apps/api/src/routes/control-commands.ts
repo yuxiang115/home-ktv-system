@@ -1,6 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { ApiConfig } from "../config.js";
-import type { AssetGateway } from "../modules/assets/asset-gateway.js";
 import type { MediaGateway } from "../modules/media/media-gateway.js";
 import type { ControlSessionRepository } from "../modules/controller/repositories/control-session-repository.js";
 import { restoreControlSession, serializeControlSessionCookie } from "../modules/controller/control-session-service.js";
@@ -19,7 +18,6 @@ export interface ControlCommandsRouteRepositories extends ControlSnapshotReposit
 export interface ControlCommandsRouteDependencies {
   config: ApiConfig;
   repositories: ControlCommandsRouteRepositories;
-  assetGateway: AssetGateway;
   mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   broadcaster?: RoomSnapshotBroadcaster;
   online?: Pick<CandidateTaskService, "listActiveForRoom" | "requestSupplement">;
@@ -183,7 +181,6 @@ async function handleRequestSupplement(
         ...dependencies.repositories,
         ...(dependencies.online ? { onlineTasks: dependencies.online } : {})
       },
-      assetGateway: dependencies.assetGateway,
       ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
     });
     if (snapshot) {
@@ -232,7 +229,6 @@ async function handleCommand(
     payload,
     controlSession,
     repositories: dependencies.repositories,
-    assetGateway: dependencies.assetGateway,
     ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {}),
     config: dependencies.config
   });

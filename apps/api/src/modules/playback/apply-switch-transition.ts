@@ -1,5 +1,4 @@
 import type { SwitchTransitionResult } from "@home-ktv/player-contracts";
-import type { AssetGateway } from "../assets/asset-gateway.js";
 import type { MediaGateway } from "../media/media-gateway.js";
 import { buildSwitchTarget, type BuildSwitchTargetRepositories } from "./build-switch-target.js";
 
@@ -7,7 +6,6 @@ export interface ApplySwitchTransitionInput {
   roomSlug: string;
   playbackPositionMs?: number | undefined;
   repositories: BuildSwitchTargetRepositories;
-  assetGateway: AssetGateway;
   mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
 }
 
@@ -15,7 +13,6 @@ export async function applySwitchTransition(input: ApplySwitchTransitionInput): 
   const switchTarget = await buildSwitchTarget({
     roomSlug: input.roomSlug,
     repositories: input.repositories,
-    assetGateway: input.assetGateway,
     ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {})
   });
 

@@ -1,10 +1,4 @@
 import type { QueryExecutor } from "../db/query-executor.js";
-import { PgAssetRepository, type AssetRepository } from "../modules/catalog/repositories/asset-repository.js";
-import {
-  PgSongRepository,
-  type AdminCatalogSongRepository,
-  type SongRepository
-} from "../modules/catalog/repositories/song-repository.js";
 import { PgSongCoverCacheRepository, type SongCoverCacheRepository } from "../modules/covers/song-cover-cache-repository.js";
 import type { MediaPathMapping } from "../modules/assets/media-path-mapping.js";
 import {
@@ -27,8 +21,6 @@ import { PgRoomRepository } from "../modules/rooms/repositories/room-repository.
 import type { PlayerRouteRepositories } from "../routes/player.js";
 
 export type RuntimeRepositories = PlayerRouteRepositories & {
-  songs: SongRepository & AdminCatalogSongRepository;
-  assets: AssetRepository;
   controlSessions: ControlSessionRepository;
   controlCommands: RoomSessionCommandRepository;
   songCovers?: SongCoverCacheRepository;
@@ -51,8 +43,6 @@ export function createPgRuntimeRepositories(
     playbackSessions,
     playableMedia: new NasPlayableMediaRepository(db),
     queueEntries: new PgQueueEntryRepository(db),
-    assets: new PgAssetRepository(db),
-    songs: new PgSongRepository(db),
     songCovers: new PgSongCoverCacheRepository(db),
     pairingTokens: new PgRoomPairingTokenRepository(db),
     controlSessions: new PgControlSessionRepository(db),

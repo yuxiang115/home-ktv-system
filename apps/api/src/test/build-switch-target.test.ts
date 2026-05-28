@@ -1,13 +1,8 @@
-import type { Asset, PlaybackSession, QueueEntry, Room } from "@home-ktv/domain";
+import type { PlaybackSession, QueueEntry, Room } from "@home-ktv/domain";
 import { describe, expect, it } from "vitest";
-import { AssetGateway } from "../modules/assets/asset-gateway.js";
-import { MediaPathResolver } from "../modules/assets/media-path-resolver.js";
-import type { AssetRepository } from "../modules/catalog/repositories/asset-repository.js";
 import type { MediaGateway } from "../modules/media/media-gateway.js";
 import type { PlayableMediaAsset, PlayableMediaLookup, PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
-import { buildSwitchTarget } from "../modules/playback/build-switch-target.js";
-import type { BuildSwitchTargetRepositories } from "../modules/playback/build-switch-target.js";
-import type { AppendQueueEntryInput } from "../modules/playback/repositories/queue-entry-repository.js";
+import { buildSwitchTarget, type BuildSwitchTargetRepositories } from "../modules/playback/build-switch-target.js";
 
 const now = "2026-04-28T00:00:00.000Z";
 const livingRoom = createRoom("living-room");
@@ -15,17 +10,15 @@ const livingRoom = createRoom("living-room");
 describe("buildSwitchTarget", () => {
   it("builds a NAS audio-track switch target from queue source identity without activeAssetId", async () => {
     const playableAsset = createPlayableMediaAsset();
-    const context = createSwitchContext([], {
-      session: { ...createPlaybackSession({ activeAssetId: playableAsset.assetId }), activeAssetId: null },
-      queueEntry: createQueueEntry({
-        assetId: playableAsset.assetId,
-        playbackOptions: { preferredVocalMode: "instrumental" }
+    const target = await buildSwitchTarget({
+      roomSlug: livingRoom.slug,
+      repositories: createRepositories({
+        session: createPlaybackSession(),
+        queueEntry: createQueueEntry({ playbackOptions: { preferredVocalMode: "instrumental" } }),
+        playableMedia: [playableAsset]
       }),
-      playableMedia: [playableAsset],
       mediaGateway: createMediaGateway()
     });
-
-    const target = await buildSwitchTarget(context);
 
     expect(target).toMatchObject({
       roomId: "living-room",
@@ -43,242 +36,54 @@ describe("buildSwitchTarget", () => {
     });
   });
 
-  it("builds a switch target for a verified original/instrumental pair in the same switch family", async () => {
-    const currentAsset = createAsset("asset-original", "original", "family-main", "verified");
-    const targetAsset = createAsset("asset-instrumental", "instrumental", "family-main", "verified");
-    const context = createSwitchContext([currentAsset, targetAsset]);
+  it("returns null when the target NAS audio role is missing", async () => {
+    const playableAsset = {
+      ...createPlayableMediaAsset(),
+      trackRoles: { original: null, instrumental: { index: 1, id: "0x1101", label: "Instrumental" } }
+    };
 
-    const target = await buildSwitchTarget(context);
-
-    expect(target).toEqual({
-      roomId: "living-room",
-      sessionVersion: 7,
-      queueEntryId: "queue-current",
-      switchKind: "asset",
-      sourceType: "nas",
-      fromAssetId: "asset-original",
-      toAssetId: "asset-instrumental",
-      playbackUrl: "http://ktv.local/media/asset-instrumental",
-      switchFamily: "family-main",
-      vocalMode: "instrumental",
-      rollbackAssetId: "asset-original",
-      resumePositionMs: 81234
-    });
-  });
-
-  it("builds audio-track switch target for formal real MV from accompaniment to original", async () => {
-    const currentAsset = createRealMvAsset({
-      id: "asset-real-mv",
-      trackRoles: createRealMvTrackRoles()
-    });
-    const context = createSwitchContext([currentAsset], {
-      activeAssetId: currentAsset.id,
-      queueEntry: createQueueEntry({
-        assetId: currentAsset.id,
-        playbackOptions: { preferredVocalMode: "instrumental" }
+    await expect(
+      buildSwitchTarget({
+        roomSlug: livingRoom.slug,
+        repositories: createRepositories({
+          session: createPlaybackSession(),
+          queueEntry: createQueueEntry({ playbackOptions: { preferredVocalMode: "instrumental" } }),
+          playableMedia: [playableAsset]
+        }),
+        mediaGateway: createMediaGateway()
       })
-    });
-
-    const target = await buildSwitchTarget(context);
-
-    expect(target).toMatchObject({
-      switchKind: "audio_track",
-      fromAssetId: "asset-real-mv",
-      toAssetId: "asset-real-mv",
-      rollbackAssetId: "asset-real-mv",
-      vocalMode: "original"
-    });
-    if (!target?.selectedTrackRef) {
-      throw new Error("expected selectedTrackRef");
-    }
-    expect(target.selectedTrackRef.id).toBe("0x1100");
-  });
-
-  it("builds audio-track switch target for formal real MV from original to accompaniment", async () => {
-    const currentAsset = createRealMvAsset({
-      id: "asset-real-mv",
-      trackRoles: createRealMvTrackRoles()
-    });
-    const context = createSwitchContext([currentAsset], {
-      activeAssetId: currentAsset.id,
-      queueEntry: createQueueEntry({
-        assetId: currentAsset.id,
-        playbackOptions: { preferredVocalMode: "original" }
-      })
-    });
-
-    const target = await buildSwitchTarget(context);
-
-    expect(target).toMatchObject({
-      switchKind: "audio_track",
-      fromAssetId: "asset-real-mv",
-      toAssetId: "asset-real-mv",
-      vocalMode: "instrumental"
-    });
-    if (!target?.selectedTrackRef) {
-      throw new Error("expected selectedTrackRef");
-    }
-    expect(target.selectedTrackRef.id).toBe("0x1101");
-  });
-
-  it("returns null when real MV target role is missing", async () => {
-    const currentAsset = createRealMvAsset({
-      id: "asset-real-mv",
-      trackRoles: {
-        original: null,
-        instrumental: { index: 1, id: "0x1101", label: "Instrumental" }
-      }
-    });
-    const context = createSwitchContext([currentAsset], {
-      activeAssetId: currentAsset.id,
-      queueEntry: createQueueEntry({
-        assetId: currentAsset.id,
-        playbackOptions: { preferredVocalMode: "instrumental" }
-      })
-    });
-
-    await expect(buildSwitchTarget(context)).resolves.toBeNull();
-  });
-
-  it("returns null when a switch counterpart is missing", async () => {
-    const currentAsset = createAsset("asset-original", "original", "family-main", "verified");
-    const context = createSwitchContext([currentAsset]);
-
-    await expect(buildSwitchTarget(context)).resolves.toBeNull();
-  });
-
-  it("returns null for a wrong-family counterpart", async () => {
-    const currentAsset = createAsset("asset-original", "original", "family-main", "verified");
-    const wrongFamilyAsset = createAsset("asset-instrumental", "instrumental", "family-other", "verified");
-    const context = createSwitchContext([currentAsset, wrongFamilyAsset]);
-
-    await expect(buildSwitchTarget(context)).resolves.toBeNull();
-  });
-
-  it("returns null when the counterpart has switch_quality_status = review_required", async () => {
-    const currentAsset = createAsset("asset-original", "original", "family-main", "verified");
-    const reviewRequiredAsset = createAsset("asset-instrumental", "instrumental", "family-main", "review_required");
-    const context = createSwitchContext([currentAsset, reviewRequiredAsset]);
-
-    await expect(buildSwitchTarget(context)).resolves.toBeNull();
+    ).resolves.toBeNull();
   });
 });
 
-function createSwitchContext(
-  assets: Asset[],
-  options: {
-    activeAssetId?: string;
-    queueEntry?: QueueEntry;
-    session?: PlaybackSession;
-    playableMedia?: PlayableMediaAsset[];
-    mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
-  } = {}
-) {
-  const repositories = createRepositories(assets, options);
-  return {
-    roomSlug: "living-room",
-    repositories,
-    assetGateway: createAssetGateway(repositories.assets),
-    ...(options.mediaGateway ? { mediaGateway: options.mediaGateway } : {})
-  };
-}
-
-function createRepositories(
-  assets: Asset[],
-  options: { activeAssetId?: string; queueEntry?: QueueEntry; session?: PlaybackSession; playableMedia?: PlayableMediaAsset[] } = {}
-): BuildSwitchTargetRepositories {
-  const createSession = () => options.session ?? (
-    options.activeAssetId ? createPlaybackSession({ activeAssetId: options.activeAssetId }) : createPlaybackSession()
-  );
-  const assetRepository: AssetRepository = {
-    async findById(assetId) {
-      return assets.find((asset) => asset.id === assetId) ?? null;
-    },
-    async findVerifiedSwitchCounterparts(currentAsset) {
-      return assets.filter((asset) => asset.id !== currentAsset.id);
-    }
-  };
-
+function createRepositories(input: {
+  session: PlaybackSession;
+  queueEntry: QueueEntry;
+  playableMedia: PlayableMediaAsset[];
+}): BuildSwitchTargetRepositories {
   return {
     rooms: {
-      async findById(roomId) {
-        return roomId === livingRoom.id ? livingRoom : null;
-      },
-      async findBySlug(slug) {
-        return slug === livingRoom.slug ? livingRoom : null;
-      }
+      findById: async (roomId) => (roomId === livingRoom.id ? livingRoom : null),
+      findBySlug: async (slug) => (slug === livingRoom.slug ? livingRoom : null)
     },
     playbackSessions: {
-      async findByRoomId(roomId) {
-        return roomId === livingRoom.id ? createSession() : null;
-      },
-      async startQueueEntry() {
-        return createSession();
-      },
-      async setIdle() {
-        return createSession();
-      },
-      async requestSwitchTarget() {
-        return createSession();
-      }
+      findByRoomId: async (roomId) => (roomId === livingRoom.id ? input.session : null),
+      startQueueEntry: async () => input.session,
+      setIdle: async () => input.session,
+      requestSwitchTarget: async () => input.session
     },
     queueEntries: {
-      async findById(queueEntryId) {
-        return queueEntryId === "queue-current" ? options.queueEntry ?? createQueueEntry() : null;
-      },
-      async listEffectiveQueue() {
-        return [];
-      },
-      async listUndoableRemoved() {
-        return [];
-      },
-      async findCurrentForRoom() {
-        return null;
-      },
-      async append(input: AppendQueueEntryInput) {
-        const source = input.source ?? {
-          sourceType: "nas" as const,
-          songId: input.songId ?? "song-new",
-          assetId: input.assetId ?? "asset-new"
-        };
-        return {
-          id: "queue-new",
-          roomId: input.roomId,
-          source,
-          songId: source.songId,
-          assetId: source.assetId,
-          requestedBy: input.requestedBy,
-          queuePosition: input.queuePosition,
-          status: input.status ?? "queued",
-          priority: input.priority ?? 0,
-          playbackOptions: {
-            preferredVocalMode: null,
-            pitchSemitones: 0,
-            requireReadyAsset: true
-          },
-          requestedAt: (input.requestedAt ?? new Date()).toISOString(),
-          startedAt: input.startedAt ? input.startedAt.toISOString() : null,
-          endedAt: input.endedAt ? input.endedAt.toISOString() : null,
-          removedAt: input.removedAt ? input.removedAt.toISOString() : null,
-          removedByControlSessionId: input.removedByControlSessionId ?? null,
-          undoExpiresAt: input.undoExpiresAt ? input.undoExpiresAt.toISOString() : null
-        };
-      },
-      async markRemoved() {
-        return null;
-      },
-      async undoRemoved() {
-        return null;
-      },
-      async renumberQueue() {
-        return [];
-      },
-      async markCompleted() {
-        return null;
-      }
+      findById: async (queueEntryId) => (queueEntryId === input.queueEntry.id ? input.queueEntry : null),
+      listEffectiveQueue: async () => [input.queueEntry],
+      listUndoableRemoved: async () => [],
+      findCurrentForRoom: async () => input.queueEntry,
+      append: async () => input.queueEntry,
+      markRemoved: async () => null,
+      undoRemoved: async () => null,
+      renumberQueue: async () => [],
+      markCompleted: async () => null
     },
-    ...(options.playableMedia ? { playableMedia: new FakePlayableMediaRepository(options.playableMedia) } : {}),
-    assets: assetRepository
+    playableMedia: new FakePlayableMediaRepository(input.playableMedia)
   };
 }
 
@@ -298,14 +103,6 @@ class FakePlayableMediaRepository implements PlayableMediaRepository {
   }
 }
 
-function createAssetGateway(assetRepository: AssetRepository): AssetGateway {
-  return new AssetGateway({
-    assetRepository,
-    mediaPathResolver: new MediaPathResolver({ mediaRoot: "/media-root" }),
-    publicBaseUrl: "http://ktv.local"
-  });
-}
-
 function createRoom(slug: string): Room {
   return {
     id: slug,
@@ -318,12 +115,12 @@ function createRoom(slug: string): Room {
   };
 }
 
-function createPlaybackSession(input: { activeAssetId?: string } = {}): PlaybackSession {
+function createPlaybackSession(): PlaybackSession {
   return {
     roomId: livingRoom.id,
     currentQueueEntryId: "queue-current",
     nextQueueEntryId: null,
-    activeAssetId: input.activeAssetId ?? "asset-original",
+    activeAssetId: null,
     targetVocalMode: "original",
     playerState: "playing",
     playerPositionMs: 81234,
@@ -333,12 +130,13 @@ function createPlaybackSession(input: { activeAssetId?: string } = {}): Playback
   };
 }
 
-function createQueueEntry(input: { assetId?: string; playbackOptions?: Partial<QueueEntry["playbackOptions"]> } = {}): QueueEntry {
-    return {
-      id: "queue-current",
-      roomId: livingRoom.id,
-      songId: "song-main",
-      assetId: input.assetId ?? "asset-original",
+function createQueueEntry(input: { playbackOptions?: Partial<QueueEntry["playbackOptions"]> } = {}): QueueEntry {
+  return {
+    id: "queue-current",
+    roomId: livingRoom.id,
+    source: { sourceType: "nas", songId: "ktv-song-main", assetId: "ktv-asset-main" },
+    songId: "ktv-song-main",
+    assetId: "ktv-asset-main",
     requestedBy: "mobile",
     queuePosition: 1,
     status: "playing",
@@ -349,112 +147,47 @@ function createQueueEntry(input: { assetId?: string; playbackOptions?: Partial<Q
       requireReadyAsset: true,
       ...input.playbackOptions
     },
-      requestedAt: now,
-      startedAt: now,
-      endedAt: null,
-      removedAt: null,
-      removedByControlSessionId: null,
-      undoExpiresAt: null
-    };
-  }
-
-function createAsset(
-  id: string,
-  vocalMode: Asset["vocalMode"],
-  switchFamily: string,
-  switchQualityStatus: Asset["switchQualityStatus"]
-): Asset {
-  return {
-    id,
-    songId: "song-main",
-    sourceType: "local",
-    assetKind: "video",
-    displayName: id,
-    filePath: `${id}.mp4`,
-    durationMs: 180000,
-    lyricMode: "hard_sub",
-    vocalMode,
-    status: "ready",
-    switchFamily,
-    switchQualityStatus,
-    createdAt: now,
-    updatedAt: now
-  };
-}
-
-function createRealMvTrackRoles(): NonNullable<Asset["trackRoles"]> {
-  return {
-    original: { index: 0, id: "0x1100", label: "Original" },
-    instrumental: { index: 1, id: "0x1101", label: "Instrumental" }
-  };
-}
-
-function createRealMvAsset(overrides: Partial<Asset> = {}): Asset {
-  return {
-    id: "asset-real-mv",
-    songId: "song-main",
-    sourceType: "local",
-    assetKind: "dual-track-video",
-    displayName: "real mv",
-    filePath: "real-mv.mkv",
-    durationMs: 180000,
-    lyricMode: "hard_sub",
-    vocalMode: "dual",
-    status: "ready",
-    switchFamily: null,
-    switchQualityStatus: "review_required",
-    compatibilityStatus: "playable",
-    trackRoles: createRealMvTrackRoles(),
-    playbackProfile: {
-      kind: "single_file_audio_tracks",
-      container: "matroska",
-      videoCodec: "h264",
-      audioCodecs: ["aac", "aac"],
-      requiresAudioTrackSelection: true
-    },
-    createdAt: now,
-    updatedAt: now,
-    ...overrides
+    requestedAt: now,
+    startedAt: now,
+    endedAt: null,
+    removedAt: null,
+    removedByControlSessionId: null,
+    undoExpiresAt: null
   };
 }
 
 function createPlayableMediaAsset(): PlayableMediaAsset {
   return {
     sourceType: "nas",
-    songId: "song-main",
+    songId: "ktv-song-main",
     assetId: "ktv-asset-main",
     title: "七里香",
     artistName: "周杰伦",
-    displayName: "七里香.mkv",
-    filePath: "/nas/七里香.mkv",
+    displayName: "七里香",
+    filePath: "/nas/ktv-asset-main.mp4",
     status: "ready",
     durationMs: 180000,
     compatibilityStatus: "playable",
     compatibilityReasons: [],
     mediaInfoSummary: {
-      container: "matroska,webm",
+      container: "mp4",
       durationMs: 180000,
       videoCodec: "h264",
-      resolution: null,
-      fileSizeBytes: 100,
+      resolution: { width: 1920, height: 1080 },
+      fileSizeBytes: 1000,
       audioTracks: [
-        { index: 0, id: "0x1100", label: "Original", language: null, codec: "aac", channels: 2 },
-        { index: 1, id: "0x1101", label: "Instrumental", language: null, codec: "aac", channels: 2 }
+        { index: 0, id: "0x1100", label: "Original", language: "zh", codec: "aac", channels: 2 },
+        { index: 1, id: "0x1101", label: "Instrumental", language: "zh", codec: "aac", channels: 2 }
       ]
     },
-    mediaInfoProvenance: {
-      source: "ffprobe",
-      sourceVersion: null,
-      probedAt: null,
-      importedFrom: null
-    },
+    mediaInfoProvenance: { source: "ffprobe", sourceVersion: null, probedAt: now, importedFrom: "/nas/ktv-asset-main.mp4" },
     trackRoles: {
       original: { index: 0, id: "0x1100", label: "Original" },
       instrumental: { index: 1, id: "0x1101", label: "Instrumental" }
     },
     playbackProfile: {
       kind: "single_file_audio_tracks",
-      container: "matroska,webm",
+      container: "mp4",
       videoCodec: "h264",
       audioCodecs: ["aac"],
       requiresAudioTrackSelection: true

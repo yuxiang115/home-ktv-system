@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { schemaSql } from "../db/schema.js";
+import { schemaSql, tableNames } from "../db/schema.js";
 
 const migrationSql = readFileSync(
   resolve(process.cwd(), "src/db/migrations/0017_nas_online_catalog_refactor.sql"),
@@ -13,6 +13,15 @@ describe("NAS / online catalog final schema", () => {
     expect(schemaSql).not.toContain("CREATE TABLE IF NOT EXISTS songs");
     expect(schemaSql).not.toContain("CREATE TABLE IF NOT EXISTS assets");
     expect(schemaSql).not.toContain("CREATE TABLE IF NOT EXISTS source_records");
+    expect(Object.values(tableNames)).not.toEqual(expect.arrayContaining([
+      "songs",
+      "assets",
+      "source_records",
+      "import_scan_runs",
+      "import_files",
+      "import_candidates",
+      "import_candidate_files"
+    ]));
   });
 
   it("stores queue entries by source-native identities", () => {
@@ -29,6 +38,9 @@ describe("NAS / online catalog final schema", () => {
     expect(schemaSql).toContain("CREATE TABLE IF NOT EXISTS online_songs");
     expect(schemaSql).toContain("CREATE TABLE IF NOT EXISTS online_song_assets");
     expect(schemaSql).not.toContain("active_asset_id text REFERENCES assets");
+    expect(schemaSql).not.toContain("ready_asset_id");
+    expect(schemaSql).toContain("ready_source_type text CHECK (ready_source_type IN ('online'))");
+    expect(schemaSql).toContain("ready_online_asset_id text REFERENCES online_song_assets(id) ON DELETE SET NULL");
   });
 
   it("uses nas and online as cover cache source kinds", () => {

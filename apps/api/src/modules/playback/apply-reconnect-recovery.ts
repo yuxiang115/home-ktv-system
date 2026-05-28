@@ -1,5 +1,4 @@
 import type { PlaybackNotice, ReconnectRecoveryResult } from "@home-ktv/player-contracts";
-import type { AssetGateway } from "../assets/asset-gateway.js";
 import type { MediaGateway } from "../media/media-gateway.js";
 import type { PlaybackEventRepository } from "./repositories/playback-event-repository.js";
 import { buildPlaybackTarget, type BuildPlaybackTargetRepositories } from "./build-playback-target.js";
@@ -12,7 +11,6 @@ export interface ApplyReconnectRecoveryInput {
   roomSlug: string;
   deviceId: string;
   repositories: ApplyReconnectRecoveryRepositories;
-  assetGateway: AssetGateway;
   mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
 }
 
@@ -29,7 +27,6 @@ export async function applyReconnectRecovery(input: ApplyReconnectRecoveryInput)
   const target = await buildPlaybackTarget({
     roomSlug: input.roomSlug,
     repositories: input.repositories,
-    assetGateway: input.assetGateway,
     ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {})
   });
 
@@ -41,7 +38,10 @@ export async function applyReconnectRecovery(input: ApplyReconnectRecoveryInput)
     };
   }
 
-  const asset = await input.repositories.assets.findById(target.assetId);
+  const asset = await input.repositories.playableMedia?.findPlayableBySource({
+    sourceType: target.sourceType,
+    assetId: target.assetId
+  });
   const canResumeNearPriorPosition =
     Boolean(asset) && target.resumePositionMs > 0 && target.resumePositionMs < Math.max((asset?.durationMs ?? 0) - 1000, 0);
 

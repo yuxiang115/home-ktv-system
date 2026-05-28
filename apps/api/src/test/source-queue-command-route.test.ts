@@ -1,12 +1,8 @@
 import Fastify from "fastify";
-import type { Asset, ControlSession, PlaybackSession, QueueEntry, Room, Song } from "@home-ktv/domain";
+import type { ControlSession, PlaybackSession, QueueEntry, Room } from "@home-ktv/domain";
 import { DEFAULT_ROOM_VOLUME_PERCENT } from "@home-ktv/player-contracts";
 import { describe, expect, it } from "vitest";
 import type { ApiConfig } from "../config.js";
-import { AssetGateway } from "../modules/assets/asset-gateway.js";
-import { MediaPathResolver } from "../modules/assets/media-path-resolver.js";
-import type { AssetRepository } from "../modules/catalog/repositories/asset-repository.js";
-import type { SongRepository } from "../modules/catalog/repositories/song-repository.js";
 import { InMemoryControlSessionRepository } from "../modules/controller/repositories/control-session-repository.js";
 import type { MediaGateway } from "../modules/media/media-gateway.js";
 import type { PlayableMediaAsset, PlayableMediaLookup, PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
@@ -113,7 +109,6 @@ async function createControlCommandServer(input: { playableMedia: readonly Playa
   const queueEntries = new InMemoryQueueEntryRepository();
   const playableMedia = new FakePlayableMediaRepository(input.playableMedia);
   const server = Fastify();
-  const assetRepository = new FakeAssetRepository();
   const mediaGateway: Pick<MediaGateway, "createPlaybackUrl"> = {
     createPlaybackUrl(source: PlayableMediaLookup) {
       return `http://ktv.local/media/${source.sourceType}/${source.assetId}`;
@@ -127,18 +122,11 @@ async function createControlCommandServer(input: { playableMedia: readonly Playa
       playbackSessions: new FakePlaybackSessionRepository(room.id),
       queueEntries,
       playableMedia,
-      assets: assetRepository,
-      songs: new FakeSongRepository(),
       pairingTokens: new InMemoryRoomPairingTokenRepository(),
       controlSessions: new InMemoryControlSessionRepository([createControlSession(room.id)]),
       controlCommands: new FakeRoomSessionCommandRepository(),
       deviceSessions: new FakeDeviceSessionRepository()
     },
-    assetGateway: new AssetGateway({
-      assetRepository,
-      mediaPathResolver: new MediaPathResolver({ mediaRoot: "/media-root" }),
-      publicBaseUrl: "http://ktv.local"
-    }),
     mediaGateway
   });
 
@@ -215,22 +203,6 @@ class FakePlayableMediaRepository implements PlayableMediaRepository {
 
   async findPlayableBySource(source: PlayableMediaLookup): Promise<PlayableMediaAsset | null> {
     return this.assets.find((asset) => asset.sourceType === source.sourceType && asset.assetId === source.assetId) ?? null;
-  }
-}
-
-class FakeAssetRepository implements AssetRepository {
-  async findById(): Promise<Asset | null> {
-    return null;
-  }
-
-  async findVerifiedSwitchCounterparts(): Promise<Asset[]> {
-    return [];
-  }
-}
-
-class FakeSongRepository implements SongRepository {
-  async findById(): Promise<Song | null> {
-    return null;
   }
 }
 

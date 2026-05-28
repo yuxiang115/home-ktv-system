@@ -21,7 +21,6 @@ describe("NAS media route", () => {
     });
 
     await registerMediaRoutes(server, {
-      assetGateway: createMissingAssetGateway(),
       mediaGateway
     });
 
@@ -51,7 +50,6 @@ describe("NAS media route", () => {
     });
 
     await registerMediaRoutes(server, {
-      assetGateway: createMissingAssetGateway(),
       mediaGateway
     });
 
@@ -64,14 +62,6 @@ describe("NAS media route", () => {
     expect(response.json()).toEqual({ error: "MEDIA_SOURCE_NOT_READY" });
   });
 });
-
-function createMissingAssetGateway() {
-  return {
-    async resolveForStreaming() {
-      return { ok: false as const, statusCode: 404 as const, code: "ASSET_NOT_FOUND" as const };
-    }
-  };
-}
 
 class FakePlayableMediaRepository implements PlayableMediaRepository {
   constructor(private readonly asset: PlayableMediaAsset | null) {}

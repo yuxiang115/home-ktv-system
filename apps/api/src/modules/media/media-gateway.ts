@@ -1,5 +1,5 @@
 import type { AssetId, SongSourceType } from "@home-ktv/domain";
-import { inferVideoContentType } from "../assets/asset-gateway.js";
+import { inferVideoContentType } from "./content-type.js";
 import type { MediaPathResolution, MediaPathResolver } from "../assets/media-path-resolver.js";
 import type { PlayableMediaLookup, PlayableMediaRepository } from "./playable-media-repository.js";
 

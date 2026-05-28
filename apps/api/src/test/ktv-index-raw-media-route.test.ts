@@ -18,7 +18,6 @@ describe("KTV index raw media route", () => {
     const server = Fastify();
 
     await registerMediaRoutes(server, {
-      assetGateway: createMissingAssetGateway(),
       ktvIndexRawAssets: new FakeRawAssetRepository({
         id: "ktv-asset-1",
         filePath: mediaPath
@@ -40,14 +39,6 @@ describe("KTV index raw media route", () => {
     expect(response.body).toBe("2345");
   });
 });
-
-function createMissingAssetGateway() {
-  return {
-    async resolveForStreaming() {
-      return { ok: false as const, statusCode: 404 as const, code: "ASSET_NOT_FOUND" as const };
-    }
-  };
-}
 
 class FakeRawAssetRepository implements KtvIndexRawAssetRepository {
   constructor(private readonly row: KtvIndexRawAssetRow | null) {}
