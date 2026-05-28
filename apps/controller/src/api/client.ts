@@ -127,21 +127,11 @@ export async function fetchControlSnapshot(input: {
 }
 
 export async function addQueueEntry(
-  input: CommandBaseInput &
-    (
-      | { songId: string; assetId?: string; indexedAssetId?: never }
-      | { indexedAssetId: string; songId?: never; assetId?: never }
-    )
+  input: CommandBaseInput & { sourceType: "nas" | "online"; assetId: string }
 ) {
-  if ("indexedAssetId" in input) {
-    return sendCommand(input, "add-queue-entry", {
-      indexedAssetId: input.indexedAssetId
-    });
-  }
-
   return sendCommand(input, "add-queue-entry", {
-    songId: input.songId,
-    ...(input.assetId ? { assetId: input.assetId } : {})
+    sourceType: input.sourceType,
+    assetId: input.assetId
   });
 }
 
