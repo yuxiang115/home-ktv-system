@@ -46,6 +46,7 @@ import {
   createPgRuntimeRepositories,
   type RuntimeRepositories
 } from "./runtime/pg-runtime-repositories.js";
+import { createLocalMediaCatalog, type LocalMediaCatalog } from "./runtime/local-media-catalog.js";
 import { registerHealthRoutes } from "./routes/health.js";
 import { registerCors } from "./routes/cors.js";
 import { PgKtvIndexSyncedSourceLookup, registerAdminCatalogRoutes } from "./routes/admin-catalog.js";
@@ -106,7 +107,7 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
   const pool = resolvedConfig.databaseUrl ? (options.poolFactory ?? createPgPool)(resolvedConfig.databaseUrl) : null;
   const repositories = pool
     ? createPgRuntimeRepositories(pool, { mediaPathMappings: resolvedConfig.mediaPathMappings })
-    : createInMemoryRepositories(room, session);
+    : await createInMemoryRepositories(room, session, resolvedConfig);
   const onlineRuntime = createOnlineRuntime({
     config: resolvedConfig,
     pool,
@@ -312,8 +313,14 @@ function createRuntimeIngest(input: {
   };
 }
 
-function createInMemoryRepositories(room: Room, session: PlaybackSession): RuntimeRepositories {
-  return new InMemoryRuntimeRepositories(room, session);
+async function createInMemoryRepositories(room: Room, session: PlaybackSession, config: ApiConfig): Promise<RuntimeRepositories> {
+  const localCatalog = config.mediaRoot
+    ? await createLocalMediaCatalog({
+        mediaRoot: config.mediaRoot,
+        mediaPathMappings: config.mediaPathMappings
+      })
+    : null;
+  return new InMemoryRuntimeRepositories(room, session, localCatalog);
 }
 
 class InMemoryRuntimeRepositories implements RuntimeRepositories {
@@ -322,20 +329,9 @@ class InMemoryRuntimeRepositories implements RuntimeRepositories {
     findBySlug: async (slug) => (slug === this.room.slug ? this.room : null)
   };
 
-  readonly assets: AssetRepository = {
-    findById: async () => null,
-    findVerifiedSwitchCounterparts: async () => []
-  };
+  readonly assets: AssetRepository;
 
-  readonly songs: SongRepository & AdminCatalogSongRepository = {
-    findById: async () => null,
-    listFormalSongs: async () => [],
-    getFormalSongWithAssets: async () => null,
-    searchFormalSongs: async () => [],
-    updateSongMetadata: async () => null,
-    updateDefaultAsset: async () => null,
-    updateSongStatus: async () => null
-  };
+  readonly songs: SongRepository & AdminCatalogSongRepository;
 
   readonly pairingTokens = new InMemoryRoomPairingTokenRepository();
   readonly controlSessions = new InMemoryControlSessionRepository();
@@ -368,8 +364,24 @@ class InMemoryRuntimeRepositories implements RuntimeRepositories {
 
   constructor(
     private readonly room: Room,
-    private session: PlaybackSession
-  ) {}
+    private session: PlaybackSession,
+    localCatalog: LocalMediaCatalog | null = null
+  ) {
+    this.assets = localCatalog?.assets ?? {
+      findById: async () => null,
+      findVerifiedSwitchCounterparts: async () => []
+    };
+
+    this.songs = localCatalog?.songs ?? {
+      findById: async () => null,
+      listFormalSongs: async () => [],
+      getFormalSongWithAssets: async () => null,
+      searchFormalSongs: async () => [],
+      updateSongMetadata: async () => null,
+      updateDefaultAsset: async () => null,
+      updateSongStatus: async () => null
+    };
+  }
 
   async findByRoomId(roomId: string): Promise<PlaybackSession | null> {
     return roomId === this.room.id ? this.session : null;

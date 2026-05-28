@@ -92,6 +92,18 @@ adb shell am start -W \
 
 ## 基线验证
 
+每次重新编译并启动 Web TV / Controller / API 后，先运行一次 smoke check，再让人手工测试：
+
+```bash
+pnpm deploy:smoke -- \
+  --api-base-url http://<电脑局域网IP>:4000 \
+  --controller-base-url http://<电脑局域网IP>:5176 \
+  --tv-web-base-url http://<电脑局域网IP>:5173 \
+  --room living-room
+```
+
+它会检查 CORS、Web TV 页面、控制端页面、TV bootstrap/heartbeat、控制端快照里的 `tvPresence.online`，以及歌曲推荐是否非空。
+
 1. `http://<电脑局域网IP>:4000/health` 返回 JSON。
 2. 后台 `Room` 页面能看到 TV 在线。
 3. Android TV 空闲页显示二维码。

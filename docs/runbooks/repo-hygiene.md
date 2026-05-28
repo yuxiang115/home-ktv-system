@@ -55,6 +55,7 @@ pnpm repo:hygiene -- --fail-on-dirty
 - 不用 `any` 逃避类型：确实需要接未知外部输入时用 `unknown`，在边界处收窄。
 - UI 变更必须配套可回归的行为测试；涉及 TV/控制端联动时，至少覆盖协议、runtime 和展示层中的关键路径。
 - 提交前至少运行受影响包的测试和构建；改动跨包协议时优先跑 API、controller、tv-web 的相关测试。
+- 每次重新编译部署 Web TV / Controller / API 后，必须先跑 `pnpm deploy:smoke -- ...` 验证 CORS、TV bootstrap/heartbeat、控制端看到 TV 在线、推荐列表非空，再通知测试。
 
 ## 真实歌库索引
 

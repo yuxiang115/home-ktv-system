@@ -18,6 +18,7 @@
     "repo:hygiene": "node scripts/tools/repo-hygiene-check.mjs",
     "deploy:docker": "bash deploy/docker/ktv.sh",
     "deploy:source": "bash deploy/source/ktv.sh",
+    "deploy:smoke": "node scripts/tools/web-deploy-smoke.mjs",
     "hot-songs:sources": "pnpm -F @home-ktv/hot-songs collect-sources",
     "hot-songs:normalize": "pnpm -F @home-ktv/hot-songs normalize",
     "hot-songs:fuse": "pnpm -F @home-ktv/hot-songs fuse",

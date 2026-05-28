@@ -3,6 +3,7 @@ import type { QueryExecutor } from "../db/query-executor.js";
 import {
   KtvStyleTaggingService,
   type KtvStyleTagger,
+  type KtvStyleTaggingProgressEvent,
   type KtvStyleTaggingSong
 } from "../modules/ktv-index/ktv-style-tagging-service.js";
 
@@ -65,7 +66,7 @@ describe("KtvStyleTaggingService", () => {
 
   it("reports progress after each processed song", async () => {
     const db = new FakeStyleTaggingDb();
-    const progress: Array<Record<string, unknown>> = [];
+    const progress: KtvStyleTaggingProgressEvent[] = [];
     const service = new KtvStyleTaggingService(db, {
       tagger: new FakeTagger(),
       now: () => 1000

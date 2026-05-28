@@ -6,7 +6,7 @@ coverage/
 .env
 .env.local
 logs/
-runtime/
+/runtime/
 home-ktv-media/
 songs-sample/
 .codex/
