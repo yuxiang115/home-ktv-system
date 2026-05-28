@@ -58,10 +58,11 @@ export async function registerSongDiscoveryRoutes(
           queuedSongIds: queue.map((entry) => entry.songId)
         }));
       const songsWithCovers = await attachCoverImageUrls(songs, dependencies.coverCache);
+      const weightedRecommendations = selectWeightedSongs(songsWithCovers, limit, seed);
 
       const response: SongDiscoveryResponse = {
         seed,
-        recommended: selectWeightedSongs(songsWithCovers, limit, seed),
+        recommended: surfaceCoveredSongs(weightedRecommendations, songsWithCovers, limit, seed),
         artists: buildArtistModules(songsWithCovers),
         genres: buildGenreModules(songsWithCovers)
       };
@@ -230,6 +231,59 @@ function selectWeightedSongs(songs: readonly SongDiscoverySong[], limit: number,
   }
 
   return selected;
+}
+
+function surfaceCoveredSongs(
+  selected: readonly SongDiscoverySong[],
+  candidates: readonly SongDiscoverySong[],
+  limit: number,
+  seed: string
+): SongDiscoverySong[] {
+  const targetCoverCount = Math.min(6, limit, candidates.filter(hasCoverImage).length);
+  const currentCoverCount = selected.filter(hasCoverImage).length;
+  if (currentCoverCount >= targetCoverCount) {
+    return [...selected];
+  }
+
+  const selectedIds = new Set(selected.map((song) => song.songId));
+  const additionalCoveredSongs = selectWeightedSongs(
+    candidates.filter((song) => hasCoverImage(song) && !selectedIds.has(song.songId)),
+    targetCoverCount - currentCoverCount,
+    `${seed}:covers`
+  );
+  if (additionalCoveredSongs.length === 0) {
+    return [...selected];
+  }
+
+  const selectedWithReplacementSlots = [...selected];
+  const promotedSongs: SongDiscoverySong[] = [];
+  for (const coveredSong of additionalCoveredSongs) {
+    const replacementIndex = lastUncoveredSongIndex(selectedWithReplacementSlots);
+    if (replacementIndex < 0) {
+      break;
+    }
+    selectedWithReplacementSlots.splice(replacementIndex, 1);
+    promotedSongs.push(coveredSong);
+  }
+
+  if (promotedSongs.length === 0) {
+    return [...selected];
+  }
+
+  return [...promotedSongs, ...selectedWithReplacementSlots].slice(0, limit);
+}
+
+function hasCoverImage(song: SongDiscoverySong): boolean {
+  return typeof song.coverImageUrl === "string" && song.coverImageUrl.length > 0;
+}
+
+function lastUncoveredSongIndex(songs: readonly SongDiscoverySong[]): number {
+  for (let index = songs.length - 1; index >= 0; index -= 1) {
+    if (!hasCoverImage(songs[index]!)) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 function buildArtistModules(songs: readonly SongDiscoverySong[]): SongDiscoveryArtist[] {

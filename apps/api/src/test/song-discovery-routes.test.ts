@@ -213,6 +213,36 @@ describe("song discovery routes", () => {
     );
   });
 
+  it("surfaces covered songs in recommendations when weighted selection misses them", async () => {
+    const { server } = await createHarness({
+      searchResults: [
+        createSearchRecord({ id: "song-1", title: "歌曲1", artistId: "artist-a", artistName: "歌手A", genre: ["流行"] }),
+        createSearchRecord({ id: "song-2", title: "歌曲2", artistId: "artist-b", artistName: "歌手B", genre: ["流行"] }),
+        createSearchRecord({ id: "song-3", title: "歌曲3", artistId: "artist-c", artistName: "歌手C", genre: ["流行"] }),
+        createSearchRecord({ id: "song-4", title: "歌曲4", artistId: "artist-d", artistName: "歌手D", genre: ["流行"] }),
+        createSearchRecord({ id: "song-5", title: "歌曲5", artistId: "artist-e", artistName: "歌手E", genre: ["流行"] }),
+        createSearchRecord({ id: "song-6", title: "歌曲6", artistId: "artist-f", artistName: "歌手F", genre: ["流行"] }),
+        createSearchRecord({ id: "song-7", title: "歌曲7", artistId: "artist-g", artistName: "歌手G", genre: ["流行"] }),
+        createSearchRecord({ id: "song-8", title: "歌曲8", artistId: "artist-h", artistName: "歌手H", genre: ["流行"] })
+      ],
+      coverEntries: {
+        "formal:song-2": "https://cover.example/song-2.jpg",
+        "formal:song-3": "https://cover.example/song-3.jpg"
+      }
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/rooms/living-room/songs/discovery?seed=covers-surface&limit=3"
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<SongDiscoveryResponse>();
+    expect(body.recommended).toHaveLength(3);
+    expect(body.recommended.map((song) => song.songId)).toEqual(expect.arrayContaining(["song-2", "song-3"]));
+    expect(body.recommended.filter((song) => song.coverImageUrl).map((song) => song.songId)).toEqual(["song-2", "song-3"]);
+  });
+
   it("uses indexed song ids when looking up cached KTV index covers", async () => {
     const { server, coverCache } = await createHarness({
       searchResults: [],
