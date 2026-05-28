@@ -2,6 +2,7 @@ node_modules/
 dist/
 coverage/
 .turbo/
+.DS_Store
 .env
 .env.local
 logs/
@@ -17,3 +18,4 @@ clients/android-tv/.idea/
 clients/android-tv/.kotlin/
 clients/android-tv/app/build/
 clients/android-tv/local.properties
+HomeKTV/.idea/

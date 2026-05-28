@@ -141,7 +141,7 @@ export class PlayerClient {
 
 export function createBrowserPlayerClient(): PlayerClient {
   return new PlayerClient({
-    apiBaseUrl: readRuntimeSetting("apiBaseUrl", globalThis.location?.origin ?? ""),
+    apiBaseUrl: readRuntimeSetting("apiBaseUrl", readDefaultApiBaseUrl()),
     deviceId: readRuntimeSetting("deviceId", "") || readOrCreateDeviceId(),
     deviceName: readRuntimeSetting("deviceName", "Living Room TV"),
     roomSlug: readRuntimeSetting("roomSlug", "living-room")
@@ -164,6 +164,26 @@ function readRuntimeSetting(key: string, fallback: string): string {
   }
 
   return fallback;
+}
+
+function readDefaultApiBaseUrl(): string {
+  const configured = import.meta.env.VITE_API_BASE_URL;
+  if (configured) {
+    return configured;
+  }
+
+  const origin = globalThis.location?.origin ?? "";
+  try {
+    const url = new URL(origin);
+    if (["4173", "4273", "5173"].includes(url.port)) {
+      url.port = "4002";
+      return url.toString().replace(/\/$/u, "");
+    }
+  } catch {
+    return origin;
+  }
+
+  return origin;
 }
 
 function readOrCreateDeviceId(): string {

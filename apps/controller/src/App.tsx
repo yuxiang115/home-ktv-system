@@ -1,3 +1,6 @@
+import type { SongDiscoveryArtist, SongDiscoveryGenre, SongDiscoverySong, SongSearchLocalResult } from "@home-ktv/domain";
+import type { RoomInteractionKind } from "@home-ktv/player-contracts";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   candidateTypeName,
   I18nProvider,
@@ -9,7 +12,7 @@ import {
   useI18n,
   vocalModeName
 } from "./i18n.js";
-import { supplementKey, useRoomController } from "./runtime/use-room-controller.js";
+import { supplementKey, useRoomController, type RoomControllerState } from "./runtime/use-room-controller.js";
 
 export function App() {
   return (
@@ -24,8 +27,6 @@ function ControllerApp() {
   const controller = useRoomController();
   const snapshot = controller.snapshot;
   const current = snapshot?.currentTarget;
-  const online = controller.songSearch?.online;
-  const indexed = controller.songSearch?.indexed ?? null;
   const indexedSourceFallbackLabel = "KTV索引";
   const switchTarget = snapshot?.switchTarget;
   const targetVocalMode =
@@ -37,9 +38,566 @@ function ControllerApp() {
   const playbackLabel = snapshot ? playbackStateName(snapshot?.state, t) : t("current.connecting");
   const noticeMessage = snapshot?.notice?.message;
   const volumePercent = controller.volumePercent;
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchHistory, setSearchHistory] = useState(() => readSearchHistory());
+  const [browseView, setBrowseView] = useState<BrowseView>({ kind: "home" });
+  const [activeTab, setActiveTab] = useState<ControllerTab>("home");
+  const [interactionComposer, setInteractionComposer] = useState<RoomInteractionKind | null>(null);
+  const discovery = controller.songDiscovery;
+  const visibleArtists = discovery?.artists.slice(0, 6) ?? [];
+  const visibleGenres = discovery?.genres.slice(0, 6) ?? [];
 
   return (
-    <main className="app-shell" aria-label={t("app.aria")}>
+    <main className={`app-shell app-shell--${activeTab}`} aria-label={t("app.aria")}>
+      <AppNotices controller={controller} noticeMessage={noticeMessage} t={t} />
+
+      {activeTab === "home" ? (
+        <HomeScreen
+          controller={controller}
+          discovery={discovery}
+          browseView={browseView}
+          setBrowseView={setBrowseView}
+          setInteractionComposer={setInteractionComposer}
+          setSearchOpen={setSearchOpen}
+          t={t}
+          visibleArtists={visibleArtists}
+          visibleGenres={visibleGenres}
+        />
+      ) : (
+        <ControlScreen
+          controller={controller}
+          current={current}
+          currentModeLabel={currentModeLabel}
+          playbackLabel={playbackLabel}
+          snapshot={snapshot}
+          switchLabel={switchLabel}
+          t={t}
+          volumePercent={volumePercent}
+        />
+      )}
+
+      {searchOpen ? (
+        <SearchOverlay
+          controller={controller}
+          history={searchHistory}
+          indexedSourceFallbackLabel={indexedSourceFallbackLabel}
+          onClose={() => setSearchOpen(false)}
+          onClearHistory={() => {
+            writeSearchHistory([]);
+            setSearchHistory([]);
+          }}
+          onCommitHistory={(query) => {
+            const nextHistory = commitSearchHistory(searchHistory, query);
+            writeSearchHistory(nextHistory);
+            setSearchHistory(nextHistory);
+          }}
+          t={t}
+        />
+      ) : null}
+
+      {interactionComposer ? (
+        <InteractionComposer
+          controller={controller}
+          kind={interactionComposer}
+          onClose={() => setInteractionComposer(null)}
+          t={t}
+        />
+      ) : null}
+
+      {controller.skipConfirmOpen ? (
+        <div className="modal-backdrop">
+          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="skip-title">
+            <h2 id="skip-title">{t("dialog.skipTitle")}</h2>
+            <p>{t("dialog.skipBody", { title: current?.currentQueueEntryPreview.songTitle ?? t("current.eyebrow") })}</p>
+            <div className="command-row">
+              <button className="secondary-button" type="button" onClick={controller.cancelSkip}>
+                {t("button.cancel")}
+              </button>
+              <button className="danger-button" type="button" onClick={() => void controller.confirmSkip()}>
+                {t("button.confirm")}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {controller.duplicateConfirm ? (
+        <div className="modal-backdrop">
+          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="duplicate-title">
+            <h2 id="duplicate-title">{t("dialog.duplicateTitle")}</h2>
+            <p>{t("dialog.duplicateBody", { title: controller.duplicateConfirm.title })}</p>
+            <div className="command-row">
+              <button className="secondary-button" type="button" onClick={controller.cancelDuplicateAdd}>
+                {t("button.cancel")}
+              </button>
+              <button className="primary-button" type="button" onClick={() => void controller.confirmDuplicateAdd()}>
+                {t("button.confirmAddAgain")}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      <BottomTabs activeTab={activeTab} setActiveTab={setActiveTab} t={t} />
+    </main>
+  );
+}
+
+function AppNotices({
+  controller,
+  noticeMessage,
+  t
+}: {
+  controller: RoomControllerState;
+  noticeMessage: string | undefined;
+  t: TFunction;
+}) {
+  return (
+    <>
+      {controller.connectionStatus === "reconnecting" ? (
+        <div className="offline-banner">{t("status.reconnecting")}</div>
+      ) : null}
+      {controller.errorMessage ? <div className="error-banner">{controller.errorMessage}</div> : null}
+      {noticeMessage ? <div className="error-banner">{noticeMessage}</div> : null}
+    </>
+  );
+}
+
+function HomeScreen({
+  browseView,
+  controller,
+  discovery,
+  setBrowseView,
+  setInteractionComposer,
+  setSearchOpen,
+  t,
+  visibleArtists,
+  visibleGenres
+}: {
+  browseView: BrowseView;
+  controller: RoomControllerState;
+  discovery: RoomControllerState["songDiscovery"];
+  setBrowseView(view: BrowseView): void;
+  setInteractionComposer(kind: RoomInteractionKind): void;
+  setSearchOpen(open: boolean): void;
+  t: TFunction;
+  visibleArtists: readonly SongDiscoveryArtist[];
+  visibleGenres: readonly SongDiscoveryGenre[];
+}) {
+  if (browseView.kind !== "home") {
+    return (
+      <DiscoveryBrowseView
+        controller={controller}
+        discovery={discovery}
+        setBrowseView={setBrowseView}
+        t={t}
+        view={browseView}
+      />
+    );
+  }
+
+  return (
+    <>
+      <section className="home-search-section" aria-label={t("search.aria")}>
+        <button className="home-search-button" type="button" aria-label={t("search.openAria")} onClick={() => setSearchOpen(true)}>
+          <span className="home-search-icon" aria-hidden="true" />
+          <span>{controller.songSearchQuery || t("search.placeholder")}</span>
+        </button>
+        {controller.songSearchStatus === "loading" ? <span className="search-status">{t("search.loading")}</span> : null}
+      </section>
+
+      <section className="home-category-section" aria-label={t("discovery.categories")}>
+        <CategoryCard
+          className="category-card--artist"
+          label={t("discovery.artists")}
+          meta={t("discovery.artistCardHint", { count: discovery?.artists.length ?? 0 })}
+          onClick={() => setBrowseView({ kind: "artists" })}
+          preview={visibleArtists.map((artist) => artist.artistName)}
+        />
+        <CategoryCard
+          className="category-card--genre"
+          label={t("discovery.genres")}
+          meta={t("discovery.genreCardHint", { count: discovery?.genres.length ?? 0 })}
+          onClick={() => setBrowseView({ kind: "genres" })}
+          preview={visibleGenres.map((genre) => genre.genre)}
+        />
+      </section>
+
+      <section className="home-shortcut-section" aria-label={t("shortcut.aria")}>
+        <ShortcutAction className="shortcut-action--emoji" label={t("shortcut.emoji")} icon="emoji" onClick={() => setInteractionComposer("emoji")} />
+        <ShortcutAction className="shortcut-action--bullet" label={t("shortcut.bullet")} icon="bullet" onClick={() => setInteractionComposer("bullet")} />
+        <ShortcutAction className="shortcut-action--blessing" label={t("shortcut.blessing")} icon="blessing" onClick={() => setInteractionComposer("blessing")} />
+      </section>
+
+      <section className="recommendation-panel home-recommendations" aria-label={t("discovery.recommendations")}>
+        <div className="panel-heading">
+          <h2>{t("discovery.recommendations")}</h2>
+          <button className="secondary-button compact-button" type="button" onClick={controller.refreshSongDiscovery}>
+            {t("button.refreshRecommendations")}
+          </button>
+        </div>
+        <div className="song-list recommendation-list">
+          {discovery?.recommended.map((song) => (
+            <DiscoverySongRow controller={controller} key={song.songId} song={song} t={t} />
+          ))}
+          {controller.songDiscoveryStatus === "loading" && !discovery ? (
+            <p className="empty-state local-empty">{t("discovery.loading")}</p>
+          ) : null}
+          {discovery && discovery.recommended.length === 0 ? (
+            <p className="empty-state local-empty">{t("discovery.emptyRecommendations")}</p>
+          ) : null}
+        </div>
+      </section>
+    </>
+  );
+}
+
+function CategoryCard({
+  className,
+  label,
+  meta,
+  onClick,
+  preview
+}: {
+  className: string;
+  label: string;
+  meta: string;
+  onClick(): void;
+  preview?: readonly string[];
+}) {
+  return (
+    <button className={`category-card ${className}`} type="button" onClick={onClick}>
+      <span className="category-card__label">{label}</span>
+      <span className="category-card__meta">{meta}</span>
+      {preview && preview.length > 0 ? (
+        <span className="category-card__preview">
+          {preview.slice(0, 3).map((item) => (
+            <span key={item}>{item}</span>
+          ))}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function ShortcutAction({
+  className,
+  icon,
+  label,
+  onClick
+}: {
+  className: string;
+  icon: "emoji" | "bullet" | "blessing";
+  label: string;
+  onClick(): void;
+}) {
+  return (
+    <button className={`shortcut-action ${className}`} type="button" onClick={onClick}>
+      <span className={`shortcut-action__icon shortcut-action__icon--${icon}`} aria-hidden="true" />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function InteractionComposer({
+  controller,
+  kind,
+  onClose,
+  t
+}: {
+  controller: RoomControllerState;
+  kind: RoomInteractionKind;
+  onClose(): void;
+  t: TFunction;
+}) {
+  const presets = interactionPresets(kind, t);
+  const [message, setMessage] = useState(presets[0] ?? "");
+  const title = interactionTitle(kind, t);
+  const isPending = controller.pendingInteractionKind === kind;
+  const maxLength = kind === "emoji" ? 8 : kind === "bullet" ? 60 : 80;
+  const emojiPressState = useRef<{
+    intervalId: number | null;
+    repeatActive: boolean;
+    startTimeoutId: number | null;
+    stopTimeoutId: number | null;
+    suppressClick: boolean;
+  }>({
+    intervalId: null,
+    repeatActive: false,
+    startTimeoutId: null,
+    stopTimeoutId: null,
+    suppressClick: false
+  });
+
+  const clearEmojiRepeat = useCallback(() => {
+    const state = emojiPressState.current;
+    if (state.startTimeoutId) {
+      clearTimeout(state.startTimeoutId);
+      state.startTimeoutId = null;
+    }
+    if (state.intervalId) {
+      clearInterval(state.intervalId);
+      state.intervalId = null;
+    }
+    if (state.stopTimeoutId) {
+      clearTimeout(state.stopTimeoutId);
+      state.stopTimeoutId = null;
+    }
+    state.repeatActive = false;
+  }, []);
+
+  useEffect(() => clearEmojiRepeat, [clearEmojiRepeat]);
+
+  const submit = useCallback(
+    async (value = message, options?: { closeAfterSend?: boolean }) => {
+      const normalized = value.trim();
+      if (!normalized || isPending) {
+        return;
+      }
+      await controller.sendInteraction(kind, normalized);
+      if (options?.closeAfterSend ?? kind !== "emoji") {
+        onClose();
+      }
+    },
+    [controller, isPending, kind, message, onClose]
+  );
+
+  const sendEmoji = useCallback(
+    (emoji: string) => {
+      void submit(emoji, { closeAfterSend: false });
+    },
+    [submit]
+  );
+
+  const handleEmojiPressStart = useCallback(
+    (emoji: string) => {
+      clearEmojiRepeat();
+      const state = emojiPressState.current;
+      state.suppressClick = false;
+      state.startTimeoutId = window.setTimeout(() => {
+        const repeatState = emojiPressState.current;
+        repeatState.repeatActive = true;
+        repeatState.suppressClick = true;
+        repeatState.intervalId = window.setInterval(() => {
+          sendEmoji(emoji);
+        }, 200);
+        repeatState.stopTimeoutId = window.setTimeout(() => {
+          clearEmojiRepeat();
+          repeatState.suppressClick = true;
+        }, 5000);
+      }, 1000);
+    },
+    [clearEmojiRepeat, sendEmoji]
+  );
+
+  const handleEmojiPressEnd = useCallback(() => {
+    const state = emojiPressState.current;
+    if (state.startTimeoutId) {
+      clearTimeout(state.startTimeoutId);
+      state.startTimeoutId = null;
+    }
+    if (state.repeatActive) {
+      state.suppressClick = true;
+    }
+    if (state.intervalId) {
+      clearInterval(state.intervalId);
+      state.intervalId = null;
+    }
+    if (state.stopTimeoutId) {
+      clearTimeout(state.stopTimeoutId);
+      state.stopTimeoutId = null;
+    }
+    state.repeatActive = false;
+  }, []);
+
+  const handleEmojiClick = useCallback(
+    (emoji: string) => {
+      const state = emojiPressState.current;
+      if (state.suppressClick) {
+        state.suppressClick = false;
+        return;
+      }
+      sendEmoji(emoji);
+    },
+    [sendEmoji]
+  );
+
+  const handleEmojiPointerCancel = useCallback(() => {
+    handleEmojiPressEnd();
+  }, [handleEmojiPressEnd]);
+
+  const handleEmojiPointerLeave = useCallback(() => {
+    handleEmojiPressEnd();
+  }, [handleEmojiPressEnd]);
+
+  const submitForm = async (value = message) => {
+    const normalized = value.trim();
+    if (!normalized || isPending) {
+      return;
+    }
+    await submit(normalized, { closeAfterSend: false });
+  };
+
+  return (
+    <div className="modal-backdrop modal-backdrop--sheet">
+      <section
+        className={`modal interaction-sheet interaction-sheet--${kind} interaction-composer`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="interaction-title"
+      >
+        <div className="interaction-sheet__header">
+          <div className="interaction-sheet__title-block">
+            <span className="interaction-sheet__mark" aria-hidden="true" />
+            <h2 id="interaction-title">{title}</h2>
+          </div>
+          <button className="secondary-button compact-button" type="button" onClick={onClose}>
+            {t("button.close")}
+          </button>
+        </div>
+
+        <div className="interaction-sheet__body">
+          <div className={kind === "emoji" ? "interaction-preset-grid emoji-grid" : "interaction-preset-grid"}>
+            {presets.map((preset) => (
+              <button
+                className={kind === "emoji" ? "interaction-option interaction-option--emoji" : "interaction-option"}
+                key={preset}
+                type="button"
+                disabled={isPending}
+                onClick={() => (kind === "emoji" ? handleEmojiClick(preset) : setMessage(preset))}
+                onPointerCancel={kind === "emoji" ? handleEmojiPointerCancel : undefined}
+                onPointerDown={kind === "emoji" ? () => handleEmojiPressStart(preset) : undefined}
+                onPointerLeave={kind === "emoji" ? handleEmojiPointerLeave : undefined}
+                onPointerUp={kind === "emoji" ? handleEmojiPressEnd : undefined}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {kind !== "emoji" ? (
+          <form
+            className="interaction-sheet__footer interaction-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitForm();
+            }}
+          >
+            <input
+              aria-label={t("interaction.inputAria")}
+              className="interaction-input"
+              maxLength={maxLength}
+              value={message}
+              onChange={(event) => setMessage(event.currentTarget.value)}
+              placeholder={t("interaction.placeholder")}
+            />
+            <button className="primary-button" type="submit" disabled={isPending || message.trim().length === 0}>
+              {isPending ? t("button.submitting") : t("interaction.send")}
+            </button>
+          </form>
+        ) : (
+          <footer className="interaction-sheet__footer interaction-sheet__footer--emoji">
+            <button className="secondary-button" type="button" onClick={onClose}>
+              {t("button.close")}
+            </button>
+          </footer>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function interactionTitle(kind: RoomInteractionKind, t: TFunction): string {
+  if (kind === "emoji") {
+    return t("interaction.emojiTitle");
+  }
+  if (kind === "bullet") {
+    return t("interaction.bulletTitle");
+  }
+  return t("interaction.blessingTitle");
+}
+
+function interactionPresets(kind: RoomInteractionKind, t: TFunction): string[] {
+  if (kind === "emoji") {
+    return [
+      "😀",
+      "😂",
+      "😍",
+      "🥳",
+      "😎",
+      "🤯",
+      "👏",
+      "🙌",
+      "👍",
+      "🤘",
+      "💪",
+      "🙏",
+      "🎤",
+      "🎧",
+      "🎸",
+      "🥁",
+      "🎹",
+      "🎶",
+      "🎉",
+      "🎊",
+      "✨",
+      "🔥",
+      "💥",
+      "🌟",
+      "🚀",
+      "🏆",
+      "👑",
+      "💎",
+      "🪩",
+      "📣",
+      "🍻",
+      "🍰",
+      "🍓",
+      "☕",
+      "🍿",
+      "🍭",
+      "❤️",
+      "💯",
+      "✅",
+      "⚡",
+      "🌀",
+      "🔔",
+      "🌈",
+      "🌙",
+      "☀️",
+      "🌊",
+      "🎈",
+      "🎁"
+    ];
+  }
+  if (kind === "bullet") {
+    return [t("interaction.bulletPreset1"), t("interaction.bulletPreset2"), t("interaction.bulletPreset3")];
+  }
+  return [t("interaction.blessingPreset1"), t("interaction.blessingPreset2"), t("interaction.blessingPreset3")];
+}
+
+function ControlScreen({
+  controller,
+  current,
+  currentModeLabel,
+  playbackLabel,
+  snapshot,
+  switchLabel,
+  t,
+  volumePercent
+}: {
+  controller: RoomControllerState;
+  current: NonNullable<RoomControllerState["snapshot"]>["currentTarget"] | undefined;
+  currentModeLabel: string;
+  playbackLabel: string;
+  snapshot: RoomControllerState["snapshot"];
+  switchLabel: string;
+  t: TFunction;
+  volumePercent: number;
+}) {
+  return (
+    <>
       <header className="top-bar">
         <div>
           <p className="eyebrow">{controller.roomSlug}</p>
@@ -52,13 +610,6 @@ function ControllerApp() {
           <LanguageSwitch />
         </div>
       </header>
-
-      {controller.connectionStatus === "reconnecting" ? (
-        <div className="offline-banner">{t("status.reconnecting")}</div>
-      ) : null}
-
-      {controller.errorMessage ? <div className="error-banner">{controller.errorMessage}</div> : null}
-      {noticeMessage ? <div className="error-banner">{noticeMessage}</div> : null}
 
       <section className="panel current-panel" aria-label={t("current.aria")}>
         <div>
@@ -101,236 +652,6 @@ function ControllerApp() {
         </div>
       </section>
 
-      <section className="panel search-panel" aria-label={t("search.aria")}>
-        <div className="panel-heading">
-          <h2>{t("search.title")}</h2>
-          {controller.songSearchStatus === "loading" ? <span className="search-status">{t("search.loading")}</span> : null}
-        </div>
-        <form
-          role="search"
-          className="search-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            controller.submitSongSearch();
-          }}
-        >
-          <input
-            aria-label={t("search.inputAria")}
-            className="search-input"
-            value={controller.songSearchQuery}
-            onChange={(event) => controller.setSongSearchQuery(event.currentTarget.value)}
-            placeholder={t("search.placeholder")}
-          />
-          <button className="primary-button" type="submit">{t("search.submit")}</button>
-        </form>
-
-        <div className="song-list">
-          {controller.songSearch?.local.map((result) => {
-            const isQueued = result.queueState === "queued";
-            const statusLabel = isQueued ? t("search.queued") : t("search.localPlayable");
-            const primaryVersion = result.versions[0] ?? null;
-            const primaryCanQueue = primaryVersion ? primaryVersion.canQueue !== false : false;
-            const primaryDisabledLabel = primaryVersion ? disabledVersionLabel(primaryVersion) : "暂不可播放";
-
-            return (
-              <article className="song-row search-result-row" key={result.songId}>
-                <div className="result-main">
-                  <strong>{result.title}</strong>
-                  <p>{result.artistName}</p>
-                  <div className="result-meta">
-                    <span className={isQueued ? "queued-badge" : "local-badge"}>{statusLabel}</span>
-                    <span>{t("search.versionCount", { count: result.versions.length })}</span>
-                    {primaryVersion && !primaryCanQueue ? (
-                      <span className="version-option__status">{primaryDisabledLabel}</span>
-                    ) : null}
-                  </div>
-                </div>
-
-                {result.versions.length === 1 && primaryVersion ? (
-                  <button
-                    className="primary-button"
-                    type="button"
-                    disabled={!primaryCanQueue}
-                    onClick={() =>
-                      primaryCanQueue
-                        ? controller.requestAddSongVersion(
-                            result.songId,
-                            primaryVersion.assetId,
-                            result.title,
-                            result.queueState
-                          )
-                        : undefined
-                    }
-                  >
-                    {primaryCanQueue ? (isQueued ? t("button.addAgain") : t("button.add")) : primaryDisabledLabel}
-                  </button>
-                ) : null}
-
-                {result.versions.length > 1 ? (
-                  <div className="version-list">
-                    {result.versions.map((version) => {
-                      const canQueue = version.canQueue !== false;
-                      const disabledLabel = disabledVersionLabel(version);
-
-                      return (
-                        <div className="version-row" key={version.assetId}>
-                          <div>
-                            <strong>{version.displayName}</strong>
-                            <div className="result-meta">
-                              <span>{version.sourceLabel}</span>
-                              <span>{formatDuration(version.durationMs)}</span>
-                              <span>{version.qualityLabel}</span>
-                              {version.isRecommended ? <span className="recommended-mark">{t("search.recommended")}</span> : null}
-                              {!canQueue ? <span className="version-option__status">{disabledLabel}</span> : null}
-                            </div>
-                          </div>
-                          <button
-                            className="primary-button"
-                            type="button"
-                            disabled={!canQueue}
-                            onClick={() =>
-                              canQueue
-                                ? controller.requestAddSongVersion(result.songId, version.assetId, result.title, result.queueState)
-                                : undefined
-                            }
-                          >
-                            {canQueue ? t("button.addVersion") : disabledLabel}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </article>
-            );
-          })}
-
-          {controller.songSearch && controller.songSearch.local.length === 0 ? (
-            <p className="empty-state local-empty">{t("search.localEmpty")}</p>
-          ) : null}
-
-          {indexed ? (
-            <section className="indexed-panel" aria-label={t("search.indexedTitle")}>
-              <div className="panel-heading">
-                <h3>{t("search.indexedTitle")}</h3>
-                <span className={`search-status ${indexed.status}`}>{indexed.message}</span>
-              </div>
-
-              {indexed.results.length > 0 ? (
-                <div className="indexed-result-list">
-                  {indexed.results.map((result) => (
-                    <article className="song-row indexed-result-row" key={result.indexedSongId}>
-                      <div className="result-main">
-                        <strong>{result.title}</strong>
-                        <p>{result.artistName}</p>
-                        <div className="result-meta">
-                          <span className="indexed-source">{result.sourceLabel || indexedSourceFallbackLabel}</span>
-                          <span>{result.category}</span>
-                          <span>{t("search.indexedVersionCount", { count: result.versions.length })}</span>
-                        </div>
-                      </div>
-
-                      <div className="version-list indexed-version-list">
-                        {result.versions.map((version) => {
-                          const isPending = controller.pendingIndexedAssetId === version.indexedAssetId;
-                          const buttonLabel = indexedVersionButtonLabel(version, isPending, t);
-                          const canClick = version.canQueue && !isPending;
-
-                          return (
-                            <div className="indexed-version-row" key={version.indexedAssetId}>
-                              <div>
-                                <strong>{version.displayName}</strong>
-                                <div className="result-meta">
-                                  <span>{version.sourceLabel || indexedSourceFallbackLabel}</span>
-                                  <span>{version.extension}</span>
-                                  <span>{version.category}</span>
-                                  <span>{version.sizeBytes == null ? t("search.unknownSize") : formatFileSize(version.sizeBytes)}</span>
-                                  {version.audioTrackCount === 1 ? (
-                                    <span className="single-track-badge">{t("search.singleAudioTrackSource")}</span>
-                                  ) : null}
-                                </div>
-                              </div>
-                              <button
-                                className="primary-button"
-                                type="button"
-                                disabled={!canClick}
-                                onClick={() =>
-                                  canClick
-                                    ? controller.requestAddIndexedAsset(
-                                        version.indexedAssetId,
-                                        result.title,
-                                        version.queueState
-                                      )
-                                    : undefined
-                                }
-                              >
-                                {buttonLabel}
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <p className="empty-state indexed-empty">{t("search.indexedEmpty")}</p>
-              )}
-            </section>
-          ) : null}
-
-          {online ? (
-            <section className="online-panel" aria-label={t("online.aria")}>
-              <div className="panel-heading">
-                <h3>{t("online.title")}</h3>
-                <span className={`search-status ${online.status}`}>{online.message}</span>
-              </div>
-
-              {online.candidates.length > 0 ? (
-                <div className="online-candidate-list">
-                  {online.candidates.map((candidate) => {
-                    const isPending = controller.pendingSupplementKeys.includes(
-                      supplementKey(candidate.provider, candidate.providerCandidateId)
-                    );
-                    const isReady = candidate.taskState === "ready";
-
-                    return (
-                      <article className="song-row online-candidate-row" key={`${candidate.provider}:${candidate.providerCandidateId}`}>
-                        <div className="result-main">
-                          <strong>{candidate.title}</strong>
-                          <p>{candidate.artistName}</p>
-                          <div className="result-meta">
-                            <span className="online-source">{candidate.sourceLabel}</span>
-                            <span className="metadata-chip">{formatDuration(candidate.durationMs ?? 0)}</span>
-                            <span className="metadata-chip">{candidateTypeName(candidate.candidateType, t)}</span>
-                            <span className="metadata-chip">{reliabilityName(candidate.reliabilityLabel, t)}</span>
-                            <span className="metadata-chip">{riskName(candidate.riskLabel, t)}</span>
-                            <span className="metadata-chip">{onlineTaskStateName(candidate.taskState, t)}</span>
-                          </div>
-                        </div>
-                        <button
-                          className="primary-button"
-                          type="button"
-                          disabled={isPending || isReady}
-                          onClick={() => void controller.requestSupplement(candidate.provider, candidate.providerCandidateId)}
-                        >
-                          {isPending ? t("button.submitting") : isReady ? t("button.ready") : t("button.requestSupplement")}
-                        </button>
-                      </article>
-                    );
-                  })}
-                </div>
-              ) : online.requestSupplement?.visible ? (
-                <div className="online-placeholder">
-                  <strong>{t("online.emptyTitle")}</strong>
-                  <p>{t("online.emptyBody")}</p>
-                </div>
-              ) : null}
-            </section>
-          ) : null}
-        </div>
-      </section>
-
       <section className="panel" aria-label={t("queue.aria")}>
         <h2>{t("queue.title")}</h2>
         <div className="queue-list">
@@ -367,42 +688,522 @@ function ControllerApp() {
           )}
         </div>
       </section>
-
-      {controller.skipConfirmOpen ? (
-        <div className="modal-backdrop">
-          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="skip-title">
-            <h2 id="skip-title">{t("dialog.skipTitle")}</h2>
-            <p>{t("dialog.skipBody", { title: current?.currentQueueEntryPreview.songTitle ?? t("current.eyebrow") })}</p>
-            <div className="command-row">
-              <button className="secondary-button" type="button" onClick={controller.cancelSkip}>
-                {t("button.cancel")}
-              </button>
-              <button className="danger-button" type="button" onClick={() => void controller.confirmSkip()}>
-                {t("button.confirm")}
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
-
-      {controller.duplicateConfirm ? (
-        <div className="modal-backdrop">
-          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="duplicate-title">
-            <h2 id="duplicate-title">{t("dialog.duplicateTitle")}</h2>
-            <p>{t("dialog.duplicateBody", { title: controller.duplicateConfirm.title })}</p>
-            <div className="command-row">
-              <button className="secondary-button" type="button" onClick={controller.cancelDuplicateAdd}>
-                {t("button.cancel")}
-              </button>
-              <button className="primary-button" type="button" onClick={() => void controller.confirmDuplicateAdd()}>
-                {t("button.confirmAddAgain")}
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
-    </main>
+    </>
   );
+}
+
+function BottomTabs({
+  activeTab,
+  setActiveTab,
+  t
+}: {
+  activeTab: ControllerTab;
+  setActiveTab(tab: ControllerTab): void;
+  t: TFunction;
+}) {
+  return (
+    <nav className="bottom-tabs" aria-label={t("nav.aria")}>
+      <button
+        className={`bottom-tab ${activeTab === "home" ? "active" : ""}`}
+        type="button"
+        aria-current={activeTab === "home" ? "page" : undefined}
+        onClick={() => setActiveTab("home")}
+      >
+        <span className="bottom-tab__icon bottom-tab__icon--home" aria-hidden="true" />
+        <span>{t("nav.home")}</span>
+      </button>
+      <button
+        className={`bottom-tab ${activeTab === "control" ? "active" : ""}`}
+        type="button"
+        aria-current={activeTab === "control" ? "page" : undefined}
+        onClick={() => setActiveTab("control")}
+      >
+        <span className="bottom-tab__icon bottom-tab__icon--control" aria-hidden="true" />
+        <span>{t("nav.control")}</span>
+      </button>
+    </nav>
+  );
+}
+
+type TFunction = ReturnType<typeof useI18n>["t"];
+
+type ControllerTab = "home" | "control";
+
+type BrowseView =
+  | { kind: "home" }
+  | { kind: "artists" }
+  | { kind: "genres" }
+  | { kind: "artist"; item: SongDiscoveryArtist }
+  | { kind: "genre"; item: SongDiscoveryGenre };
+
+function SearchOverlay({
+  controller,
+  history,
+  indexedSourceFallbackLabel,
+  onClearHistory,
+  onClose,
+  onCommitHistory,
+  t
+}: {
+  controller: RoomControllerState;
+  history: readonly string[];
+  indexedSourceFallbackLabel: string;
+  onClearHistory(): void;
+  onClose(): void;
+  onCommitHistory(query: string): void;
+  t: TFunction;
+}) {
+  const hasQuery = controller.songSearchQuery.trim().length > 0;
+  const submitSearch = () => {
+    const query = controller.songSearchQuery.trim();
+    if (query) {
+      onCommitHistory(query);
+    }
+    controller.submitSongSearch();
+  };
+
+  return (
+    <div className="search-overlay-backdrop">
+      <section className="search-overlay" role="dialog" aria-modal="true" aria-labelledby="search-overlay-title">
+        <div className="search-overlay__header">
+          <h2 id="search-overlay-title">{t("search.title")}</h2>
+          <button className="secondary-button compact-button" type="button" onClick={onClose}>
+            {t("button.close")}
+          </button>
+        </div>
+        <form
+          role="search"
+          className="search-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitSearch();
+          }}
+        >
+          <input
+            autoFocus
+            aria-label={t("search.inputAria")}
+            className="search-input"
+            value={controller.songSearchQuery}
+            onChange={(event) => controller.setSongSearchQuery(event.currentTarget.value)}
+            placeholder={t("search.placeholder")}
+          />
+          <button className="primary-button" type="submit">{t("search.submit")}</button>
+        </form>
+
+        {hasQuery ? (
+          <SearchResults
+            controller={controller}
+            indexedSourceFallbackLabel={indexedSourceFallbackLabel}
+            t={t}
+          />
+        ) : (
+          <div className="history-panel">
+            <div className="panel-heading">
+              <h3>{t("search.historyTitle")}</h3>
+            </div>
+            <div className="history-list">
+              {history.map((query) => (
+                <button
+                  className="history-chip"
+                  key={query}
+                  type="button"
+                  onClick={() => {
+                    controller.setSongSearchQuery(query);
+                    onCommitHistory(query);
+                    controller.submitSongSearch();
+                  }}
+                >
+                  {query}
+                </button>
+              ))}
+              {history.length === 0 ? <p className="empty-state">{t("search.historyEmpty")}</p> : null}
+            </div>
+            <div className="history-actions">
+              <button className="secondary-button compact-button" type="button" onClick={onClearHistory}>
+                {t("button.clear")}
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function SearchResults({
+  controller,
+  indexedSourceFallbackLabel,
+  t
+}: {
+  controller: RoomControllerState;
+  indexedSourceFallbackLabel: string;
+  t: TFunction;
+}) {
+  const online = controller.songSearch?.online;
+  const indexed = controller.songSearch?.indexed ?? null;
+
+  return (
+    <div className="song-list search-overlay-results">
+      {controller.songSearch?.local.map((result) => (
+        <SearchLocalSongRow controller={controller} key={result.songId} result={result} t={t} />
+      ))}
+
+      {controller.songSearch && controller.songSearch.local.length === 0 ? (
+        <p className="empty-state local-empty">{t("search.localEmpty")}</p>
+      ) : null}
+
+      {indexed ? (
+        <section className="indexed-panel" aria-label={t("search.indexedTitle")}>
+          <div className="panel-heading">
+            <h3>{t("search.indexedTitle")}</h3>
+            <span className={`search-status ${indexed.status}`}>{indexed.message}</span>
+          </div>
+
+          {indexed.results.length > 0 ? (
+            <div className="indexed-result-list">
+              {indexed.results.map((result) => (
+                <article className="song-row indexed-result-row" key={result.indexedSongId}>
+                  <div className="result-main">
+                    <strong>{result.title}</strong>
+                    <p>{result.artistName}</p>
+                    <div className="result-meta">
+                      <span className="indexed-source">{result.sourceLabel || indexedSourceFallbackLabel}</span>
+                      <span>{result.category}</span>
+                      <span>{t("search.indexedVersionCount", { count: result.versions.length })}</span>
+                    </div>
+                  </div>
+
+                  <div className="version-list indexed-version-list">
+                    {result.versions.map((version) => {
+                      const isPending = controller.pendingIndexedAssetId === version.indexedAssetId;
+                      const buttonLabel = indexedVersionButtonLabel(version, isPending, t);
+                      const canClick = version.canQueue && !isPending;
+
+                      return (
+                        <div className="indexed-version-row" key={version.indexedAssetId}>
+                          <div>
+                            <strong>{version.displayName}</strong>
+                            <div className="result-meta">
+                              <span>{version.sourceLabel || indexedSourceFallbackLabel}</span>
+                              <span>{version.extension}</span>
+                              <span>{version.category}</span>
+                              <span>{version.sizeBytes == null ? t("search.unknownSize") : formatFileSize(version.sizeBytes)}</span>
+                              {version.audioTrackCount === 1 ? (
+                                <span className="single-track-badge">{t("search.singleAudioTrackSource")}</span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <button
+                            className="primary-button"
+                            type="button"
+                            disabled={!canClick}
+                            onClick={() =>
+                              canClick
+                                ? controller.requestAddIndexedAsset(
+                                    version.indexedAssetId,
+                                    result.title,
+                                    version.queueState
+                                  )
+                                : undefined
+                            }
+                          >
+                            {buttonLabel}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="empty-state indexed-empty">{t("search.indexedEmpty")}</p>
+          )}
+        </section>
+      ) : null}
+
+      {online ? (
+        <section className="online-panel" aria-label={t("online.aria")}>
+          <div className="panel-heading">
+            <h3>{t("online.title")}</h3>
+            <span className={`search-status ${online.status}`}>{online.message}</span>
+          </div>
+
+          {online.candidates.length > 0 ? (
+            <div className="online-candidate-list">
+              {online.candidates.map((candidate) => {
+                const isPending = controller.pendingSupplementKeys.includes(
+                  supplementKey(candidate.provider, candidate.providerCandidateId)
+                );
+                const isReady = candidate.taskState === "ready";
+
+                return (
+                  <article className="song-row online-candidate-row" key={`${candidate.provider}:${candidate.providerCandidateId}`}>
+                    <div className="result-main">
+                      <strong>{candidate.title}</strong>
+                      <p>{candidate.artistName}</p>
+                      <div className="result-meta">
+                        <span className="online-source">{candidate.sourceLabel}</span>
+                        <span className="metadata-chip">{formatDuration(candidate.durationMs ?? 0)}</span>
+                        <span className="metadata-chip">{candidateTypeName(candidate.candidateType, t)}</span>
+                        <span className="metadata-chip">{reliabilityName(candidate.reliabilityLabel, t)}</span>
+                        <span className="metadata-chip">{riskName(candidate.riskLabel, t)}</span>
+                        <span className="metadata-chip">{onlineTaskStateName(candidate.taskState, t)}</span>
+                      </div>
+                    </div>
+                    <button
+                      className="primary-button"
+                      type="button"
+                      disabled={isPending || isReady}
+                      onClick={() => void controller.requestSupplement(candidate.provider, candidate.providerCandidateId)}
+                    >
+                      {isPending ? t("button.submitting") : isReady ? t("button.ready") : t("button.requestSupplement")}
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          ) : online.requestSupplement?.visible ? (
+            <div className="online-placeholder">
+              <strong>{t("online.emptyTitle")}</strong>
+              <p>{t("online.emptyBody")}</p>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function SearchLocalSongRow({
+  controller,
+  result,
+  t
+}: {
+  controller: RoomControllerState;
+  result: SongSearchLocalResult;
+  t: TFunction;
+}) {
+  const isQueued = result.queueState === "queued";
+  const statusLabel = isQueued ? t("search.queued") : t("search.localPlayable");
+  const primaryVersion = result.versions[0] ?? null;
+  const primaryCanQueue = primaryVersion ? primaryVersion.canQueue !== false : false;
+  const primaryDisabledLabel = primaryVersion ? disabledVersionLabel(primaryVersion) : "暂不可播放";
+
+  return (
+    <article className="song-row search-result-row">
+      <div className="result-main">
+        <strong>{result.title}</strong>
+        <p>{result.artistName}</p>
+        <div className="result-meta">
+          <span className={isQueued ? "queued-badge" : "local-badge"}>{statusLabel}</span>
+          <span>{t("search.versionCount", { count: result.versions.length })}</span>
+          {primaryVersion && !primaryCanQueue ? (
+            <span className="version-option__status">{primaryDisabledLabel}</span>
+          ) : null}
+        </div>
+      </div>
+
+      {result.versions.length === 1 && primaryVersion ? (
+        <button
+          className="primary-button"
+          type="button"
+          disabled={!primaryCanQueue}
+          onClick={() =>
+            primaryCanQueue
+              ? controller.requestAddSongVersion(
+                  result.songId,
+                  primaryVersion.assetId,
+                  result.title,
+                  result.queueState
+                )
+              : undefined
+          }
+        >
+          {primaryCanQueue ? (isQueued ? t("button.addAgain") : t("button.add")) : primaryDisabledLabel}
+        </button>
+      ) : null}
+
+      {result.versions.length > 1 ? (
+        <div className="version-list">
+          {result.versions.map((version) => {
+            const canQueue = version.canQueue !== false;
+            const disabledLabel = disabledVersionLabel(version);
+
+            return (
+              <div className="version-row" key={version.assetId}>
+                <div>
+                  <strong>{version.displayName}</strong>
+                  <div className="result-meta">
+                    <span>{version.sourceLabel}</span>
+                    <span>{formatDuration(version.durationMs)}</span>
+                    <span>{version.qualityLabel}</span>
+                    {version.isRecommended ? <span className="recommended-mark">{t("search.recommended")}</span> : null}
+                    {!canQueue ? <span className="version-option__status">{disabledLabel}</span> : null}
+                  </div>
+                </div>
+                <button
+                  className="primary-button"
+                  type="button"
+                  disabled={!canQueue}
+                  onClick={() =>
+                    canQueue
+                      ? controller.requestAddSongVersion(result.songId, version.assetId, result.title, result.queueState)
+                      : undefined
+                  }
+                >
+                  {canQueue ? t("button.addVersion") : disabledLabel}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function DiscoveryBrowseView({
+  controller,
+  discovery,
+  setBrowseView,
+  t,
+  view
+}: {
+  controller: RoomControllerState;
+  discovery: RoomControllerState["songDiscovery"];
+  setBrowseView(view: BrowseView): void;
+  t: TFunction;
+  view: BrowseView;
+}) {
+  if (view.kind === "artists" || view.kind === "genres") {
+    const isArtists = view.kind === "artists";
+    const items = isArtists ? discovery?.artists ?? [] : discovery?.genres ?? [];
+    return (
+      <section className="panel discovery-panel">
+        <div className="panel-heading">
+          <h2>{isArtists ? t("discovery.allArtists") : t("discovery.allGenres")}</h2>
+          <button className="secondary-button compact-button" type="button" onClick={() => setBrowseView({ kind: "home" })}>
+            {t("button.back")}
+          </button>
+        </div>
+        <div className="discovery-grid">
+          {items.map((item) => {
+            const key = isArtists ? (item as SongDiscoveryArtist).artistId : (item as SongDiscoveryGenre).genre;
+            const label = isArtists ? (item as SongDiscoveryArtist).artistName : (item as SongDiscoveryGenre).genre;
+            const count = isArtists ? (item as SongDiscoveryArtist).songCount : (item as SongDiscoveryGenre).songCount;
+            return (
+              <button
+                className="discovery-tile"
+                key={key}
+                type="button"
+                onClick={() => setBrowseView(isArtists ? { kind: "artist", item: item as SongDiscoveryArtist } : { kind: "genre", item: item as SongDiscoveryGenre })}
+              >
+                <strong>{label}</strong>
+                <span>{t("discovery.songCount", { count })}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
+  if (view.kind === "home") {
+    return null;
+  }
+
+  const title = view.kind === "artist" ? view.item.artistName : view.item.genre;
+  const songs = view.item.songs;
+  return (
+    <section className="panel recommendation-panel">
+      <div className="panel-heading">
+        <h2>{title}</h2>
+        <button className="secondary-button compact-button" type="button" onClick={() => setBrowseView({ kind: "home" })}>
+          {t("button.back")}
+        </button>
+      </div>
+      <div className="song-list recommendation-list">
+        {songs.map((song) => (
+          <DiscoverySongRow controller={controller} key={song.songId} song={song} t={t} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DiscoverySongRow({
+  controller,
+  song,
+  t
+}: {
+  controller: RoomControllerState;
+  song: SongDiscoverySong;
+  t: TFunction;
+}) {
+  const primaryVersion = song.versions[0] ?? null;
+  const canQueue = primaryVersion ? primaryVersion.canQueue !== false : false;
+  const disabledLabel = primaryVersion ? disabledVersionLabel(primaryVersion) : "暂不可播放";
+
+  return (
+    <article className="song-row recommendation-row">
+      <div className="song-art" aria-hidden="true">
+        <span>{song.title.trim().slice(0, 1) || "K"}</span>
+      </div>
+      <div className="result-main">
+        <strong>{song.title}</strong>
+        <p>{song.artistName}</p>
+        <div className="result-meta">
+          <span className={song.queueState === "queued" ? "queued-badge" : "local-badge"}>
+            {song.queueState === "queued" ? t("search.queued") : t("search.localPlayable")}
+          </span>
+          {song.genre.slice(0, 2).map((genre) => (
+            <span key={genre}>{genre}</span>
+          ))}
+          <span>{t("discovery.playCount", { count: song.playCount })}</span>
+        </div>
+      </div>
+      <button
+        className="primary-button add-circle-button"
+        aria-label={`${canQueue ? (song.queueState === "queued" ? t("button.addAgain") : t("button.add")) : disabledLabel} ${song.title}`}
+        disabled={!canQueue}
+        type="button"
+        onClick={() =>
+          primaryVersion && canQueue
+            ? controller.requestAddSongVersion(song.songId, primaryVersion.assetId, song.title, song.queueState)
+            : undefined
+          }
+      >
+        {canQueue ? "+" : "·"}
+      </button>
+    </article>
+  );
+}
+
+const searchHistoryStorageKey = "home_ktv_search_history_v1";
+
+function readSearchHistory(): string[] {
+  try {
+    const value = localStorage.getItem(searchHistoryStorageKey);
+    const parsed = value ? JSON.parse(value) : [];
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string").slice(0, 10) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSearchHistory(history: readonly string[]): void {
+  try {
+    localStorage.setItem(searchHistoryStorageKey, JSON.stringify(history));
+  } catch {}
+}
+
+function commitSearchHistory(history: readonly string[], query: string): string[] {
+  const normalized = query.trim();
+  if (!normalized) {
+    return [...history];
+  }
+  return [normalized, ...history.filter((item) => item !== normalized)].slice(0, 10);
 }
 
 function formatTime(value: string): string {

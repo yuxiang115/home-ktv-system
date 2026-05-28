@@ -71,6 +71,7 @@ export interface UpdatePreferredVocalModeInput {
 export interface QueueEntryRepository {
   findById(queueEntryId: QueueEntryId): Promise<QueueEntry | null>;
   listEffectiveQueue(roomId: RoomId): Promise<QueueEntry[]>;
+  listGlobalSongRequestCounts?(songIds: readonly SongId[]): Promise<Map<SongId, number>>;
   listUndoableRemoved(roomId: RoomId, now: Date): Promise<QueueEntry[]>;
   findCurrentForRoom(roomId: RoomId): Promise<QueueEntry | null>;
   append(input: AppendQueueEntryInput): Promise<QueueEntry>;
@@ -133,6 +134,28 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
     );
 
     return result.rows.map(mapQueueEntryRow);
+  }
+
+  async listGlobalSongRequestCounts(songIds: readonly SongId[]): Promise<Map<SongId, number>> {
+    if (songIds.length === 0) {
+      return new Map();
+    }
+
+    const result = await this.db.query<{ song_id: string; request_count: string | number }>(
+      `SELECT song_id, COUNT(*) AS request_count
+       FROM queue_entries
+       WHERE song_id = ANY($1::text[])
+         AND status <> 'removed'
+       GROUP BY song_id`,
+      [songIds]
+    );
+
+    return new Map(
+      result.rows.map((row) => [
+        row.song_id as SongId,
+        typeof row.request_count === "number" ? row.request_count : Number.parseInt(row.request_count, 10)
+      ])
+    );
   }
 
   async listUndoableRemoved(roomId: RoomId, now: Date): Promise<QueueEntry[]> {
@@ -352,6 +375,18 @@ export class InMemoryQueueEntryRepository implements QueueEntryRepository {
 
   async listEffectiveQueue(roomId: RoomId): Promise<QueueEntry[]> {
     return this.sortedEntries(roomId).filter((entry) => isEffectiveQueueStatus(entry.status));
+  }
+
+  async listGlobalSongRequestCounts(songIds: readonly SongId[]): Promise<Map<SongId, number>> {
+    const requestedSongIds = new Set(songIds);
+    const counts = new Map<SongId, number>();
+    for (const entry of this.entries.values()) {
+      if (!requestedSongIds.has(entry.songId) || entry.status === "removed") {
+        continue;
+      }
+      counts.set(entry.songId, (counts.get(entry.songId) ?? 0) + 1);
+    }
+    return counts;
   }
 
   async listUndoableRemoved(roomId: RoomId, now: Date): Promise<QueueEntry[]> {

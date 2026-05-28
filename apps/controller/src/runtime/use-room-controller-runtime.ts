@@ -1,16 +1,24 @@
-import type { SongSearchIndexedQueueState, SongSearchQueueState, SongSearchResponse } from "@home-ktv/domain";
-import { DEFAULT_ROOM_VOLUME_PERCENT, type RoomControlSnapshot } from "@home-ktv/player-contracts";
+import type {
+  OnlineCandidateTask,
+  SongDiscoveryResponse,
+  SongSearchIndexedQueueState,
+  SongSearchQueueState,
+  SongSearchResponse
+} from "@home-ktv/domain";
+import { DEFAULT_ROOM_VOLUME_PERCENT, type RoomControlSnapshot, type RoomInteractionKind } from "@home-ktv/player-contracts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addQueueEntry,
   ControllerApiError,
   createControlSession,
   deleteQueueEntry,
+  fetchSongDiscovery,
   promoteQueueEntry,
   realtimeUrl,
   restoreControlSession,
   requestSupplement,
   searchSongs,
+  sendRoomInteraction,
   setVolume,
   skipCurrent,
   switchVocalMode,
@@ -21,6 +29,19 @@ import { getOrCreateDeviceId } from "../api/client.js";
 export const fallbackPollingIntervalMs = 5000;
 export const sessionRefreshIntervalMs = 15 * 60 * 1000;
 
+interface ControllerCommandInput {
+  roomSlug: string;
+  deviceId: string;
+  sessionVersion: number;
+}
+
+interface ControllerCommandResponse {
+  status?: string;
+  snapshot?: RoomControlSnapshot | null;
+  task?: OnlineCandidateTask;
+  undo?: { queueEntryId: string; undoExpiresAt: string };
+}
+
 export interface RoomControllerState {
   connectionStatus: "connecting" | "connected" | "reconnecting" | "error";
   deviceId: string;
@@ -30,10 +51,13 @@ export interface RoomControllerState {
     | null;
   errorMessage: string | null;
   pendingIndexedAssetId: string | null;
+  pendingInteractionKind: RoomInteractionKind | null;
   pendingUndo: { queueEntryId: string; undoExpiresAt: string } | null;
   pendingSupplementKeys: readonly string[];
   roomSlug: string;
   skipConfirmOpen: boolean;
+  songDiscovery: SongDiscoveryResponse | null;
+  songDiscoveryStatus: "idle" | "loading" | "success" | "error";
   songSearch: SongSearchResponse | null;
   songSearchQuery: string;
   songSearchStatus: "idle" | "loading" | "success" | "error";
@@ -47,8 +71,10 @@ export interface RoomControllerState {
   promoteQueueEntry(queueEntryId: string): Promise<void>;
   requestAddSongVersion(songId: string, assetId: string, title: string, queueState: SongSearchQueueState): void;
   requestAddIndexedAsset(indexedAssetId: string, title: string, queueState: SongSearchIndexedQueueState): void;
+  sendInteraction(kind: RoomInteractionKind, message: string): Promise<void>;
   requestSupplement(provider: string, providerCandidateId: string): Promise<void>;
   requestSkip(): void;
+  refreshSongDiscovery(): void;
   setSongSearchQuery(query: string): void;
   setVolumePercent(volumePercent: number): void;
   submitSongSearch(): void;
@@ -68,7 +94,10 @@ export function useRoomControllerRuntime(): RoomControllerState {
   const [connectionStatus, setConnectionStatus] = useState<RoomControllerState["connectionStatus"]>("connecting");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
+  const [songDiscovery, setSongDiscovery] = useState<SongDiscoveryResponse | null>(null);
+  const [songDiscoveryStatus, setSongDiscoveryStatus] = useState<RoomControllerState["songDiscoveryStatus"]>("idle");
   const [pendingIndexedAssetId, setPendingIndexedAssetId] = useState<string | null>(null);
+  const [pendingInteractionKind, setPendingInteractionKind] = useState<RoomInteractionKind | null>(null);
   const [pendingUndo, setPendingUndo] = useState<{ queueEntryId: string; undoExpiresAt: string } | null>(null);
   const [pendingSupplementKeys, setPendingSupplementKeys] = useState<readonly string[]>([]);
   const [pendingVolumePercent, setPendingVolumePercent] = useState<number | null>(null);
@@ -76,6 +105,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
   const songSearchQueryRef = useRef("");
   const searchRequestIdRef = useRef(0);
   const searchAbortRef = useRef<AbortController | null>(null);
+  const discoveryAbortRef = useRef<AbortController | null>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const volumeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -132,6 +162,34 @@ export function useRoomControllerRuntime(): RoomControllerState {
     [clearSearchDebounce, initial.roomSlug]
   );
 
+  const runSongDiscovery = useCallback(
+    async (seed: string) => {
+      discoveryAbortRef.current?.abort();
+      const abortController = new AbortController();
+      discoveryAbortRef.current = abortController;
+      setSongDiscoveryStatus("loading");
+
+      try {
+        const response = await fetchSongDiscovery({
+          roomSlug: initial.roomSlug,
+          seed,
+          signal: abortController.signal
+        });
+        if (!abortController.signal.aborted) {
+          setSongDiscovery(response);
+          setSongDiscoveryStatus("success");
+        }
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+        setSongDiscoveryStatus("error");
+        setErrorMessage(errorMessageFrom(error, "DISCOVERY_LOAD_FAILED"));
+      }
+    },
+    [initial.roomSlug]
+  );
+
   useEffect(() => {
     let cancelled = false;
     let websocket: WebSocket | null = null;
@@ -161,7 +219,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
       removeTokenFromUrl();
       setSongSearchQueryState("");
       songSearchQueryRef.current = "";
-      await runSongSearch("");
+      await Promise.all([runSongSearch(""), runSongDiscovery(createDiscoverySeed())]);
     };
 
     const pollRestore = async () => {
@@ -265,8 +323,9 @@ export function useRoomControllerRuntime(): RoomControllerState {
       clearSearchDebounce();
       clearVolumeDebounce();
       searchAbortRef.current?.abort();
+      discoveryAbortRef.current?.abort();
     };
-  }, [clearSearchDebounce, clearVolumeDebounce, deviceId, initial.pairingToken, initial.roomSlug, runSongSearch]);
+  }, [clearSearchDebounce, clearVolumeDebounce, deviceId, initial.pairingToken, initial.roomSlug, runSongDiscovery, runSongSearch]);
 
   useEffect(() => {
     if (pendingVolumePercent != null && snapshot?.volumePercent === pendingVolumePercent) {
@@ -275,7 +334,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
   }, [pendingVolumePercent, snapshot?.volumePercent]);
 
   const runCommand = useCallback(
-    async (command: (input: { roomSlug: string; deviceId: string; sessionVersion: number }) => Promise<any>) => {
+    async <TResponse extends ControllerCommandResponse>(command: (input: ControllerCommandInput) => Promise<TResponse>) => {
       const current = snapshotRef.current;
       if (!current) {
         return null;
@@ -358,6 +417,31 @@ export function useRoomControllerRuntime(): RoomControllerState {
     [runCommand]
   );
 
+  const sendInteraction = useCallback(
+    async (kind: RoomInteractionKind, message: string) => {
+      const normalizedMessage = message.trim();
+      if (!normalizedMessage) {
+        return;
+      }
+
+      setPendingInteractionKind(kind);
+      try {
+        await sendRoomInteraction({
+          roomSlug: initial.roomSlug,
+          deviceId,
+          kind,
+          message: normalizedMessage
+        });
+        setErrorMessage(null);
+      } catch (error) {
+        setErrorMessage(errorMessageFrom(error, "互动发送失败"));
+      } finally {
+        setPendingInteractionKind((current) => (current === kind ? null : current));
+      }
+    },
+    [deviceId, initial.roomSlug]
+  );
+
   const submitSongSearch = useCallback(() => {
     void runSongSearch(songSearchQueryRef.current);
   }, [runSongSearch]);
@@ -384,10 +468,13 @@ export function useRoomControllerRuntime(): RoomControllerState {
     duplicateConfirm,
     errorMessage,
     pendingIndexedAssetId,
+    pendingInteractionKind,
     pendingUndo,
     pendingSupplementKeys,
     roomSlug: initial.roomSlug,
     skipConfirmOpen,
+    songDiscovery,
+    songDiscoveryStatus,
     songSearch,
     songSearchQuery,
     songSearchStatus,
@@ -434,8 +521,12 @@ export function useRoomControllerRuntime(): RoomControllerState {
 
       void addIndexedAsset(indexedAssetId);
     },
+    sendInteraction,
     requestSupplement: requestOnlineSupplement,
     requestSkip: () => setSkipConfirmOpen(true),
+    refreshSongDiscovery: () => {
+      void runSongDiscovery(createDiscoverySeed());
+    },
     setSongSearchQuery: (query) => {
       songSearchQueryRef.current = query;
       setSongSearchQueryState(query);
@@ -488,6 +579,10 @@ function readRuntimeParams(): { roomSlug: string; pairingToken: string | null } 
     roomSlug: search.get("room") || "living-room",
     pairingToken: search.get("token")
   };
+}
+
+function createDiscoverySeed(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function removeTokenFromUrl(): void {

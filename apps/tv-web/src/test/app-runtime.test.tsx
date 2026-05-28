@@ -70,6 +70,7 @@ vi.mock("../runtime/recovery-controller.js", () => ({
 vi.mock("../runtime/use-room-snapshot.js", () => ({
   useRoomSnapshot: () => ({
     errorMessage: null,
+    interactions: [],
     snapshot: mocks.roomSnapshot(),
     status: "ready" as const
   })

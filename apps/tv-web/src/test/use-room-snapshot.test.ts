@@ -1,4 +1,4 @@
-import type { RoomControlSnapshot, RoomSnapshot } from "@home-ktv/player-contracts";
+import type { RoomControlSnapshot, RoomInteractionEvent, RoomSnapshot } from "@home-ktv/player-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { PlayerClient } from "../runtime/player-client.js";
@@ -26,6 +26,102 @@ describe("useRoomSnapshot realtime sync", () => {
 
     await waitFor(() => expect(result.current.snapshot?.pairing.token).toBe("token-refreshed"));
     expect(result.current.snapshot?.type).toBe("room.snapshot");
+  });
+
+  it("collects room interaction realtime events and expires them locally", async () => {
+    vi.useFakeTimers();
+    const sockets = installWebSocketMock();
+    const client = createClient({
+      bootstrapSnapshot: roomSnapshot("token-first"),
+      fetchSnapshots: []
+    });
+
+    const { result } = renderHook(() => useRoomSnapshot(asPlayerClient(client)));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      sockets[0]?.emitInteraction(roomInteraction("interaction-1", "bullet", "今晚开唱"));
+    });
+
+    expect(result.current.interactions).toHaveLength(1);
+    expect(result.current.interactions[0]).toMatchObject({
+      kind: "bullet",
+      message: "今晚开唱"
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(7000);
+    });
+    expect(result.current.interactions).toHaveLength(0);
+  });
+
+  it("keeps all active realtime interactions until their own expiry instead of dropping after five", async () => {
+    vi.useFakeTimers();
+    const sockets = installWebSocketMock();
+    const client = createClient({
+      bootstrapSnapshot: roomSnapshot("token-first"),
+      fetchSnapshots: []
+    });
+
+    const { result } = renderHook(() => useRoomSnapshot(asPlayerClient(client)));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      for (let index = 1; index <= 6; index += 1) {
+        sockets[0]?.emitInteraction(roomInteraction(`interaction-${index}`, "bullet", `弹幕 ${index}`));
+      }
+    });
+
+    expect(result.current.interactions).toHaveLength(6);
+    expect(result.current.interactions.map((interaction) => interaction.message)).toEqual([
+      "弹幕 1",
+      "弹幕 2",
+      "弹幕 3",
+      "弹幕 4",
+      "弹幕 5",
+      "弹幕 6"
+    ]);
+  });
+
+  it("reschedules duplicate interaction ids so a replacement is not expired by an old timer", async () => {
+    vi.useFakeTimers();
+    const sockets = installWebSocketMock();
+    const client = createClient({
+      bootstrapSnapshot: roomSnapshot("token-first"),
+      fetchSnapshots: []
+    });
+
+    const { result } = renderHook(() => useRoomSnapshot(asPlayerClient(client)));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      sockets[0]?.emitInteraction(roomInteraction("interaction-1", "bullet", "第一条"));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    act(() => {
+      sockets[0]?.emitInteraction(roomInteraction("interaction-1", "bullet", "第二条"));
+    });
+
+    expect(result.current.interactions).toHaveLength(1);
+    expect(result.current.interactions[0]?.message).toBe("第二条");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(result.current.interactions).toHaveLength(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(result.current.interactions).toHaveLength(0);
   });
 
   it("falls back to 1500ms polling after the realtime stream closes", async () => {
@@ -69,6 +165,45 @@ describe("useRoomSnapshot realtime sync", () => {
     await waitFor(() => expect(result.current.snapshot?.state).toBe("conflict"));
     expect(sockets).toHaveLength(0);
     expect(client.fetchSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("retries bootstrap after a transient startup failure", async () => {
+    vi.useFakeTimers();
+    const sockets = installWebSocketMock();
+    const bootstrap = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("bootstrap unavailable"))
+      .mockResolvedValueOnce({
+        status: "registered",
+        snapshot: roomSnapshot("token-recovered")
+      });
+    const client = {
+      bootstrap,
+      createSnapshotSocketUrl: vi.fn(() => "ws://ktv.local/rooms/living-room/realtime?deviceId=tv-active&client=tv"),
+      deviceId: "tv-active",
+      fetchSnapshot: vi.fn(async () => roomSnapshot("token-polled")),
+      roomSlug: "living-room",
+      sendHeartbeat: vi.fn(),
+      sendTelemetry: vi.fn()
+    } as unknown as PlayerClient;
+
+    const { result } = renderHook(() => useRoomSnapshot(client, 1500));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.status).toBe("error");
+    expect(bootstrap).toHaveBeenCalledTimes(1);
+    expect(sockets).toHaveLength(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+
+    expect(bootstrap).toHaveBeenCalledTimes(2);
+    expect(result.current.status).toBe("ready");
+    expect(result.current.snapshot?.pairing.token).toBe("token-recovered");
+    expect(sockets).toHaveLength(1);
   });
 });
 
@@ -183,6 +318,15 @@ class FakeWebSocket {
       })
     });
   }
+
+  emitInteraction(interaction: RoomInteractionEvent): void {
+    this.onmessage?.({
+      data: JSON.stringify({
+        type: "room.interaction.created",
+        payload: interaction
+      })
+    });
+  }
 }
 
 function installWebSocketMock(): FakeWebSocket[] {
@@ -197,4 +341,22 @@ function installWebSocketMock(): FakeWebSocket[] {
     }
   );
   return sockets;
+}
+
+function roomInteraction(
+  id: string,
+  kind: RoomInteractionEvent["kind"],
+  message: string
+): RoomInteractionEvent {
+  return {
+    id,
+    roomId: "living-room",
+    roomSlug: "living-room",
+    kind,
+    message,
+    senderDeviceId: "phone-a",
+    senderName: "Controller A",
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 7000).toISOString()
+  };
 }

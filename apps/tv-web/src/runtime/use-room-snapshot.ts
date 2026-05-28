@@ -1,9 +1,10 @@
-import type { RoomControlSnapshot, RoomSnapshot } from "@home-ktv/player-contracts";
+import type { RoomControlSnapshot, RoomInteractionEvent, RoomSnapshot } from "@home-ktv/player-contracts";
 import { useEffect, useState } from "react";
 import type { BootstrapResult, PlayerClient } from "./player-client.js";
 
 export interface RoomSnapshotState {
   errorMessage: string | null;
+  interactions: readonly RoomInteractionEvent[];
   snapshot: RoomSnapshot | null;
   status: "booting" | "ready" | "error";
 }
@@ -11,13 +12,17 @@ export interface RoomSnapshotState {
 export function useRoomSnapshot(client: PlayerClient, pollingIntervalMs = 1500): RoomSnapshotState {
   const [state, setState] = useState<RoomSnapshotState>({
     errorMessage: null,
+    interactions: [],
     snapshot: null,
     status: "booting"
   });
 
   useEffect(() => {
     let cancelled = false;
+    let bootstrapInFlight = false;
+    let bootstrapRetryIntervalId: ReturnType<typeof setInterval> | null = null;
     let intervalId: ReturnType<typeof setInterval> | null = null;
+    const interactionTimers = new Map<string, ReturnType<typeof setTimeout>>();
     let websocket: WebSocket | null = null;
 
     const stopPolling = () => {
@@ -27,23 +32,32 @@ export function useRoomSnapshot(client: PlayerClient, pollingIntervalMs = 1500):
       }
     };
 
+    const stopBootstrapRetry = () => {
+      if (bootstrapRetryIntervalId) {
+        clearInterval(bootstrapRetryIntervalId);
+        bootstrapRetryIntervalId = null;
+      }
+    };
+
     const updateSnapshot = async () => {
       try {
         const snapshot = await client.fetchSnapshot();
         if (!cancelled) {
-          setState({
+          setState((current) => ({
+            ...current,
             errorMessage: null,
             snapshot,
             status: "ready"
-          });
+          }));
         }
       } catch (error) {
         if (!cancelled) {
-          setState({
+          setState((current) => ({
+            ...current,
             errorMessage: error instanceof Error ? error.message : "Snapshot request failed",
             snapshot: null,
             status: "error"
-          });
+          }));
         }
       }
     };
@@ -52,6 +66,32 @@ export function useRoomSnapshot(client: PlayerClient, pollingIntervalMs = 1500):
       if (!intervalId) {
         intervalId = setInterval(updateSnapshot, pollingIntervalMs);
       }
+    };
+
+    const addInteraction = (interaction: RoomInteractionEvent) => {
+      const existingTimer = interactionTimers.get(interaction.id);
+      if (existingTimer) {
+        globalThis.clearTimeout(existingTimer);
+        interactionTimers.delete(interaction.id);
+      }
+
+      setState((current) => ({
+        ...current,
+        interactions: [...current.interactions.filter((item) => item.id !== interaction.id), interaction]
+      }));
+
+      const ttlMs = Math.max(1000, new Date(interaction.expiresAt).getTime() - Date.now());
+      const timer = globalThis.setTimeout(() => {
+        if (interactionTimers.get(interaction.id) !== timer) {
+          return;
+        }
+        interactionTimers.delete(interaction.id);
+        setState((current) => ({
+          ...current,
+          interactions: current.interactions.filter((item) => item.id !== interaction.id)
+        }));
+      }, ttlMs);
+      interactionTimers.set(interaction.id, timer);
     };
 
     const openRealtime = () => {
@@ -66,28 +106,57 @@ export function useRoomSnapshot(client: PlayerClient, pollingIntervalMs = 1500):
         stopPolling();
       };
       websocket.onmessage = (event) => {
-        const snapshot = snapshotFromRealtimeMessage(event.data);
-        if (!cancelled && snapshot) {
-          setState({
+        const realtimeMessage = parseRealtimeMessage(event.data);
+        if (cancelled || !realtimeMessage) {
+          return;
+        }
+
+        const snapshot = realtimeMessage.snapshot;
+        if (snapshot) {
+          setState((current) => ({
+            ...current,
             errorMessage: null,
             snapshot,
             status: "ready"
-          });
+          }));
+        }
+
+        if (realtimeMessage.interaction) {
+          addInteraction(realtimeMessage.interaction);
         }
       };
       websocket.onclose = startPolling;
       websocket.onerror = startPolling;
     };
 
+    const startBootstrapRetry = () => {
+      if (!bootstrapRetryIntervalId) {
+        bootstrapRetryIntervalId = setInterval(() => {
+          void start();
+        }, pollingIntervalMs);
+      }
+    };
+
     const start = async () => {
+      if (bootstrapInFlight) {
+        return;
+      }
+
+      bootstrapInFlight = true;
       try {
         const bootstrap = await client.bootstrap();
+        if (cancelled) {
+          return;
+        }
+
+        stopBootstrapRetry();
         if (!cancelled && bootstrap.snapshot) {
-          setState({
+          setState((current) => ({
+            ...current,
             errorMessage: null,
             snapshot: bootstrap.snapshot,
             status: "ready"
-          });
+          }));
         }
         if (!shouldContinueSnapshotPolling(bootstrap)) {
           return;
@@ -95,12 +164,16 @@ export function useRoomSnapshot(client: PlayerClient, pollingIntervalMs = 1500):
         openRealtime();
       } catch (error) {
         if (!cancelled) {
-          setState({
+          setState((current) => ({
+            ...current,
             errorMessage: error instanceof Error ? error.message : "Player bootstrap failed",
             snapshot: null,
             status: "error"
-          });
+          }));
+          startBootstrapRetry();
         }
+      } finally {
+        bootstrapInFlight = false;
       }
     };
 
@@ -108,7 +181,11 @@ export function useRoomSnapshot(client: PlayerClient, pollingIntervalMs = 1500):
 
     return () => {
       cancelled = true;
+      stopBootstrapRetry();
       stopPolling();
+      for (const timer of interactionTimers.values()) {
+        globalThis.clearTimeout(timer);
+      }
       websocket?.close();
     };
   }, [client, pollingIntervalMs]);
@@ -124,21 +201,37 @@ export function shouldContinueSnapshotPolling(bootstrap: BootstrapResult): boole
   return bootstrap.status !== "conflict" && bootstrap.snapshot?.state !== "conflict" && !bootstrap.snapshot?.conflict;
 }
 
-function snapshotFromRealtimeMessage(data: unknown): RoomSnapshot | null {
+function parseRealtimeMessage(data: unknown): { snapshot?: RoomSnapshot; interaction?: RoomInteractionEvent } | null {
   if (typeof data !== "string") {
     return null;
   }
 
   try {
-    const parsed = JSON.parse(data) as { type?: string; payload?: RoomSnapshot | RoomControlSnapshot };
-    if (parsed.type !== "room.control.snapshot.updated" || !parsed.payload) {
-      return null;
+    const parsed = JSON.parse(data) as { type?: string; payload?: RoomSnapshot | RoomControlSnapshot | RoomInteractionEvent };
+    if (parsed.type === "room.control.snapshot.updated" && parsed.payload) {
+      return { snapshot: toRoomSnapshot(parsed.payload as RoomSnapshot | RoomControlSnapshot) };
     }
 
-    return toRoomSnapshot(parsed.payload);
+    if (parsed.type === "room.interaction.created" && isRoomInteractionEvent(parsed.payload)) {
+      return { interaction: parsed.payload };
+    }
+
+    return null;
   } catch {
     return null;
   }
+}
+
+function isRoomInteractionEvent(payload: unknown): payload is RoomInteractionEvent {
+  return Boolean(
+    payload &&
+      typeof payload === "object" &&
+      typeof (payload as RoomInteractionEvent).id === "string" &&
+      ((payload as RoomInteractionEvent).kind === "emoji" ||
+        (payload as RoomInteractionEvent).kind === "bullet" ||
+        (payload as RoomInteractionEvent).kind === "blessing") &&
+      typeof (payload as RoomInteractionEvent).message === "string"
+  );
 }
 
 function toRoomSnapshot(snapshot: RoomSnapshot | RoomControlSnapshot): RoomSnapshot {

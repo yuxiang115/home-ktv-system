@@ -61,6 +61,20 @@ describe("PlayerClient", () => {
     expect(client.deviceId).toBe("web-tv-uat-second");
   });
 
+  it("defaults bare local TV preview URLs to the local API port", () => {
+    Object.defineProperty(globalThis, "location", {
+      configurable: true,
+      value: {
+        origin: "http://192.168.5.64:4273",
+        search: "?roomSlug=living-room&deviceId=web-tv-preview"
+      } as Location
+    });
+
+    const client = createBrowserPlayerClient();
+
+    expect(client.createSnapshotSocketUrl()).toBe("ws://192.168.5.64:4002/rooms/living-room/realtime?deviceId=web-tv-preview&client=tv");
+  });
+
   it("builds a TV realtime WebSocket URL from an HTTP API base", () => {
     const client = new PlayerClient({
       apiBaseUrl: "http://192.168.5.58:4000",

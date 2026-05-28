@@ -26,7 +26,8 @@ export const controllerCommandNames = {
 
 export const roomEventNames = {
   snapshotUpdated: "room.snapshot.updated",
-  controlSnapshotUpdated: "room.control.snapshot.updated"
+  controlSnapshotUpdated: "room.control.snapshot.updated",
+  interactionCreated: "room.interaction.created"
 } as const;
 
 export const protocolMessageNames = {
@@ -50,7 +51,8 @@ export const protocolMessageNames = {
   "controller.command.switch_vocal_mode": "controller.command.switch_vocal_mode",
   "controller.command.set_volume": "controller.command.set_volume",
   "room.snapshot.updated": "room.snapshot.updated",
-  "room.control.snapshot.updated": "room.control.snapshot.updated"
+  "room.control.snapshot.updated": "room.control.snapshot.updated",
+  "room.interaction.created": "room.interaction.created"
 } as const;
 
 export type PlayerCommandName = (typeof playerCommandNames)[keyof typeof playerCommandNames];

@@ -52,6 +52,34 @@ describe("realtime room sync", () => {
     });
   });
 
+  it("broadcasts room interactions to room subscribers", async () => {
+    const broadcaster = new RoomSnapshotBroadcaster();
+    const socket = createSocketSpy();
+    broadcaster.subscribe("living-room", socket);
+
+    broadcaster.broadcastRoomInteraction("living-room", {
+      id: "interaction-1",
+      roomId: "living-room",
+      roomSlug: "living-room",
+      kind: "bullet",
+      message: "今晚开唱",
+      senderDeviceId: "phone-1",
+      senderName: "Controller A",
+      createdAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + 7000).toISOString()
+    });
+
+    expect(socket.sent).toHaveLength(1);
+    expect(JSON.parse(socket.sent[0] ?? "")).toMatchObject({
+      type: "room.interaction.created",
+      roomId: "living-room",
+      payload: {
+        kind: "bullet",
+        message: "今晚开唱"
+      }
+    });
+  });
+
   it("validates mobile realtime connections and renews the control session", async () => {
     vi.useFakeTimers();
     const harness = createHarness();

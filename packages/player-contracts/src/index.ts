@@ -137,6 +137,28 @@ export interface PlaybackNotice {
   message: string;
 }
 
+export type RoomInteractionKind = "emoji" | "bullet" | "blessing";
+
+export interface RoomInteractionEvent {
+  id: string;
+  roomId: RoomId;
+  roomSlug: string;
+  kind: RoomInteractionKind;
+  message: string;
+  senderDeviceId: string;
+  senderName: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface RoomInteractionEnvelope {
+  type: "room.interaction.created";
+  roomId: RoomId;
+  version: number;
+  timestamp: string;
+  payload: RoomInteractionEvent;
+}
+
 export type RoomSnapshotState = "idle" | "loading" | "playing" | "recovering" | "conflict" | "error";
 
 export interface RoomSnapshot {

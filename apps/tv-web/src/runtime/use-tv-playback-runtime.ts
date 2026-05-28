@@ -1,4 +1,5 @@
 import type { PlaybackNotice, RoomSnapshot } from "@home-ktv/player-contracts";
+import type { RoomInteractionEvent } from "@home-ktv/player-contracts";
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction, SyntheticEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivePlaybackController } from "./active-playback-controller.js";
@@ -20,6 +21,7 @@ export interface TvPlaybackRuntimeState {
   durationMs: number | null;
   firstPlayBlocked: boolean;
   handleVideoEnded(event: SyntheticEvent<HTMLVideoElement>): void;
+  interactions: readonly RoomInteractionEvent[];
   playbackPositionMs: number;
   roomState: RoomSnapshotState;
   snapshot: RoomSnapshot | null;
@@ -200,6 +202,7 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
     durationMs,
     firstPlayBlocked,
     handleVideoEnded,
+    interactions: roomState.interactions,
     playbackPositionMs,
     roomState,
     snapshot

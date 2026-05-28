@@ -1,5 +1,6 @@
+import type { SongDiscoveryResponse, SongDiscoverySong } from "@home-ktv/domain";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect } from "react";
 import { DEFAULT_ROOM_VOLUME_PERCENT, type RoomControlSnapshot } from "@home-ktv/player-contracts";
@@ -141,12 +142,13 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
+    await openControlTab();
     await screen.findByRole("heading", { name: "点歌控制台" });
     await user.click(screen.getByRole("button", { name: "English" }));
 
     expect(screen.getByRole("heading", { name: "KTV controller" })).toBeTruthy();
     expect(screen.getByText("TV online")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Search songs" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "中文" }));
 
@@ -154,10 +156,10 @@ describe("mobile controller runtime", () => {
     expect(screen.getByText("电视在线")).toBeTruthy();
     expect(screen.getByRole("region", { name: "当前播放" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "播放队列" })).toBeTruthy();
-    expect(screen.getByRole("region", { name: "搜索歌曲" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "首页" })).toBeTruthy();
   });
 
-  it("places song search before the queue for the phone-first flow", async () => {
+  it("starts on the discovery home and keeps playback controls behind the control tab", async () => {
     installControllerFetchMock({
       restoreResponses: [json(sessionResponse(roomSnapshot()))]
     });
@@ -165,13 +167,17 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    await screen.findByText("电视在线");
+    const search = await screen.findByRole("region", { name: "搜索歌曲" });
+    const recommendations = screen.getByRole("region", { name: "推荐歌曲" });
+    expect(search.compareDocumentPosition(recommendations) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "当前播放" })).toBeNull();
+
+    await openControlTab();
     const current = screen.getByRole("region", { name: "当前播放" });
-    const search = screen.getByRole("region", { name: "搜索歌曲" });
     const queue = screen.getByRole("region", { name: "播放队列" });
 
     expect(current).toBeTruthy();
-    expect(search.compareDocumentPosition(queue) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(queue).toBeTruthy();
   });
 
   it("shows an empty online supplement state when a search has no local result and no candidates", async () => {
@@ -184,9 +190,9 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    await screen.findByText("电视在线");
-    await user.clear(screen.getByLabelText("搜索关键词"));
-    await user.type(screen.getByLabelText("搜索关键词"), "不存在的歌曲");
+    await screen.findByRole("button", { name: "打开搜索" });
+    const dialog = await typeSearchQuery(user, "不存在的歌曲");
+    expect(dialog).toBeTruthy();
 
     expect(await screen.findByText("暂未找到在线补歌候选")).toBeTruthy();
     expect(screen.getByText("当前没有可请求的在线候选，可以换关键词或稍后重试。")).toBeTruthy();
@@ -201,9 +207,154 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    await screen.findByText("电视在线");
+    await screen.findByRole("button", { name: "打开搜索" });
     expect(requests.some((request) => request.url === "/rooms/living-room/songs/search?q=&limit=30")).toBe(true);
+    expect(requests.some((request) => request.url.startsWith("/rooms/living-room/songs/discovery?"))).toBe(true);
     expect(requests.some((request) => request.url.endsWith("/available-songs"))).toBe(false);
+  });
+
+  it("renders artist, genre, and vertical recommendation discovery sections with refresh", async () => {
+    const user = userEvent.setup();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))]
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    expect(await screen.findByText("歌手点歌")).toBeTruthy();
+    expect(screen.getByText("风格点歌")).toBeTruthy();
+    expect(within(screen.getByRole("button", { name: /歌手点歌/u })).getByText("周杰伦")).toBeTruthy();
+    expect(within(screen.getByRole("button", { name: /歌手点歌/u })).getByText("五月天")).toBeTruthy();
+    expect(within(screen.getByRole("button", { name: /风格点歌/u })).getByText("流行")).toBeTruthy();
+    expect(within(screen.getByRole("button", { name: /风格点歌/u })).getByText("摇滚")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "互动快捷操作" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "发表情" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "发弹幕" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "送祝福" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "推荐歌曲" })).toBeTruthy();
+    expect(screen.getAllByText("周杰伦").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("流行").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/^推荐歌曲/u, { selector: "strong" })).toHaveLength(30);
+
+    const initialDiscoveryRequests = requests.filter((request) => request.url.startsWith("/rooms/living-room/songs/discovery?"));
+    await user.click(screen.getByRole("button", { name: "换一批" }));
+    await flush();
+
+    const refreshedDiscoveryRequests = requests.filter((request) => request.url.startsWith("/rooms/living-room/songs/discovery?"));
+    expect(refreshedDiscoveryRequests.length).toBeGreaterThan(initialDiscoveryRequests.length);
+  });
+
+  it("sends emoji, bullet, and blessing shortcut interactions", async () => {
+    const user = userEvent.setup();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))]
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    await screen.findByRole("button", { name: "发表情" });
+    await user.click(screen.getByRole("button", { name: "发表情" }));
+    const emojiDialog = screen.getByRole("dialog", { name: "发表情" });
+    expect(emojiDialog.className).toContain("interaction-sheet");
+    expect(emojiDialog.querySelectorAll(".interaction-option--emoji")).toHaveLength(48);
+    expect(within(emojiDialog).getByRole("button", { name: "😀" })).toBeTruthy();
+    expect(within(emojiDialog).getByRole("button", { name: "🏆" })).toBeTruthy();
+    expect(within(emojiDialog).getByRole("button", { name: "🚀" })).toBeTruthy();
+    expect(within(emojiDialog).getByRole("button", { name: "🎸" })).toBeTruthy();
+    expect(within(emojiDialog).getByRole("button", { name: "🍿" })).toBeTruthy();
+    expect(within(emojiDialog).getByRole("button", { name: "🌊" })).toBeTruthy();
+    await user.click(within(emojiDialog).getByRole("button", { name: "😀" }));
+    expect(screen.getByRole("dialog", { name: "发表情" })).toBeTruthy();
+    await user.click(within(screen.getByRole("dialog", { name: "发表情" })).getByRole("button", { name: "🚀" }));
+    await flush();
+
+    await user.click(screen.getByRole("button", { name: "发弹幕" }));
+    const bulletDialog = screen.getByRole("dialog", { name: "发弹幕" });
+    expect(bulletDialog.className).toContain("interaction-sheet");
+    expect(bulletDialog.querySelector(".interaction-sheet__footer")).toBeTruthy();
+    await user.clear(within(bulletDialog).getByLabelText("互动内容"));
+    await user.type(within(bulletDialog).getByLabelText("互动内容"), "唱得太好了");
+    await user.click(within(bulletDialog).getByRole("button", { name: "发送" }));
+    await flush();
+    expect(screen.getByRole("dialog", { name: "发弹幕" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "送祝福" }));
+    const blessingDialog = screen.getByRole("dialog", { name: "送祝福" });
+    await user.click(within(blessingDialog).getByRole("button", { name: "祝家人朋友天天开心" }));
+    await user.click(within(blessingDialog).getByRole("button", { name: "发送" }));
+    await flush();
+    expect(screen.getByRole("dialog", { name: "送祝福" })).toBeTruthy();
+
+    const interactionRequests = requests.filter((request) => request.url === "/rooms/living-room/interactions");
+    expect(interactionRequests.map((request) => request.body)).toEqual([
+      expect.objectContaining({ deviceId: "mobile-test-uuid", kind: "emoji", message: "😀" }),
+      expect.objectContaining({ deviceId: "mobile-test-uuid", kind: "emoji", message: "🚀" }),
+      expect.objectContaining({ deviceId: "mobile-test-uuid", kind: "bullet", message: "唱得太好了" }),
+      expect.objectContaining({ deviceId: "mobile-test-uuid", kind: "blessing", message: "祝家人朋友天天开心" })
+    ]);
+  });
+
+  it("repeats emoji interactions during a long press and stops after the send window", async () => {
+    vi.useFakeTimers();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))]
+    });
+    installWebSocketMock();
+
+    render(<App />);
+    await flush();
+
+    fireEvent.click(screen.getByRole("button", { name: "发表情" }));
+    const emojiButton = within(screen.getByRole("dialog", { name: "发表情" })).getByRole("button", { name: "🚀" });
+
+    fireEvent.pointerDown(emojiButton, { pointerId: 1 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(requests.filter((request) => request.url === "/rooms/living-room/interactions")).toHaveLength(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(requests.filter((request) => request.url === "/rooms/living-room/interactions")).toHaveLength(5);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(requests.filter((request) => request.url === "/rooms/living-room/interactions")).toHaveLength(25);
+
+    fireEvent.pointerUp(emojiButton, { pointerId: 1 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(requests.filter((request) => request.url === "/rooms/living-room/interactions")).toHaveLength(25);
+  });
+
+  it("opens a search overlay with local history, instant results, and clear history", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem("home_ktv_search_history_v1", JSON.stringify(["七里香"]));
+    installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))]
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    await screen.findByRole("button", { name: "打开搜索" });
+    await user.click(screen.getByRole("button", { name: "打开搜索" }));
+
+    expect(screen.getByRole("dialog", { name: "搜索歌曲" })).toBeTruthy();
+    expect(screen.getByText("最近搜索")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "七里香" }));
+    expect(await screen.findByText("七里香", { selector: "strong" })).toBeTruthy();
+
+    const dialog = screen.getByRole("dialog", { name: "搜索歌曲" });
+    await user.clear(within(dialog).getByLabelText("搜索关键词"));
+    await user.click(screen.getByRole("button", { name: "清空" }));
+    expect(localStorage.getItem("home_ktv_search_history_v1")).toBe("[]");
+    expect(screen.queryByRole("button", { name: "七里香" })).toBeNull();
   });
 
   it("debounces song search query changes by 250ms", async () => {
@@ -334,7 +485,8 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("电视在线")).toBeTruthy();
+    await openControlTab();
+    expect(screen.getByText("电视在线")).toBeTruthy();
     expect(requests.slice(0, 2).map((request) => `${request.method} ${request.url}`)).toEqual([
       "GET /rooms/living-room/control-session?deviceId=mobile-test-uuid",
       "POST /rooms/living-room/control-sessions"
@@ -352,7 +504,8 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("电视在线")).toBeTruthy();
+    await openControlTab();
+    expect(screen.getByText("电视在线")).toBeTruthy();
     expect(requests.slice(0, 3).map((request) => `${request.method} ${request.url}`)).toEqual([
       "GET /rooms/living-room/control-session?deviceId=mobile-test-uuid",
       "POST /rooms/living-room/control-sessions",
@@ -370,6 +523,7 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
     await flush();
+    await openControlTab();
     expect(screen.getByText("电视在线")).toBeTruthy();
     sockets[0]?.emitOpen();
     sockets[0]?.emitClose();
@@ -389,6 +543,7 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
     await flush();
+    await openControlTab();
     expect(screen.getByText("电视在线")).toBeTruthy();
     sockets[0]?.emitOpen();
     await vi.advanceTimersByTimeAsync(sessionRefreshIntervalMs);
@@ -406,7 +561,7 @@ describe("mobile controller runtime", () => {
     installWebSocketMock();
 
     render(<App />);
-    await screen.findByText("电视在线");
+    await openControlTab();
     await user.click(screen.getByRole("button", { name: "切歌" }));
     expect(screen.getByRole("dialog", { name: "确认切歌" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "确认" }));
@@ -427,6 +582,7 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
+    await openControlTab();
     await screen.findByText("下一首");
     expect(screen.getByRole("button", { name: "删除" }).className).toContain("danger-button");
 
@@ -454,6 +610,7 @@ describe("mobile controller runtime", () => {
     installWebSocketMock();
 
     render(<App />);
+    await openControlTab();
     await screen.findByText("下一首");
     expect(screen.queryByRole("button", { name: "撤销" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "删除" }));
@@ -478,6 +635,7 @@ describe("mobile controller runtime", () => {
     installWebSocketMock();
 
     render(<App />);
+    await openControlTab();
     await screen.findByRole("button", { name: "切到原唱" });
     await user.click(screen.getByRole("button", { name: "切到原唱" }));
     await flush();
@@ -535,7 +693,8 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    await screen.findByText("电视在线");
+    await openControlTab();
+    expect(screen.getByText("电视在线")).toBeTruthy();
     expect(screen.getByRole("button", { name: "切到伴唱" })).toBeTruthy();
     expect(screen.getByLabelText("current-vocal-mode").textContent).toContain("原唱");
 
@@ -556,7 +715,7 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    await screen.findByText("电视在线");
+    await openControlTab();
     expect(requests.some((request) => request.url.includes("/control-session"))).toBe(true);
     const modeSummary = screen.getByLabelText("current-vocal-mode");
     expect(modeSummary.textContent).toContain("当前模式");
@@ -579,6 +738,7 @@ describe("mobile controller runtime", () => {
     render(<App />);
 
     await flush();
+    await openControlTab();
     expect(screen.getByText("电视在线")).toBeTruthy();
     expect(screen.getByText("音量")).toBeTruthy();
     expect(screen.getByText("70%")).toBeTruthy();
@@ -603,7 +763,7 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    await screen.findByText("电视在线");
+    await openControlTab();
     expect(screen.getByText("音量")).toBeTruthy();
     expect(screen.getByText("50%")).toBeTruthy();
   });
@@ -616,7 +776,7 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    await screen.findByText("电视在线");
+    await openControlTab();
     expect(screen.getByText("播放中")).toBeTruthy();
     expect(screen.getAllByText("伴唱").length).toBeGreaterThan(0);
     expect(screen.getByText("当前模式")).toBeTruthy();
@@ -637,8 +797,10 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
     await flush();
-    expect(screen.getByText("电视在线")).toBeTruthy();
-    const searchInput = screen.getByLabelText("搜索关键词");
+    expect(screen.getByRole("button", { name: "打开搜索" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "打开搜索" }));
+    const dialog = screen.getByRole("dialog", { name: "搜索歌曲" });
+    const searchInput = within(dialog).getByLabelText("搜索关键词");
     requests.length = 0;
 
     fireEvent.change(searchInput, { target: { value: "qlx" } });
@@ -661,15 +823,17 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("晴天")).toBeTruthy();
-    expect(screen.getByText("本地可播")).toBeTruthy();
-    expect(screen.getByText("已点 / 队列中")).toBeTruthy();
-    expect(screen.getByText("1 个版本")).toBeTruthy();
-    expect(screen.getByText("2 个版本")).toBeTruthy();
-    expect(screen.getByText("推荐")).toBeTruthy();
-    expect(screen.getByText("现场版")).toBeTruthy();
+    const dialog = await typeSearchQuery(user, "晴天");
+    const search = within(dialog);
+    expect(await search.findByText("晴天", { selector: "strong" })).toBeTruthy();
+    expect(search.getByText("本地可播")).toBeTruthy();
+    expect(search.getByText("已点 / 队列中")).toBeTruthy();
+    expect(search.getByText("1 个版本")).toBeTruthy();
+    expect(search.getByText("2 个版本")).toBeTruthy();
+    expect(search.getByText("推荐")).toBeTruthy();
+    expect(search.getByText("现场版")).toBeTruthy();
 
-    await user.click(screen.getByRole("button", { name: "点歌" }));
+    await user.click(search.getByRole("button", { name: "点歌" }));
     await flush();
 
     expect(requests.find((request) => request.url === "/rooms/living-room/commands/add-queue-entry")?.body).toMatchObject({
@@ -718,9 +882,11 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    await screen.findByText("真实 MV 样本");
-    expect(screen.getAllByText("需预处理").length).toBeGreaterThanOrEqual(1);
-    const disabledButton = screen.getByRole("button", { name: "需预处理" }) as HTMLButtonElement;
+    const dialog = await typeSearchQuery(user, "真实 MV 样本");
+    const search = within(dialog);
+    await search.findByText("真实 MV 样本", { selector: "strong" });
+    expect(search.getAllByText("需预处理").length).toBeGreaterThanOrEqual(1);
+    const disabledButton = search.getByRole("button", { name: "需预处理" }) as HTMLButtonElement;
     expect(disabledButton.disabled).toBe(true);
     await user.click(disabledButton);
 
@@ -789,19 +955,21 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    expect(await screen.findByText("KTV 索引结果")).toBeTruthy();
-    expect(screen.getByText("索引晴天")).toBeTruthy();
-    expect(screen.getAllByText("KTV索引").length).toBeGreaterThan(0);
-    expect(screen.getByText("2 个索引版本")).toBeTruthy();
-    expect(screen.getByText("单音轨歌曲源")).toBeTruthy();
-    expect(screen.getByText("未知大小")).toBeTruthy();
-    const addButton = screen.getByRole("button", { name: "点歌" }) as HTMLButtonElement;
+    const dialog = await typeSearchQuery(user, "索引晴天");
+    const search = within(dialog);
+    expect(await search.findByText("KTV 索引结果")).toBeTruthy();
+    expect(search.getByText("索引晴天")).toBeTruthy();
+    expect(search.getAllByText("KTV索引").length).toBeGreaterThan(0);
+    expect(search.getByText("2 个索引版本")).toBeTruthy();
+    expect(search.getByText("单音轨歌曲源")).toBeTruthy();
+    expect(search.getByText("未知大小")).toBeTruthy();
+    const addButton = search.getByRole("button", { name: "点歌" }) as HTMLButtonElement;
     expect(addButton.disabled).toBe(false);
-    expect(screen.getByRole("button", { name: "已点" })).toBeTruthy();
+    expect(search.getByRole("button", { name: "已点" })).toBeTruthy();
 
     await user.click(addButton);
 
-    const pendingButton = await screen.findByRole("button", { name: "正在加入..." });
+    const pendingButton = await search.findByRole("button", { name: "正在加入..." });
     expect((pendingButton as HTMLButtonElement).disabled).toBe(true);
     const body = requests.find((request) => request.url === "/rooms/living-room/commands/add-queue-entry")
       ?.body as Record<string, unknown>;
@@ -811,7 +979,7 @@ describe("mobile controller runtime", () => {
     expect(JSON.stringify(body)).not.toContain(nasPathPrefix);
     expect(JSON.stringify(body)).not.toContain(rawCamelPathKey);
     expect(JSON.stringify(body)).not.toContain(rawSnakePathKey);
-    const searchPanelText = screen.getByRole("region", { name: "搜索歌曲" }).textContent ?? "";
+    const searchPanelText = dialog.textContent ?? "";
     expect(searchPanelText).not.toContain(nasPathPrefix);
     expect(searchPanelText).not.toContain(rawCamelPathKey);
     expect(searchPanelText).not.toContain(rawSnakePathKey);
@@ -868,8 +1036,10 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    await screen.findByText("索引晴天");
-    await user.click(screen.getByRole("button", { name: "已点" }));
+    const dialog = await typeSearchQuery(user, "索引晴天");
+    const search = within(dialog);
+    await search.findByText("索引晴天");
+    await user.click(search.getByRole("button", { name: "已点" }));
 
     expect(screen.getByRole("dialog", { name: "重复点歌" })).toBeTruthy();
     expect(requests.some((request) => request.url === "/rooms/living-room/commands/add-queue-entry")).toBe(false);
@@ -933,6 +1103,7 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
+    await typeSearchQuery(userEvent.setup(), "索引失效");
     expect(await screen.findByRole("button", { name: "索引已失效" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "文件不可读" })).toBeTruthy();
     expect((screen.getByRole("button", { name: "索引已失效" }) as HTMLButtonElement).disabled).toBe(true);
@@ -975,8 +1146,10 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    await screen.findByText("暂不可播 MV");
-    expect(screen.getByRole("button", { name: "暂不可播放" })).toBeTruthy();
+    const dialog = await typeSearchQuery(userEvent.setup(), "暂不可播 MV");
+    const search = within(dialog);
+    await search.findByText("暂不可播 MV", { selector: "strong" });
+    expect(search.getByRole("button", { name: "暂不可播放" })).toBeTruthy();
   });
 
   it("confirms queued multi-version duplicate add before sending the selected assetId", async () => {
@@ -987,7 +1160,7 @@ describe("mobile controller runtime", () => {
     installWebSocketMock();
 
     render(<App />);
-    await screen.findAllByText("七里香");
+    await typeSearchQuery(user, "七里香");
     const versionButtons = screen.getAllByRole("button", { name: "点这个版本" });
 
     await user.click(versionButtons[1]!);
@@ -1022,7 +1195,7 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    await screen.findByText("电视在线");
+    await openControlTab();
     const switchButton = screen.getByRole("button", { name: "切到原唱" }) as HTMLButtonElement;
     expect(switchButton.disabled).toBe(false);
     await user.click(switchButton);
@@ -1044,6 +1217,7 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
+    await openControlTab();
     const switchButton = (await screen.findByRole("button", { name: "切到原唱" })) as HTMLButtonElement;
     await user.click(switchButton);
 
@@ -1104,19 +1278,21 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    await screen.findByText("电视在线");
-    expect(screen.getByText("本地未找到")).toBeTruthy();
-    expect(screen.getByText("找到在线补歌候选")).toBeTruthy();
-    const requestButtons = screen.getAllByRole("button", { name: "请求补歌" }) as HTMLButtonElement[];
+    await screen.findByRole("button", { name: "打开搜索" });
+    const dialog = await typeSearchQuery(userEvent.setup(), "不存在的在线候选");
+    const search = within(dialog);
+    expect(search.getByText("本地未找到")).toBeTruthy();
+    expect(search.getByText("找到在线补歌候选")).toBeTruthy();
+    const requestButtons = search.getAllByRole("button", { name: "请求补歌" }) as HTMLButtonElement[];
     expect(requestButtons).toHaveLength(1);
     expect(requestButtons[0]?.disabled).toBe(false);
-    expect(screen.getByText("七里香", { selector: "strong" })).toBeTruthy();
-    expect(screen.getByText("MV")).toBeTruthy();
-    expect(screen.getByText("高可靠")).toBeTruthy();
-    expect(screen.getByText("普通风险")).toBeTruthy();
-    expect(screen.getByText("已发现")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "加点" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "点歌" })).toBeNull();
+    expect(search.getByText("七里香", { selector: "strong" })).toBeTruthy();
+    expect(search.getByText("MV")).toBeTruthy();
+    expect(search.getByText("高可靠")).toBeTruthy();
+    expect(search.getByText("普通风险")).toBeTruthy();
+    expect(search.getByText("已发现")).toBeTruthy();
+    expect(search.queryByRole("button", { name: "加点" })).toBeNull();
+    expect(search.queryByRole("button", { name: "点歌" })).toBeNull();
   });
 
   it("renders online supplement candidates below local results when both exist", async () => {
@@ -1171,9 +1347,11 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
-    await screen.findByText("晴天");
-    await screen.findByText("远端七里香");
-    const searchPanelText = screen.getByRole("region", { name: "搜索歌曲" }).textContent ?? "";
+    const dialog = await typeSearchQuery(userEvent.setup(), "晴天");
+    const search = within(dialog);
+    await search.findByText("晴天", { selector: "strong" });
+    await search.findByText("远端七里香");
+    const searchPanelText = dialog.textContent ?? "";
     const localIndex = searchPanelText.indexOf("晴天");
     const onlineIndex = searchPanelText.indexOf("远端七里香");
 
@@ -1219,6 +1397,7 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
+    await typeSearchQuery(user, "七里香");
     await screen.findByText("七里香", { selector: "strong" });
     const requestButton = screen.getByRole("button", { name: "请求补歌" }) as HTMLButtonElement;
     expect(requestButton.disabled).toBe(false);
@@ -1310,6 +1489,7 @@ describe("mobile controller runtime", () => {
 
     render(<App />);
 
+    await typeSearchQuery(user, "七里香");
     await screen.findByText("七里香", { selector: "strong" });
     await user.click(screen.getByRole("button", { name: "请求补歌" }));
     await flush();
@@ -1351,11 +1531,31 @@ async function flush() {
   });
 }
 
+async function openControlTab() {
+  fireEvent.click(screen.getByRole("button", { name: /控制|Control/u }));
+  await flush();
+  return screen.getByRole("region", { name: /当前播放|Current playback/u });
+}
+
+async function openSearchOverlay(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "打开搜索" }));
+  return screen.getByRole("dialog", { name: "搜索歌曲" });
+}
+
+async function typeSearchQuery(user: ReturnType<typeof userEvent.setup>, query: string) {
+  const dialog = await openSearchOverlay(user);
+  const input = within(dialog).getByLabelText("搜索关键词");
+  await user.clear(input);
+  await user.type(input, query);
+  return dialog;
+}
+
 function installControllerFetchMock(options: {
   restoreResponses?: Response[];
   createResponses?: Response[];
   commandResponses?: Record<string, Response | Promise<Response>>;
   songSearchResponse?: (query: string) => unknown;
+  songDiscoveryResponse?: (seed: string) => unknown;
 } = {}) {
   const requests: RequestRecord[] = [];
   const restoreResponses = [...(options.restoreResponses ?? [json(sessionResponse(roomSnapshot()))])];
@@ -1388,6 +1588,28 @@ function installControllerFetchMock(options: {
       if (method === "GET" && requestUrl.pathname.endsWith("/songs/search")) {
         const query = requestUrl.searchParams.get("q") ?? "";
         return json((options.songSearchResponse ?? songSearchResponse)(query));
+      }
+
+      if (method === "GET" && requestUrl.pathname.endsWith("/songs/discovery")) {
+        const seed = requestUrl.searchParams.get("seed") ?? "";
+        return json((options.songDiscoveryResponse ?? songDiscoveryResponse)(seed));
+      }
+
+      if (method === "POST" && requestUrl.pathname.endsWith("/interactions")) {
+        return json({
+          status: "accepted",
+          interaction: {
+            id: "interaction-test",
+            roomId: "living-room",
+            roomSlug: "living-room",
+            kind: body?.kind,
+            message: body?.message,
+            senderDeviceId: body?.deviceId,
+            senderName: "Phone",
+            createdAt: "2026-05-27T10:00:00.000Z",
+            expiresAt: "2026-05-27T10:00:07.000Z"
+          }
+        });
       }
 
       const commandResponse = commandResponses[requestUrl.pathname];
@@ -1531,6 +1753,86 @@ function songSearchResponse(query: string) {
       }
     ],
     online: { status: "disabled", message: "本地未入库，补歌功能后续可用", candidates: [] }
+  };
+}
+
+function songDiscoveryResponse(seed: string): SongDiscoveryResponse {
+  const recommended = Array.from({ length: 30 }, (_, index) =>
+    discoverySong({
+      songId: `song-recommend-${index + 1}`,
+      title: `推荐歌曲${index + 1}`,
+      artistId: index % 2 === 0 ? "artist-jay" : "artist-mayday",
+      artistName: index % 2 === 0 ? "周杰伦" : "五月天",
+      genre: index % 2 === 0 ? ["流行"] : ["摇滚"],
+      playCount: 30 - index
+    })
+  );
+
+  return {
+    seed,
+    recommended,
+    artists: [
+      {
+        artistId: "artist-jay",
+        artistName: "周杰伦",
+        songCount: 2,
+        songs: [recommended[0]!, recommended[2]!]
+      },
+      {
+        artistId: "artist-mayday",
+        artistName: "五月天",
+        songCount: 2,
+        songs: [recommended[1]!, recommended[3]!]
+      }
+    ],
+    genres: [
+      {
+        genre: "流行",
+        songCount: 2,
+        songs: [recommended[0]!, recommended[2]!]
+      },
+      {
+        genre: "摇滚",
+        songCount: 2,
+        songs: [recommended[1]!, recommended[3]!]
+      }
+    ]
+  };
+}
+
+function discoverySong(input: {
+  songId: string;
+  title: string;
+  artistId: string;
+  artistName: string;
+  genre: string[];
+  playCount: number;
+}): SongDiscoverySong {
+  return {
+    songId: input.songId,
+    title: input.title,
+    artistId: input.artistId,
+    artistName: input.artistName,
+    language: "mandarin",
+    genre: input.genre,
+    matchReason: "default",
+    queueState: "not_queued",
+    playCount: input.playCount,
+    recommendationWeight: input.playCount + 1,
+    versions: [
+      {
+        assetId: `asset-${input.songId}`,
+        displayName: "高清版",
+        sourceType: "local",
+        sourceLabel: "本地",
+        durationMs: 180000,
+        qualityLabel: "HD",
+        isRecommended: true,
+        queueState: "queueable",
+        canQueue: true,
+        disabledLabel: null
+      }
+    ]
   };
 }
 

@@ -1,4 +1,4 @@
-import type { RoomControlSnapshot } from "@home-ktv/player-contracts";
+import type { RoomControlSnapshot, RoomInteractionEnvelope, RoomInteractionEvent } from "@home-ktv/player-contracts";
 
 export interface RoomSnapshotConnection {
   send(message: string): void;
@@ -36,12 +36,19 @@ export class RoomSnapshotBroadcaster {
   }
 
   broadcastRoomSnapshot(roomSlug: string, snapshot: RoomControlSnapshot): void {
+    this.broadcast(roomSlug, JSON.stringify(toSnapshotEnvelope(snapshot)));
+  }
+
+  broadcastRoomInteraction(roomSlug: string, interaction: RoomInteractionEvent): void {
+    this.broadcast(roomSlug, JSON.stringify(toInteractionEnvelope(interaction)));
+  }
+
+  private broadcast(roomSlug: string, message: string): void {
     const subscribers = this.subscribers.get(roomSlug);
     if (!subscribers || subscribers.size === 0) {
       return;
     }
 
-    const message = JSON.stringify(toEnvelope(snapshot));
     for (const connection of [...subscribers]) {
       try {
         connection.send(message);
@@ -52,12 +59,22 @@ export class RoomSnapshotBroadcaster {
   }
 }
 
-function toEnvelope(snapshot: RoomControlSnapshot): RoomSnapshotEnvelope {
+function toSnapshotEnvelope(snapshot: RoomControlSnapshot): RoomSnapshotEnvelope {
   return {
     type: "room.control.snapshot.updated",
     roomId: snapshot.roomId,
     version: snapshot.sessionVersion,
     timestamp: snapshot.generatedAt,
     payload: snapshot
+  };
+}
+
+function toInteractionEnvelope(interaction: RoomInteractionEvent): RoomInteractionEnvelope {
+  return {
+    type: "room.interaction.created",
+    roomId: interaction.roomId,
+    version: new Date(interaction.createdAt).getTime(),
+    timestamp: interaction.createdAt,
+    payload: interaction
   };
 }

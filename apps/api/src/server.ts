@@ -58,7 +58,9 @@ import { registerControlSessionRoutes } from "./routes/control-sessions.js";
 import { PgKtvIndexRawAssetRepository, registerMediaRoutes } from "./routes/media.js";
 import { registerPlayerRoutes } from "./routes/player.js";
 import { registerRealtimeRoutes } from "./routes/realtime.js";
+import { registerRoomInteractionRoutes } from "./routes/room-interactions.js";
 import { registerRoomSnapshotRoutes } from "./routes/room-snapshots.js";
+import { registerSongDiscoveryRoutes } from "./routes/song-discovery.js";
 import { PgIndexedSourceIdentityLookup, registerSongSearchRoutes } from "./routes/song-search.js";
 
 export interface CreateServerOptions {
@@ -238,6 +240,16 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     online: onlineRuntime.tasks,
     ...(repositories.ktvIndex ? { ktvIndex: repositories.ktvIndex } : {}),
     ...(pool ? { indexedSources: new PgIndexedSourceIdentityLookup(pool) } : {})
+  });
+  await registerSongDiscoveryRoutes(server, {
+    rooms: repositories.rooms,
+    songs: repositories.songs,
+    queueEntries: repositories.queueEntries
+  });
+  await registerRoomInteractionRoutes(server, {
+    rooms: repositories.rooms,
+    controlSessions: repositories.controlSessions,
+    broadcaster
   });
   await registerControlCommandRoutes(server, {
     config: resolvedConfig,

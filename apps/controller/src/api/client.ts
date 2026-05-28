@@ -1,5 +1,5 @@
-import type { OnlineCandidateTask, SongSearchResponse } from "@home-ktv/domain";
-import type { ControlSessionInfo, RoomControlSnapshot } from "@home-ktv/player-contracts";
+import type { OnlineCandidateTask, SongDiscoveryResponse, SongSearchResponse } from "@home-ktv/domain";
+import type { ControlSessionInfo, RoomControlSnapshot, RoomInteractionEvent, RoomInteractionKind } from "@home-ktv/player-contracts";
 
 const deviceIdStorageKey = "home_ktv_device_id";
 
@@ -27,6 +27,11 @@ export interface SupplementCommandAcceptedResponse {
   commandId: string;
   sessionVersion: number;
   task: OnlineCandidateTask;
+}
+
+export interface RoomInteractionAcceptedResponse {
+  status: "accepted";
+  interaction: RoomInteractionEvent;
 }
 
 export class ControllerApiError extends Error {
@@ -101,6 +106,18 @@ export async function searchSongs(input: {
   );
 }
 
+export async function fetchSongDiscovery(input: {
+  roomSlug: string;
+  seed: string;
+  signal?: AbortSignal;
+}): Promise<SongDiscoveryResponse> {
+  const init: RequestInit = input.signal ? { signal: input.signal } : {};
+  return fetchController<SongDiscoveryResponse>(
+    `/rooms/${encodeURIComponent(input.roomSlug)}/songs/discovery?seed=${encodeURIComponent(input.seed)}`,
+    init
+  );
+}
+
 export async function fetchControlSnapshot(input: {
   roomSlug: string;
   deviceId: string;
@@ -170,6 +187,25 @@ export async function requestSupplement(input: CommandBaseInput & {
         deviceId: input.deviceId,
         provider: input.provider,
         providerCandidateId: input.providerCandidateId
+      })
+    }
+  );
+}
+
+export async function sendRoomInteraction(input: {
+  roomSlug: string;
+  deviceId: string;
+  kind: RoomInteractionKind;
+  message: string;
+}): Promise<RoomInteractionAcceptedResponse> {
+  return fetchController<RoomInteractionAcceptedResponse>(
+    `/rooms/${encodeURIComponent(input.roomSlug)}/interactions`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        deviceId: input.deviceId,
+        kind: input.kind,
+        message: input.message
       })
     }
   );

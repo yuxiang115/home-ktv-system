@@ -284,6 +284,33 @@ export interface SongSearchIndexedSection {
   results: SongSearchIndexedResult[];
 }
 
+export interface SongDiscoverySong extends SongSearchLocalResult {
+  artistId: EntityId;
+  genre: readonly string[];
+  playCount: number;
+  recommendationWeight: number;
+}
+
+export interface SongDiscoveryArtist {
+  artistId: EntityId;
+  artistName: string;
+  songCount: number;
+  songs: SongDiscoverySong[];
+}
+
+export interface SongDiscoveryGenre {
+  genre: string;
+  songCount: number;
+  songs: SongDiscoverySong[];
+}
+
+export interface SongDiscoveryResponse {
+  seed: string;
+  recommended: SongDiscoverySong[];
+  artists: SongDiscoveryArtist[];
+  genres: SongDiscoveryGenre[];
+}
+
 export interface KtvIndexTableAvailability {
   tableName: "ktv_index_runs" | "ktv_artists" | "ktv_songs" | "ktv_song_artists" | "ktv_song_assets";
   exists: boolean;
