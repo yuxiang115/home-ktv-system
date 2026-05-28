@@ -11,6 +11,7 @@ import { useRoomSnapshot, type RoomSnapshotState } from "./use-room-snapshot.js"
 import { createBrowserVideoPool, type DualVideoPool, type KtvVideoElement } from "./video-pool.js";
 
 const HEARTBEAT_INTERVAL_MS = 10_000;
+const TRANSIENT_NOTICE_TTL_MS = 5_000;
 
 export interface UseTvPlaybackRuntimeInput {
   activeVideoRef: RefObject<HTMLVideoElement | null>;
@@ -73,6 +74,18 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
       setFirstPlayBlocked(false);
     }
   }, [roomState.status, roomState.snapshot?.currentTarget?.queueEntryId, roomState.snapshot?.conflict]);
+
+  useEffect(() => {
+    if (!isTransientLocalNotice(localNotice)) {
+      return;
+    }
+
+    const timeoutId = globalThis.setTimeout(() => {
+      setLocalNotice((current) => (current === localNotice ? null : current));
+    }, TRANSIENT_NOTICE_TTL_MS);
+
+    return () => globalThis.clearTimeout(timeoutId);
+  }, [localNotice]);
 
   useEffect(() => {
     if (!roomState.snapshot?.currentTarget) {
@@ -219,6 +232,14 @@ function mergeLocalNotice(snapshot: RoomSnapshot | null, localNotice: PlaybackNo
     ...snapshot,
     notice: localNotice
   };
+}
+
+function isTransientLocalNotice(notice: PlaybackNotice | null): boolean {
+  return (
+    notice?.kind === "switch_failed_reverted" ||
+    notice?.kind === "playback_failed_skipped" ||
+    notice?.kind === "recovery_fallback_start_over"
+  );
 }
 
 async function ensureCurrentPlayback(

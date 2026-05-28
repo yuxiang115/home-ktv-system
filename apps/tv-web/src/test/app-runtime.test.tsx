@@ -1,15 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { RoomSnapshot, SwitchTarget } from "@home-ktv/player-contracts";
 
 type MockActivePlaybackResult = { status: "playing"; warning?: string } | { status: "blocked"; message: string };
+type MockSwitchRuntimeResult =
+  | { status: "committed"; switchTarget: SwitchTarget }
+  | { status: "reverted"; switchTarget: SwitchTarget; message: string };
 
 const mocks = vi.hoisted(() => {
   const createBrowserPlayerClient = vi.fn();
   const createBrowserVideoPool = vi.fn();
   const activePlaybackEnsurePlaying = vi.fn(async (): Promise<MockActivePlaybackResult> => ({ status: "playing" }));
   const roomSnapshot = vi.fn();
-  const switchVocalMode = vi.fn(async (_snapshot: RoomSnapshot) => ({
+  const switchVocalMode = vi.fn(async (_snapshot: RoomSnapshot): Promise<MockSwitchRuntimeResult> => ({
     status: "committed" as const,
     switchTarget: switchTarget("instrumental")
   }));
@@ -127,6 +130,36 @@ describe("tv app runtime", () => {
       currentTarget: expect.objectContaining({ vocalMode: "original" }),
       targetVocalMode: "instrumental"
     });
+  });
+
+  it("auto-dismisses a reverted vocal switch notice after a short timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const pool = createPool({
+        activeTarget: snapshot().currentTarget,
+        activePaused: false
+      });
+      mocks.switchVocalMode.mockResolvedValueOnce({
+        status: "reverted" as const,
+        switchTarget: switchTarget("instrumental"),
+        message: "当前电视浏览器不支持切换原唱/伴唱，已保持当前播放。"
+      });
+      mocks.createBrowserPlayerClient.mockReturnValue(createClient());
+      mocks.createBrowserVideoPool.mockReturnValue(pool);
+
+      render(<App />);
+
+      await act(async () => {});
+      expect(screen.getByText("原唱/伴唱切换失败，已保持当前播放。")).toBeTruthy();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+
+      expect(screen.queryByText("原唱/伴唱切换失败，已保持当前播放。")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reports ended telemetry when the active video ends", async () => {
