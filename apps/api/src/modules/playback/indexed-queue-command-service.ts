@@ -7,10 +7,10 @@ import type { QueryExecutor } from "../../db/query-executor.js";
 import type { AssetGateway } from "../assets/asset-gateway.js";
 import {
   KtvCatalogSyncError,
-  PgKtvCatalogSyncService
+  PgKtvCatalogSyncService,
+  type PgKtvCatalogSyncServiceOptions
 } from "../catalog/ktv-catalog-sync-service.js";
 import {
-  prepareKtvIndexedMediaForWeb,
   type PreparedKtvIndexedMedia,
   type PrepareKtvIndexedMediaInput
 } from "../catalog/ktv-index-media-preprocessor.js";
@@ -83,14 +83,19 @@ export class PgIndexedQueueCommandService {
         return preflightResult;
       }
 
-      const sync = await new PgKtvCatalogSyncService(client, {
-        pathMappings: this.options.config.mediaPathMappings,
-        prepareMedia: (mediaInput) =>
-          (this.options.prepareKtvIndexedMedia ?? prepareKtvIndexedMediaForWeb)({
+      const syncOptions: PgKtvCatalogSyncServiceOptions = {
+        pathMappings: this.options.config.mediaPathMappings
+      };
+      const prepareKtvIndexedMedia = this.options.prepareKtvIndexedMedia;
+      if (prepareKtvIndexedMedia) {
+        syncOptions.prepareMedia = (mediaInput) =>
+          prepareKtvIndexedMedia({
             ...mediaInput,
             mediaRoot: this.options.config.mediaRoot
-          })
-      }).syncIndexedAsset({
+          });
+      }
+
+      const sync = await new PgKtvCatalogSyncService(client, syncOptions).syncIndexedAsset({
         indexedAssetId: input.indexedAssetId
       });
       const result = await executeRoomCommand({

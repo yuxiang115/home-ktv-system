@@ -290,6 +290,71 @@ describe("PgIndexedQueueCommandService", () => {
     });
   });
 
+  it("does not run web media preprocessing on the indexed queue command path by default", async () => {
+    const client = new FakeIndexedTransactionClient({
+      row: createIndexedAssetRow({
+        [indexedRowFilePathKey]: `${process.cwd()}/package.json`,
+        technical_metadata: {
+          mediaInfoSummary: {
+            container: "mpeg",
+            durationMs: 227_064,
+            videoCodec: "mpeg2video",
+            resolution: { width: 720, height: 480 },
+            fileSizeBytes: 71_593_984,
+            audioTracks: [
+              { index: 1, id: "0x1c0", label: "Audio 1", language: null, codec: "mp2", channels: 2 },
+              { index: 2, id: "0x1c1", label: "Audio 2", language: null, codec: "mp2", channels: 2 }
+            ]
+          },
+          mediaInfoProvenance: {
+            source: "ffprobe",
+            sourceVersion: null,
+            probedAt: "2026-05-27T04:03:06.044Z",
+            importedFrom: `${process.cwd()}/package.json`
+          }
+        }
+      })
+    });
+    const queueEntries = new InMemoryQueueEntryRepository();
+    const service = new PgIndexedQueueCommandService({
+      pool: {
+        async connect() {
+          return client;
+        }
+      } as any,
+      config: createConfig(),
+      assetGateway: createAssetGateway(createAssetRepository([createQueueableSyncedAsset()])),
+      createRepositories: () =>
+        createRuntimeRepositories({
+          queueEntries,
+          songs: [createSyncedSong()],
+          assets: [
+            createQueueableSyncedAsset(),
+            createQueueableSyncedAsset({
+              id: "asset-ktv-ktv-asset-1-original",
+              vocalMode: "original"
+            })
+          ]
+        })
+    } as ConstructorParameters<typeof PgIndexedQueueCommandService>[0]);
+
+    const result = await service.executeIndexedAddQueueEntry({
+      commandId: "command-indexed-native-fast-path",
+      roomSlug: "living-room",
+      sessionVersion: 1,
+      deviceId: "phone-1",
+      indexedAssetId: "ktv-asset-1",
+      cookieHeader: "ktv_control_session=control-session-1"
+    });
+
+    expect(result.status).toBe("accepted");
+    expect(client.assets.get("asset-ktv-ktv-asset-1")).toMatchObject({
+      filePath: `${process.cwd()}/package.json`,
+      durationMs: 227_064,
+      compatibilityStatus: "playable"
+    });
+  });
+
   it("maps stale indexed sources to a stable rejected command result", async () => {
     const service = createIndexedQueueCommandService({
       client: new FakeIndexedTransactionClient({ missingAt: new Date("2026-05-20T00:00:00Z") })
@@ -793,6 +858,7 @@ interface FakeIndexedAssetRow {
   primary_artist_name: string;
   category: string;
   source_root: string | null;
+  technical_metadata: unknown;
   [key: string]: unknown;
 }
 
@@ -811,6 +877,7 @@ function createIndexedAssetRow(input: Partial<FakeIndexedAssetRow> = {}): FakeIn
     primary_artist_name: "周杰伦",
     category: "流行",
     source_root: process.cwd(),
+    technical_metadata: {},
     ...input
   };
 }

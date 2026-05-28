@@ -1,15 +1,21 @@
 import type {
+  AudioTrackSummary,
   AssetId,
   CompatibilityReason,
   MediaInfoProvenance,
   MediaInfoSummary,
   PlaybackProfile,
   SongId,
+  TrackRef,
   TrackRoles
 } from "@home-ktv/domain";
 import type { QueryExecutor } from "../../db/query-executor.js";
 import { mapMediaPath, type MediaPathMapping } from "../assets/media-path-mapping.js";
 import { buildNasSample } from "../ktv-index/ktv-index-diagnostics.js";
+import {
+  buildSingleFileAudioTrackPlaybackProfile,
+  inferTrackRolesFromRealMv
+} from "../media/real-mv-compatibility.js";
 import type { PreparedKtvIndexedMedia } from "./ktv-index-media-preprocessor.js";
 import { buildPinyinSearchKeys, normalizeSearchText } from "./search-normalization.js";
 
@@ -54,6 +60,7 @@ interface KtvIndexedAssetSyncRow {
   extension: string;
   size_bytes: number | string | null;
   parse_confidence: number | string;
+  technical_metadata: unknown;
   missing_at: Date | string | null;
   title: string;
   primary_artist_name: string;
@@ -132,6 +139,7 @@ export class PgKtvCatalogSyncService {
               a.extension,
               a.size_bytes,
               a.parse_confidence,
+              a.technical_metadata,
               a.missing_at,
               s.title,
               s.primary_artist_name,
@@ -186,6 +194,37 @@ export class PgKtvCatalogSyncService {
     }
 
     const fileSizeBytes = toNumber(row.size_bytes ?? 0);
+    const indexedMediaInfo = readIndexedMediaInfo(row.technical_metadata, {
+      fallbackFileSizeBytes: fileSizeBytes,
+      fallbackImportedFrom: row.file_path
+    });
+    if (indexedMediaInfo) {
+      const { mediaInfoSummary, mediaInfoProvenance } = indexedMediaInfo;
+      const audioTrackCount = mediaInfoSummary.audioTracks.length;
+      const compatibilityReasons: CompatibilityReason[] = audioTrackCount > 0
+        ? []
+        : [
+            {
+              code: "missing-audio-tracks",
+              severity: "error",
+              message: "No audio tracks were detected",
+              source: "probe"
+            }
+          ];
+      const trackRoles = inferTrackRolesWithOrderFallback(mediaInfoSummary);
+
+      return {
+        filePath: localFilePath,
+        durationMs: mediaInfoSummary.durationMs ?? 0,
+        compatibilityStatus: audioTrackCount > 0 ? "playable" : "unsupported",
+        compatibilityReasons,
+        mediaInfoSummary,
+        mediaInfoProvenance,
+        trackRoles,
+        playbackProfile: buildSingleFileAudioTrackPlaybackProfile(mediaInfoSummary)
+      };
+    }
+
     const container = normalizeExtension(row.extension);
     const compatibilityReasons: CompatibilityReason[] = [
       {
@@ -386,6 +425,127 @@ function compact(values: readonly string[]): string[] {
 
 function toJsonbParam(value: unknown): string {
   return JSON.stringify(value);
+}
+
+function readIndexedMediaInfo(
+  metadata: unknown,
+  fallback: { fallbackFileSizeBytes: number; fallbackImportedFrom: string }
+): { mediaInfoSummary: MediaInfoSummary; mediaInfoProvenance: MediaInfoProvenance } | null {
+  const metadataRecord = asRecord(metadata);
+  if (!metadataRecord) {
+    return null;
+  }
+
+  const summaryRecord = asRecord(metadataRecord.mediaInfoSummary) ?? metadataRecord;
+  const audioTracks = readAudioTracks(summaryRecord.audioTracks);
+  if (!audioTracks) {
+    return null;
+  }
+
+  return {
+    mediaInfoSummary: {
+      container: readNullableString(summaryRecord.container),
+      durationMs: readNullableNumber(summaryRecord.durationMs),
+      videoCodec: readNullableString(summaryRecord.videoCodec),
+      resolution: readResolution(summaryRecord.resolution),
+      fileSizeBytes: readNumber(summaryRecord.fileSizeBytes) ?? fallback.fallbackFileSizeBytes,
+      audioTracks
+    },
+    mediaInfoProvenance: readMediaInfoProvenance(metadataRecord.mediaInfoProvenance, fallback.fallbackImportedFrom)
+  };
+}
+
+function readAudioTracks(value: unknown): AudioTrackSummary[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  return value
+    .map((track, index) => readAudioTrack(track, index))
+    .filter((track): track is AudioTrackSummary => track !== null);
+}
+
+function readAudioTrack(value: unknown, fallbackIndex: number): AudioTrackSummary | null {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const trackIndex = readNumber(record.index) ?? fallbackIndex + 1;
+  return {
+    index: trackIndex,
+    id: readString(record.id) ?? `stream-${trackIndex}`,
+    label: readString(record.label) ?? `Audio ${trackIndex}`,
+    language: readNullableString(record.language),
+    codec: readNullableString(record.codec),
+    channels: readNullableNumber(record.channels)
+  };
+}
+
+function readMediaInfoProvenance(value: unknown, fallbackImportedFrom: string): MediaInfoProvenance {
+  const record = asRecord(value);
+  return {
+    source: readProvenanceSource(record?.source),
+    sourceVersion: readNullableString(record?.sourceVersion),
+    probedAt: readNullableString(record?.probedAt),
+    importedFrom: readNullableString(record?.importedFrom) ?? fallbackImportedFrom
+  };
+}
+
+function readProvenanceSource(value: unknown): MediaInfoProvenance["source"] {
+  return value === "ffprobe" || value === "mediainfo" || value === "manual" || value === "unknown"
+    ? value
+    : "unknown";
+}
+
+function readResolution(value: unknown): MediaInfoSummary["resolution"] {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const width = readNumber(record.width);
+  const height = readNumber(record.height);
+  return width !== null && height !== null ? { width, height } : null;
+}
+
+function inferTrackRolesWithOrderFallback(summary: MediaInfoSummary): TrackRoles {
+  const inferred = inferTrackRolesFromRealMv({ mediaInfoSummary: summary });
+  return {
+    original: inferred.original ?? toTrackRef(summary.audioTracks[0]),
+    instrumental: inferred.instrumental ?? toTrackRef(summary.audioTracks[1])
+  };
+}
+
+function toTrackRef(track: AudioTrackSummary | undefined): TrackRef | null {
+  return track ? { index: track.index, id: track.id, label: track.label } : null;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function readNullableString(value: unknown): string | null {
+  return value === null || value === undefined ? null : readString(value);
+}
+
+function readNullableNumber(value: unknown): number | null {
+  return value === null || value === undefined ? null : readNumber(value);
+}
+
+function readNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
 function normalizeStyleTags(value: readonly string[] | null): string[] {

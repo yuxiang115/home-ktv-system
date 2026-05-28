@@ -107,6 +107,67 @@ describe("PgKtvCatalogSyncService", () => {
     });
   });
 
+  it("uses indexed technical metadata for native playback sync without preprocessing", async () => {
+    const db = new FakeKtvCatalogSyncDb({
+      rows: [
+        createIndexedAssetRow({
+          technical_metadata: {
+            mediaInfoSummary: {
+              container: "mpeg",
+              durationMs: 227_064,
+              videoCodec: "mpeg2video",
+              resolution: { width: 720, height: 480 },
+              fileSizeBytes: 71_593_984,
+              audioTracks: [
+                { index: 1, id: "0x1c0", label: "Audio 1", language: null, codec: "mp2", channels: 2 },
+                { index: 2, id: "0x1c1", label: "Audio 2", language: null, codec: "mp2", channels: 2 }
+              ]
+            },
+            mediaInfoProvenance: {
+              source: "ffprobe",
+              sourceVersion: "6.1",
+              probedAt: "2026-05-27T04:03:06.044Z",
+              importedFrom: "/mnt/nas/KTV歌曲/周杰伦/七里香.mpg"
+            }
+          }
+        })
+      ]
+    });
+    const service = new PgKtvCatalogSyncService(db, { checkFileAccess: false });
+
+    await service.syncIndexedAsset({ indexedAssetId: "ktv-asset-1" });
+
+    expect(db.assets.get("asset-ktv-ktv-asset-1")).toMatchObject({
+      filePath: "/mnt/nas/KTV歌曲/周杰伦-七里香-国语-流行.mkv",
+      durationMs: 227_064,
+      compatibilityStatus: "playable",
+      mediaInfoSummary: expect.objectContaining({
+        container: "mpeg",
+        videoCodec: "mpeg2video",
+        fileSizeBytes: 71_593_984,
+        audioTracks: [
+          expect.objectContaining({ id: "0x1c0", index: 1, codec: "mp2" }),
+          expect.objectContaining({ id: "0x1c1", index: 2, codec: "mp2" })
+        ]
+      }),
+      mediaInfoProvenance: expect.objectContaining({
+        source: "ffprobe",
+        importedFrom: "/mnt/nas/KTV歌曲/周杰伦/七里香.mpg"
+      }),
+      trackRoles: {
+        original: { index: 1, id: "0x1c0", label: "Audio 1" },
+        instrumental: { index: 2, id: "0x1c1", label: "Audio 2" }
+      },
+      playbackProfile: {
+        kind: "single_file_audio_tracks",
+        container: "mpeg",
+        videoCodec: "mpeg2video",
+        audioCodecs: ["mp2"],
+        requiresAudioTrackSelection: true
+      }
+    });
+  });
+
   it("writes preprocessed web media metadata when an indexed asset needs a playback copy", async () => {
     const db = new FakeKtvCatalogSyncDb();
     const prepareCalls: Array<Record<string, unknown>> = [];
@@ -241,6 +302,7 @@ interface FakeIndexedAssetRow {
   primary_artist_name: string;
   style_tags: string[] | null;
   source_root: string | null;
+  technical_metadata: unknown;
 }
 
 class FakeKtvCatalogSyncDb implements QueryExecutor {
@@ -357,6 +419,7 @@ function createIndexedAssetRow(input: Partial<FakeIndexedAssetRow> = {}): FakeIn
     primary_artist_name: "周杰伦",
     style_tags: ["流行"],
     source_root: "/mnt/nas/KTV歌曲",
+    technical_metadata: {},
     ...input
   };
 }
