@@ -236,6 +236,11 @@ describe("mobile controller runtime", () => {
     expect(screen.getAllByText("周杰伦").length).toBeGreaterThan(0);
     expect(screen.getAllByText("流行").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/^推荐歌曲/u, { selector: "strong" })).toHaveLength(30);
+    const recommendations = screen.getByRole("region", { name: "推荐歌曲" });
+    expect(within(recommendations).queryByText("本地可播")).toBeNull();
+    expect(within(recommendations).queryByText("流行")).toBeNull();
+    expect(within(recommendations).queryByText(/次点歌/u)).toBeNull();
+    expect(recommendations.querySelector(".result-meta")).toBeNull();
 
     const initialDiscoveryRequests = requests.filter((request) => request.url.startsWith("/rooms/living-room/songs/discovery?"));
     await user.click(screen.getByRole("button", { name: "换一批" }));

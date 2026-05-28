@@ -1153,15 +1153,6 @@ function DiscoverySongRow({
       <div className="result-main">
         <strong>{song.title}</strong>
         <p>{song.artistName}</p>
-        <div className="result-meta">
-          <span className={song.queueState === "queued" ? "queued-badge" : "local-badge"}>
-            {song.queueState === "queued" ? t("search.queued") : t("search.localPlayable")}
-          </span>
-          {song.genre.slice(0, 2).map((genre) => (
-            <span key={genre}>{genre}</span>
-          ))}
-          <span>{t("discovery.playCount", { count: song.playCount })}</span>
-        </div>
       </div>
       <button
         className="primary-button add-circle-button"
