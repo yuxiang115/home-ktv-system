@@ -22,6 +22,9 @@ Commands:
   doctor      Run deployment self-checks
   probe-index Probe indexed KTV media technical metadata inside the API container
   tag-styles  Tag indexed KTV songs with style tags inside the API container
+  tag-styles-export Export active indexed songs to JSONL inside the API container
+  tag-styles-jsonl  Tag exported songs from JSONL without database dependency
+  tag-styles-import Import staged JSONL style tag results into PostgreSQL
   fetch-covers Batch fetch song cover metadata inside the API container
   cover-coverage Test cover lookup coverage without writing database rows
   stop        Stop services
@@ -109,6 +112,27 @@ case "${command}" in
       shift
     fi
     compose exec -T api pnpm -F @home-ktv/api tag:ktv-styles -- "$@"
+    ;;
+  tag-styles-export)
+    ensure_env
+    if [[ "${1:-}" == "--" ]]; then
+      shift
+    fi
+    compose exec -T api pnpm -F @home-ktv/api tag:ktv-styles:export -- "$@"
+    ;;
+  tag-styles-jsonl)
+    ensure_env
+    if [[ "${1:-}" == "--" ]]; then
+      shift
+    fi
+    compose exec -T api pnpm -F @home-ktv/api tag:ktv-styles:jsonl -- "$@"
+    ;;
+  tag-styles-import)
+    ensure_env
+    if [[ "${1:-}" == "--" ]]; then
+      shift
+    fi
+    compose exec -T api pnpm -F @home-ktv/api tag:ktv-styles:import -- "$@"
     ;;
   fetch-covers)
     ensure_env

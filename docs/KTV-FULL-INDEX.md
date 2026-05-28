@@ -93,6 +93,25 @@ Exception policy:
 
 主标签来源优先使用网易云 API；低覆盖歌曲可以用 LLM 批量补充。标签回填不影响搜索、点歌和播放。
 
+长时间全量打标签时优先使用 JSONL 暂存流程，避免 PostgreSQL 重建、迁移或重启中断任务：
+
+```bash
+pnpm ktv:tags:export -- --out runtime/media/tagging/full/songs.jsonl
+pnpm ktv:tags:jsonl -- --input runtime/media/tagging/full/songs.jsonl --output runtime/media/tagging/full/results.jsonl --source netease --concurrency 5
+pnpm ktv:tags:import -- --input runtime/media/tagging/full/results.jsonl --dry-run
+pnpm ktv:tags:import -- --input runtime/media/tagging/full/results.jsonl --apply
+```
+
+Docker 部署建议把暂存文件放在媒体挂载目录，容器重建后仍然保留：
+
+```bash
+bash deploy/docker/ktv.sh tag-styles-export -- --out /data/home-ktv-media/tagging/full/songs.jsonl
+bash deploy/docker/ktv.sh tag-styles-jsonl -- --input /data/home-ktv-media/tagging/full/songs.jsonl --output /data/home-ktv-media/tagging/full/results.jsonl --source netease --concurrency 5
+bash deploy/docker/ktv.sh tag-styles-import -- --input /data/home-ktv-media/tagging/full/results.jsonl --apply
+```
+
+`tag-styles-jsonl` 不连接 PostgreSQL，只读取 `songs.jsonl` 并追加 `results.jsonl`，可安全续跑。`--concurrency` 是单进程内并发，推荐先从 5 开始观察网易云 API 的失败率。导入阶段会先按旧 `sourceSongId` 匹配当前歌曲，再按归一化歌名和歌手匹配。
+
 ## Rebuild Flow
 
 Run migrations:

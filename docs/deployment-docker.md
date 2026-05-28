@@ -23,6 +23,7 @@ CONTROLLER_BASE_URL=http://<server-ip>:5176
 TV_WEB_BASE_URL=http://<server-ip>:5173
 CORS_ALLOWED_ORIGINS=http://<server-ip>:5174,http://<server-ip>:5176,http://<server-ip>:5173
 KTV_NAS_HOST_PATH=/mnt/nas/KTV歌曲
+NETEASE_API_BASE_URL=http://<netease-api-host>:3301
 ```
 
 当前安全边界保持轻量：Admin 暂不加登录鉴权，公网媒体流暂不做访问控制。生产暴露范围需要通过 Caddy、域名、网络入口和服务器访问策略控制。
@@ -61,6 +62,10 @@ bash deploy/docker/ktv.sh status
 bash deploy/docker/ktv.sh doctor
 bash deploy/docker/ktv.sh logs
 bash deploy/docker/ktv.sh logs api
+bash deploy/docker/ktv.sh probe-index -- --limit 300 --concurrency 2
+bash deploy/docker/ktv.sh tag-styles-export -- --out /data/home-ktv-media/tagging/full/songs.jsonl
+bash deploy/docker/ktv.sh tag-styles-jsonl -- --input /data/home-ktv-media/tagging/full/songs.jsonl --output /data/home-ktv-media/tagging/full/results.jsonl --source netease --concurrency 5
+bash deploy/docker/ktv.sh tag-styles-import -- --input /data/home-ktv-media/tagging/full/results.jsonl --dry-run
 bash deploy/docker/ktv.sh stop
 ```
 
