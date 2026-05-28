@@ -93,7 +93,7 @@ lxc-dev 测试环境的公网入口：
 ```text
 https://ktv-api.shaolongfei.com/health
 https://ktv-admin.shaolongfei.com/
-https://ktv-controller.shaolongfei.com/controller?room=living-room
+控制器需通过 Web TV 二维码或 pairing.controllerUrl 进入，不能用不带 token 的裸地址完成首次配对
 https://ktv-tv.shaolongfei.com/?apiBaseUrl=https://ktv-api.shaolongfei.com&roomSlug=living-room&deviceName=Web%20TV
 ```
 

@@ -73,6 +73,8 @@ http://<server-ip>:5174/
 http://<server-ip>:5176/controller?room=living-room
 ```
 
+控制器首次进入需要从电视端二维码打开，或使用 Admin 返回的 `pairing.controllerUrl`。没有历史 cookie 时，裸控制器地址只适合验证静态页面是否可访问，不能完成配对。
+
 Web TV：
 
 ```text

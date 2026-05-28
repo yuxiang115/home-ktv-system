@@ -543,6 +543,18 @@ describe("mobile controller runtime", () => {
     expect(window.location.search).toBe("?room=living-room");
   });
 
+  it("shows pairing guidance instead of raw CONTROL_SESSION_REQUIRED when opened without a token", async () => {
+    installControllerFetchMock({
+      restoreResponses: [json({ code: "CONTROL_SESSION_REQUIRED" }, 401)]
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    expect(await screen.findByText("请从电视端二维码重新进入控制端")).toBeTruthy();
+    expect(screen.queryByText("CONTROL_SESSION_REQUIRED")).toBeNull();
+  });
+
   it("shows reconnect state and polls every 5000ms after WebSocket disconnect", async () => {
     vi.useFakeTimers();
     const { requests } = installControllerFetchMock({

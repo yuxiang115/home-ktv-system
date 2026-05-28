@@ -612,6 +612,15 @@ function isApiCode(error: unknown, code: string): boolean {
 }
 
 function errorMessageFrom(error: unknown, fallback: string): string {
+  if (error instanceof ControllerApiError) {
+    if (error.code === "CONTROL_SESSION_REQUIRED") {
+      return "请从电视端二维码重新进入控制端";
+    }
+    if (error.code === "INVALID_PAIRING_TOKEN") {
+      return "配对码已失效，请重新扫描电视端二维码";
+    }
+  }
+
   return error instanceof Error ? error.message : fallback;
 }
 
