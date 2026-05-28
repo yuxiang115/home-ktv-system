@@ -17,6 +17,7 @@ bash deploy/docker/ktv.sh doctor
 bash deploy/docker/ktv.sh logs
 bash deploy/docker/ktv.sh logs api
 bash deploy/docker/ktv.sh probe-index -- --limit 300 --concurrency 2
+bash deploy/docker/ktv.sh tag-styles -- --limit 300 --dry-run
 bash deploy/docker/ktv.sh stop
 ```
 
@@ -51,6 +52,15 @@ bash deploy/docker/ktv.sh probe-index -- --concurrency 8 --retry-failed
 ```
 
 探测只保存 `mediaInfoSummary`、`mediaInfoProvenance` 和失败摘要，不保存完整 ffprobe raw JSON。探测失败不会影响搜索、点歌或播放。
+
+真实曲库风格标签先跑网易云 API 小样本：
+
+```bash
+bash deploy/docker/ktv.sh tag-styles -- --limit 300 --dry-run
+bash deploy/docker/ktv.sh tag-styles -- --limit 300 --apply
+```
+
+`tag-styles` 默认只处理缺失 `netease-playlist-v1` 标签的歌曲；如需重跑全部样本，加 `--all`。
 
 容器内 API 会使用 `DOCKER_DATABASE_URL` 连接 Compose 内的 PostgreSQL。源码部署才使用 `DATABASE_URL`。
 
