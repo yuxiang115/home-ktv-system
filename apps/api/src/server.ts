@@ -7,6 +7,8 @@ import { protocolMessageNames } from "@home-ktv/protocol";
 import { loadConfig, normalizeApiConfig, type ApiConfig, type ApiConfigInput } from "./config.js";
 import { MediaPathResolver } from "./modules/assets/media-path-resolver.js";
 import { AssetGateway } from "./modules/assets/asset-gateway.js";
+import { MediaGateway } from "./modules/media/media-gateway.js";
+import { NasPlayableMediaRepository } from "./modules/media/nas-playable-media-repository.js";
 import { CatalogAdmissionService, PgCatalogAdmissionWriter } from "./modules/catalog/admission-service.js";
 import { PgAssetRepository, type AssetRepository } from "./modules/catalog/repositories/asset-repository.js";
 import {
@@ -123,6 +125,13 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     mediaPathResolver,
     publicBaseUrl: resolvedConfig.publicBaseUrl
   });
+  const mediaGateway = pool
+    ? new MediaGateway({
+        playableMedia: new NasPlayableMediaRepository(pool),
+        mediaPathResolver,
+        publicBaseUrl: resolvedConfig.publicBaseUrl
+      })
+    : null;
   const indexedQueueCommands = pool
     ? new PgIndexedQueueCommandService({
         pool,
@@ -164,6 +173,7 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
   });
   await registerMediaRoutes(server, {
     assetGateway,
+    ...(mediaGateway ? { mediaGateway } : {}),
     ...(pool
       ? {
           ktvIndexRawAssets: new PgKtvIndexRawAssetRepository(pool),
