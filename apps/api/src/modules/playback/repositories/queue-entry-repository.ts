@@ -152,7 +152,6 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
        FROM queue_entries
        WHERE source_type = 'nas'
          AND nas_song_id = ANY($1::text[])
-         AND status <> 'removed'
        GROUP BY nas_song_id`,
       [songIds]
     );

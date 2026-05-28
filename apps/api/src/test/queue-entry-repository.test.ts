@@ -57,6 +57,15 @@ describe("PgQueueEntryRepository", () => {
     expect(db.queries[0]).toContain("nas_song_id = ANY");
     expect(counts.get("ktv-song-1")).toBe(3);
   });
+
+  it("keeps removed NAS queue entries in lifetime request counts", async () => {
+    const db = new RecordingDb([{ song_id: "ktv-song-1", request_count: "4" }]);
+    const repository = new PgQueueEntryRepository(db);
+
+    await repository.listGlobalSongRequestCounts(["ktv-song-1"]);
+
+    expect(db.queries[0]).not.toContain("status <> 'removed'");
+  });
 });
 
 class RecordingDb implements QueryExecutor {

@@ -321,7 +321,7 @@ CREATE INDEX IF NOT EXISTS queue_entries_room_effective_position_idx
   WHERE status IN ('queued', 'preparing', 'loading', 'playing');
 CREATE INDEX IF NOT EXISTS queue_entries_nas_song_counts_idx
   ON queue_entries(source_type, nas_song_id)
-  WHERE source_type = 'nas' AND status <> 'removed';
+  WHERE source_type = 'nas';
 CREATE INDEX IF NOT EXISTS playback_events_room_created_idx ON playback_events(room_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS candidate_tasks (

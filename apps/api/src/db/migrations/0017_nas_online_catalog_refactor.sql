@@ -122,7 +122,7 @@ ALTER TABLE queue_entries
 
 CREATE INDEX IF NOT EXISTS queue_entries_nas_song_counts_idx
   ON queue_entries(source_type, nas_song_id)
-  WHERE source_type = 'nas' AND status <> 'removed';
+  WHERE source_type = 'nas';
 
 ALTER TABLE queue_entries DROP COLUMN IF EXISTS song_id;
 ALTER TABLE queue_entries DROP COLUMN IF EXISTS asset_id;
