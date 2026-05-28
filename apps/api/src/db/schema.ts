@@ -773,7 +773,7 @@ CREATE TABLE IF NOT EXISTS ktv_song_tagging_runs (
 );
 
 CREATE TABLE IF NOT EXISTS ktv_song_tagging_status (
-  song_id text PRIMARY KEY REFERENCES ktv_songs(id) ON DELETE CASCADE,
+  song_id text NOT NULL REFERENCES ktv_songs(id) ON DELETE CASCADE,
   source text NOT NULL,
   status text NOT NULL CHECK (status IN ('pending', 'tagged', 'empty', 'failed')),
   tag_count integer NOT NULL DEFAULT 0 CHECK (tag_count >= 0),
@@ -781,7 +781,8 @@ CREATE TABLE IF NOT EXISTS ktv_song_tagging_status (
   run_id text REFERENCES ktv_song_tagging_runs(id) ON DELETE SET NULL,
   error_message text,
   updated_at timestamptz NOT NULL DEFAULT now(),
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (song_id, source)
 );
 
 CREATE INDEX IF NOT EXISTS ktv_style_tags_group_idx

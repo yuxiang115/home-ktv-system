@@ -35,8 +35,8 @@ describe("KtvStyleTaggingService", () => {
       { tagName: "国语", source: "netease-playlist-v1" },
       { tagName: "流行", source: "netease-playlist-v1" }
     ]);
-    expect(db.status.get("song-2")).toMatchObject({ status: "empty", tagCount: 0 });
-    expect(db.status.get("song-3")).toMatchObject({ status: "failed", errorMessage: "netease failed" });
+    expect(db.status.get("song-2:netease-playlist-v1")).toMatchObject({ status: "empty", tagCount: 0 });
+    expect(db.status.get("song-3:netease-playlist-v1")).toMatchObject({ status: "failed", errorMessage: "netease failed" });
     expect(db.deletedSources).toContain("song-1:netease-playlist-v1");
   });
 
@@ -86,6 +86,31 @@ describe("KtvStyleTaggingService", () => {
       expect.objectContaining({ processed: 3, selected: 3, status: "failed", title: "失败歌", artistName: "失败歌手", tagCount: 0 })
     ]);
   });
+
+  it("upserts tagging status per source so fallback sources do not overwrite primary source state", async () => {
+    const db = new FakeStyleTaggingDb();
+    const service = new KtvStyleTaggingService(db, {
+      tagger: new FakeTagger(),
+      now: () => 1000
+    });
+
+    await service.run({
+      source: "netease-playlist-v1",
+      limit: 1,
+      apply: true,
+      onlyMissing: true
+    });
+    await service.run({
+      source: "llm-style-v1",
+      limit: 1,
+      apply: true,
+      onlyMissing: true
+    });
+
+    expect(db.statusUpsertSql).toContain("ON CONFLICT (song_id, source)");
+    expect(db.status.get("song-1:netease-playlist-v1")).toMatchObject({ status: "tagged", tagCount: 2 });
+    expect(db.status.get("song-1:llm-style-v1")).toMatchObject({ status: "tagged", tagCount: 2 });
+  });
 });
 
 class FakeTagger implements KtvStyleTagger {
@@ -113,6 +138,7 @@ class FakeStyleTaggingDb implements QueryExecutor {
   readonly tags = new Map<string, { id: string; groupName: string; name: string }>();
   readonly songTags = new Map<string, Array<{ tagName: string; source: string }>>();
   readonly status = new Map<string, Record<string, unknown>>();
+  statusUpsertSql = "";
   readonly deletedSources: string[] = [];
   private runCounter = 0;
 
@@ -160,7 +186,8 @@ class FakeStyleTaggingDb implements QueryExecutor {
     }
 
     if (text.includes("INSERT INTO ktv_song_tagging_status")) {
-      this.status.set(String(values[0]), {
+      this.statusUpsertSql = text;
+      this.status.set(`${String(values[0])}:${String(values[1])}`, {
         source: values[1],
         status: values[2],
         tagCount: values[3],

@@ -298,9 +298,8 @@ export class KtvStyleTaggingService {
          song_id, source, status, tag_count, confidence, run_id, error_message
        )
        VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (song_id)
-       DO UPDATE SET source = EXCLUDED.source,
-                     status = EXCLUDED.status,
+       ON CONFLICT (song_id, source)
+       DO UPDATE SET status = EXCLUDED.status,
                      tag_count = EXCLUDED.tag_count,
                      confidence = EXCLUDED.confidence,
                      run_id = EXCLUDED.run_id,
