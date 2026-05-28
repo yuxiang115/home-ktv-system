@@ -78,6 +78,18 @@ data class RoomSnapshot(
     val generatedAt: String?,
 )
 
+data class RoomInteractionEvent(
+    val id: String,
+    val roomId: String,
+    val roomSlug: String,
+    val kind: String,
+    val message: String,
+    val senderDeviceId: String,
+    val senderName: String,
+    val createdAt: String,
+    val expiresAt: String,
+)
+
 data class BootstrapResult(
     val status: String,
     val snapshot: RoomSnapshot?,

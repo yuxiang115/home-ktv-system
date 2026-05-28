@@ -147,6 +147,10 @@ class PlayerApiClient(
                     if (snapshot != null) {
                         listener.onSnapshot(snapshot)
                     }
+                    val interaction = PlayerContractsJson.roomInteractionFromRealtimeMessage(text)
+                    if (interaction != null) {
+                        listener.onInteraction(interaction)
+                    }
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
@@ -226,6 +230,7 @@ fun interface ResultCallback<T> {
 interface RoomRealtimeListener {
     fun onOpen()
     fun onSnapshot(snapshot: RoomSnapshot)
+    fun onInteraction(interaction: RoomInteractionEvent) = Unit
     fun onClosed(reason: String)
     fun onError(error: Throwable)
 }

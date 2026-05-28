@@ -36,6 +36,15 @@ object PlayerContractsJson {
         return roomSnapshotFromJson(payload)
     }
 
+    fun roomInteractionFromRealtimeMessage(message: String): RoomInteractionEvent? {
+        val envelope = runCatching { JSONObject(message) }.getOrNull() ?: return null
+        if (envelope.optString("type") != "room.interaction.created") {
+            return null
+        }
+        val payload = envelope.optJSONObject("payload") ?: return null
+        return roomInteractionFromJson(payload)
+    }
+
     fun switchTransitionFromJson(json: JSONObject): SwitchTransitionResult {
         return SwitchTransitionResult(
             status = json.optString("status", "unavailable"),
@@ -128,6 +137,29 @@ object PlayerContractsJson {
             videoCodec = json.optNullableString("videoCodec"),
             audioCodecs = json.optJSONArray("audioCodecs").toStringList(),
             requiresAudioTrackSelection = json.optBoolean("requiresAudioTrackSelection", false),
+        )
+    }
+
+    private fun roomInteractionFromJson(json: JSONObject): RoomInteractionEvent? {
+        val kind = json.optString("kind", "")
+        if (kind != "emoji" && kind != "bullet" && kind != "blessing") {
+            return null
+        }
+        val id = json.optString("id", "")
+        val message = json.optString("message", "")
+        if (id.isBlank() || message.isBlank()) {
+            return null
+        }
+        return RoomInteractionEvent(
+            id = id,
+            roomId = json.optString("roomId", ""),
+            roomSlug = json.optString("roomSlug", ""),
+            kind = kind,
+            message = message,
+            senderDeviceId = json.optString("senderDeviceId", ""),
+            senderName = json.optString("senderName", ""),
+            createdAt = json.optString("createdAt", ""),
+            expiresAt = json.optString("expiresAt", ""),
         )
     }
 

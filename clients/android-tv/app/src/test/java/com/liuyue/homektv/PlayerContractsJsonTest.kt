@@ -67,6 +67,37 @@ class PlayerContractsJsonTest {
     }
 
     @Test
+    fun parsesRealtimeInteractionEnvelope() {
+        val message = """
+            {
+              "type": "room.interaction.created",
+              "roomId": "room-1",
+              "version": 7,
+              "timestamp": "2026-05-21T00:00:00.000Z",
+              "payload": {
+                "id": "interaction-1",
+                "roomId": "room-1",
+                "roomSlug": "living-room",
+                "kind": "blessing",
+                "message": "今晚开心",
+                "senderDeviceId": "phone-a",
+                "senderName": "客厅手机",
+                "createdAt": "2026-05-21T00:00:00.000Z",
+                "expiresAt": "2026-05-21T00:00:07.000Z"
+              }
+            }
+        """.trimIndent()
+
+        val interaction = PlayerContractsJson.roomInteractionFromRealtimeMessage(message)
+
+        assertNotNull(interaction)
+        assertEquals("interaction-1", interaction?.id)
+        assertEquals("blessing", interaction?.kind)
+        assertEquals("今晚开心", interaction?.message)
+        assertEquals("2026-05-21T00:00:07.000Z", interaction?.expiresAt)
+    }
+
+    @Test
     fun parsesSwitchTransitionTargetSourceType() {
         val result = PlayerContractsJson.switchTransitionFromJson(
             JSONObject(
