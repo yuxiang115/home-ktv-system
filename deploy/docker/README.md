@@ -23,6 +23,9 @@ bash deploy/docker/ktv.sh stop
 ```bash
 bash deploy/docker/ktv.sh probe-index -- --limit 300 --concurrency 2
 bash deploy/docker/ktv.sh tag-styles -- --limit 300 --dry-run
+bash deploy/docker/ktv.sh tag-styles-export -- --out /data/home-ktv-media/tagging/full/songs.jsonl
+bash deploy/docker/ktv.sh tag-styles-jsonl -- --input /data/home-ktv-media/tagging/full/songs.jsonl --output /data/home-ktv-media/tagging/full/results.jsonl --source netease
+bash deploy/docker/ktv.sh tag-styles-import -- --input /data/home-ktv-media/tagging/full/results.jsonl --dry-run
 bash deploy/docker/ktv.sh cover-coverage -- --limit 100
 bash deploy/docker/ktv.sh fetch-covers -- --limit 300
 ```

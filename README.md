@@ -128,6 +128,17 @@ clients/android-tv/app/build/outputs/apk/debug/app-debug.apk
 pnpm hot-songs:update
 ```
 
+## 真实曲库维护
+
+真实曲库索引、技术探测、封面拉取和风格标签流程见 [docs/KTV-FULL-INDEX.md](docs/KTV-FULL-INDEX.md)。全量风格标签建议使用 JSONL 暂存：
+
+```bash
+pnpm ktv:tags:export -- --out runtime/media/tagging/full/songs.jsonl
+pnpm ktv:tags:jsonl -- --input runtime/media/tagging/full/songs.jsonl --output runtime/media/tagging/full/results.jsonl --source netease
+pnpm ktv:tags:import -- --input runtime/media/tagging/full/results.jsonl --dry-run
+pnpm ktv:tags:import -- --input runtime/media/tagging/full/results.jsonl --apply
+```
+
 ## 本地资源目录
 
 这些目录是本地运行资源或生成产物，默认不提交：

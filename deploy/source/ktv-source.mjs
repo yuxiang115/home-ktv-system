@@ -47,13 +47,14 @@ const SERVICE_ALIASES = {
 
 const command = process.argv[2] || "help";
 const commandArg = process.argv[3];
+const commandArgs = process.argv.slice(3);
 
-main(command, commandArg).catch((error) => {
+main(command, commandArg, commandArgs).catch((error) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });
 
-async function main(currentCommand, currentArg) {
+async function main(currentCommand, currentArg, currentArgs) {
   switch (currentCommand) {
     case "setup":
       ensureEnvFile();
@@ -124,6 +125,31 @@ async function main(currentCommand, currentArg) {
         "--env-file",
         ENV_FILE
       ]);
+      return;
+    case "probe-index":
+      requireEnvFile();
+      ensureDirs();
+      await runForeground("pnpm", ["-F", "@home-ktv/api", "probe:ktv-index", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
+      return;
+    case "tag-styles":
+      requireEnvFile();
+      ensureDirs();
+      await runForeground("pnpm", ["-F", "@home-ktv/api", "tag:ktv-styles", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
+      return;
+    case "tag-styles-export":
+      requireEnvFile();
+      ensureDirs();
+      await runForeground("pnpm", ["-F", "@home-ktv/api", "tag:ktv-styles:export", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
+      return;
+    case "tag-styles-jsonl":
+      requireEnvFile();
+      ensureDirs();
+      await runForeground("pnpm", ["-F", "@home-ktv/api", "tag:ktv-styles:jsonl", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
+      return;
+    case "tag-styles-import":
+      requireEnvFile();
+      ensureDirs();
+      await runForeground("pnpm", ["-F", "@home-ktv/api", "tag:ktv-styles:import", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
       return;
     case "help":
     case "-h":
@@ -440,6 +466,11 @@ function printUsage(error = false) {
     "  status      Show service status and URLs",
     "  logs [svc]  Follow logs for all services or one service",
     "  doctor      Run deployment self-checks",
+    "  probe-index Probe indexed KTV media technical metadata",
+    "  tag-styles  Tag indexed KTV songs directly against PostgreSQL",
+    "  tag-styles-export Export active indexed songs to JSONL",
+    "  tag-styles-jsonl  Tag exported songs from JSONL without database dependency",
+    "  tag-styles-import Import staged JSONL style tag results into PostgreSQL",
     "  stop        Stop services",
     "  help        Show this help",
     "",
@@ -541,6 +572,10 @@ function replaceUrlPort(url, port) {
   } catch {
     return `http://${detectLanIp()}:${port}`;
   }
+}
+
+function stripArgumentSeparator(args) {
+  return args[0] === "--" ? args.slice(1) : args;
 }
 
 function detectLanIp() {

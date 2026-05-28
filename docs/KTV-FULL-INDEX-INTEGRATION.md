@@ -165,4 +165,13 @@ bash deploy/docker/ktv.sh tag-styles -- --limit 300 --dry-run
 bash deploy/docker/ktv.sh tag-styles -- --limit 300 --apply
 ```
 
-Low-coverage songs can be supplemented by the LLM fallback in batches. Tagging failures do not affect search, queueing, or playback.
+For full-library work, use the JSONL staging flow so tagging can continue while the database is being rebuilt:
+
+```bash
+bash deploy/docker/ktv.sh tag-styles-export -- --out /data/home-ktv-media/tagging/full/songs.jsonl
+bash deploy/docker/ktv.sh tag-styles-jsonl -- --input /data/home-ktv-media/tagging/full/songs.jsonl --output /data/home-ktv-media/tagging/full/results.jsonl --source netease
+bash deploy/docker/ktv.sh tag-styles-import -- --input /data/home-ktv-media/tagging/full/results.jsonl --dry-run
+bash deploy/docker/ktv.sh tag-styles-import -- --input /data/home-ktv-media/tagging/full/results.jsonl --apply
+```
+
+`tag-styles-jsonl` has no database dependency. It skips existing `songKey + source` rows in the result file on resume. Low-coverage songs can be supplemented by the LLM fallback in batches. Tagging failures do not affect search, queueing, or playback.
