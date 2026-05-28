@@ -286,11 +286,17 @@ export interface SongSearchIndexedSection {
   results: SongSearchIndexedResult[];
 }
 
-export interface SongDiscoverySong extends SongSearchLocalResult {
+export type SongDiscoverySource = "formal" | "ktv-index";
+export type SongDiscoveryVersionOption = SongSearchVersionOption | SongSearchIndexedVersionOption;
+
+export interface SongDiscoverySong extends Omit<SongSearchLocalResult, "versions"> {
+  source: SongDiscoverySource;
+  indexedSongId?: string;
   artistId: EntityId;
   genre: readonly string[];
   playCount: number;
   recommendationWeight: number;
+  versions: SongDiscoveryVersionOption[];
 }
 
 export interface SongDiscoveryArtist {

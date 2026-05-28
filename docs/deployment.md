@@ -15,6 +15,7 @@ Docker 部署   bash deploy/docker/ktv.sh start
 - [本地开发部署](deployment-local.md)
 - [Docker Compose 部署](deployment-docker.md)
 - [源码部署](deployment-source.md)
+- [lxc-dev 服务器 Runbook](runbooks/deploy-lxc-dev.md)
 - [项目结构](project-structure.md)
 - [Android TV](../clients/android-tv/README.md)
 
@@ -36,6 +37,8 @@ bash deploy/docker/ktv.sh start
 bash deploy/docker/ktv.sh status
 bash deploy/docker/ktv.sh doctor
 ```
+
+当前私有测试服务器 `lxc-dev` 已有固定部署流程和公网入口，按 [lxc-dev 服务器 Runbook](runbooks/deploy-lxc-dev.md) 执行。不要用本地预览结果代替服务器部署验证。
 
 如果服务器已经有 Node.js、pnpm 和 PostgreSQL，也可以使用源码部署：
 

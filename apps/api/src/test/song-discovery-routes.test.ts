@@ -3,6 +3,7 @@ import type {
   QueueEntry,
   Room,
   SongDiscoveryResponse,
+  SongSearchIndexedResult,
   SongSearchVersionOption
 } from "@home-ktv/domain";
 import type {
@@ -10,9 +11,10 @@ import type {
   SearchFormalSongRecord,
   SearchFormalSongsInput
 } from "../modules/catalog/repositories/song-repository.js";
+import type { KtvIndexReadRepository } from "../modules/ktv-index/ktv-index-read-repository.js";
 import type { QueueEntryRepository } from "../modules/playback/repositories/queue-entry-repository.js";
 import type { RoomRepository } from "../modules/rooms/repositories/room-repository.js";
-import { registerSongDiscoveryRoutes } from "../routes/song-discovery.js";
+import { type IndexedSourceIdentityLookup, registerSongDiscoveryRoutes } from "../routes/song-discovery.js";
 import { describe, expect, it, vi } from "vitest";
 
 const now = "2026-05-27T00:00:00.000Z";
@@ -82,26 +84,121 @@ describe("song discovery routes", () => {
         ?.queueState
     ).toBe("queued");
   });
+
+  it("uses KTV index songs for discovery when the formal catalog is empty", async () => {
+    const { server, ktvIndex, indexedSources, queueEntries } = await createHarness({
+      searchResults: [],
+      indexedResults: [
+        createIndexedResult({
+          indexedSongId: "indexed-hot",
+          indexedAssetId: "indexed-asset-hot",
+          title: "海阔天空",
+          artistName: "Beyond",
+          styleTags: ["粤语", "流行"],
+          queueState: "queued"
+        }),
+        createIndexedResult({
+          indexedSongId: "indexed-rock",
+          indexedAssetId: "indexed-asset-rock",
+          title: "倔强",
+          artistName: "五月天",
+          styleTags: ["摇滚"]
+        })
+      ],
+      indexedAssetIdsForCanonicalAssets: ["indexed-asset-hot"],
+      queueEntries: [
+        createQueueEntry({
+          songId: "song-ktv-indexed-hot",
+          assetId: "asset-ktv-indexed-asset-hot"
+        })
+      ],
+      playCounts: {
+        "song-ktv-indexed-hot": 8,
+        "song-ktv-indexed-rock": 2
+      }
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/rooms/living-room/songs/discovery?seed=ktv-index&limit=2"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(indexedSources.lookupCalls).toEqual([["asset-ktv-indexed-asset-hot"]]);
+    expect(ktvIndex.searchCalls).toEqual([
+      {
+        query: "",
+        limit: 500,
+        shuffle: true,
+        versionsPerSong: 1,
+        queuedIndexedAssetIds: ["indexed-asset-hot"],
+        unreadableIndexedAssetIds: []
+      }
+    ]);
+    expect(queueEntries.countCalls).toEqual([["song-ktv-indexed-hot", "song-ktv-indexed-rock"]]);
+
+    const body = response.json<SongDiscoveryResponse>();
+    expect(body.recommended).toHaveLength(2);
+    expect(body.recommended).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "ktv-index",
+          songId: "song-ktv-indexed-hot",
+          indexedSongId: "indexed-hot",
+          title: "海阔天空",
+          artistId: "ktv-index-artist-beyond",
+          artistName: "Beyond",
+          genre: ["粤语", "流行"],
+          queueState: "queued",
+          playCount: 8,
+          versions: [
+            expect.objectContaining({
+              indexedAssetId: "indexed-asset-hot",
+              queueState: "queued",
+              canQueue: true
+            })
+          ]
+        })
+      ])
+    );
+    expect(body.artists).toEqual([
+      expect.objectContaining({ artistId: "ktv-index-artist-beyond", artistName: "Beyond", songCount: 1 }),
+      expect.objectContaining({ artistName: "五月天", songCount: 1 })
+    ]);
+    expect(body.genres).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ genre: "粤语", songCount: 1 }),
+        expect.objectContaining({ genre: "流行", songCount: 1 }),
+        expect.objectContaining({ genre: "摇滚", songCount: 1 })
+      ])
+    );
+  });
 });
 
 async function createHarness(input: {
   room?: Room | null;
   searchResults?: SearchFormalSongRecord[];
+  indexedResults?: SongSearchIndexedResult[];
+  indexedAssetIdsForCanonicalAssets?: string[];
   queueEntries?: QueueEntry[];
   playCounts?: Record<string, number>;
 } = {}) {
   const server = Fastify({ logger: false });
   const rooms = new FakeRoomRepository(input.room === undefined ? createRoom() : input.room);
   const songs = new FakeSongRepository(input.searchResults ?? []);
+  const ktvIndex = new FakeKtvIndexReadRepository(input.indexedResults ?? []);
+  const indexedSources = new FakeIndexedSourceIdentityLookup(input.indexedAssetIdsForCanonicalAssets ?? []);
   const queueEntries = new FakeQueueEntryRepository(input.queueEntries ?? [], input.playCounts ?? {});
 
   await registerSongDiscoveryRoutes(server, {
     rooms,
     songs,
-    queueEntries
+    queueEntries,
+    ktvIndex,
+    indexedSources
   });
 
-  return { server, rooms, songs, queueEntries };
+  return { server, rooms, songs, ktvIndex, indexedSources, queueEntries };
 }
 
 class FakeRoomRepository implements RoomRepository {
@@ -144,6 +241,28 @@ class FakeSongRepository implements AdminCatalogSongRepository {
 
   async updateSongStatus() {
     return null;
+  }
+}
+
+class FakeKtvIndexReadRepository implements Pick<KtvIndexReadRepository, "searchIndexedSongs"> {
+  readonly searchCalls: Parameters<KtvIndexReadRepository["searchIndexedSongs"]>[0][] = [];
+
+  constructor(private readonly results: SongSearchIndexedResult[]) {}
+
+  async searchIndexedSongs(input: Parameters<KtvIndexReadRepository["searchIndexedSongs"]>[0]) {
+    this.searchCalls.push(input);
+    return this.results;
+  }
+}
+
+class FakeIndexedSourceIdentityLookup implements IndexedSourceIdentityLookup {
+  readonly lookupCalls: string[][] = [];
+
+  constructor(private readonly indexedAssetIds: string[]) {}
+
+  async findIndexedAssetIdsForCanonicalAssets(assetIds: readonly string[]) {
+    this.lookupCalls.push([...assetIds]);
+    return this.indexedAssetIds;
   }
 }
 
@@ -262,12 +381,47 @@ function createVersion(assetId: string): SongSearchVersionOption {
   };
 }
 
-function createQueueEntry(input: { songId: string }): QueueEntry {
+function createIndexedResult(input: {
+  indexedSongId: string;
+  indexedAssetId: string;
+  title: string;
+  artistName: string;
+  styleTags: string[];
+  queueState?: "not_queued" | "queued" | "source_missing" | "file_unreadable";
+}): SongSearchIndexedResult {
+  const queueState = input.queueState ?? "not_queued";
+  return {
+    indexedSongId: input.indexedSongId,
+    title: input.title,
+    artistName: input.artistName,
+    styleTags: input.styleTags,
+    category: input.styleTags[0] ?? "未打标签",
+    sourceLabel: "KTV索引",
+    matchReason: "default",
+    versions: [
+      {
+        indexedAssetId: input.indexedAssetId,
+        displayName: `${input.artistName}-${input.title}.mkv`,
+        sourceLabel: "KTV索引",
+        extension: ".mkv",
+        sizeBytes: 123456,
+        audioTrackCount: 2,
+        styleTags: input.styleTags,
+        category: input.styleTags[0] ?? "未打标签",
+        queueState,
+        canQueue: queueState !== "file_unreadable" && queueState !== "source_missing",
+        disabledLabel: queueState === "file_unreadable" ? "文件不可读" : null
+      }
+    ]
+  };
+}
+
+function createQueueEntry(input: { songId: string; assetId?: string }): QueueEntry {
   return {
     id: `queue-${input.songId}`,
     roomId: "living-room",
     songId: input.songId,
-    assetId: `asset-${input.songId}`,
+    assetId: input.assetId ?? `asset-${input.songId}`,
     requestedBy: "control-session",
     queuePosition: 1,
     status: "queued",

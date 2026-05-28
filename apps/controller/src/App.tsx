@@ -1144,6 +1144,7 @@ function DiscoverySongRow({
   const primaryVersion = song.versions[0] ?? null;
   const canQueue = primaryVersion ? primaryVersion.canQueue !== false : false;
   const disabledLabel = primaryVersion ? disabledVersionLabel(primaryVersion) : "暂不可播放";
+  const addLabel = canQueue ? (song.queueState === "queued" ? t("button.addAgain") : t("button.add")) : disabledLabel;
 
   return (
     <article className="song-row recommendation-row">
@@ -1156,19 +1157,32 @@ function DiscoverySongRow({
       </div>
       <button
         className="primary-button add-circle-button"
-        aria-label={`${canQueue ? (song.queueState === "queued" ? t("button.addAgain") : t("button.add")) : disabledLabel} ${song.title}`}
+        aria-label={`${addLabel} ${song.title}`}
         disabled={!canQueue}
         type="button"
-        onClick={() =>
-          primaryVersion && canQueue
-            ? controller.requestAddSongVersion(song.songId, primaryVersion.assetId, song.title, song.queueState)
-            : undefined
+        onClick={() => {
+          if (!primaryVersion || !canQueue) {
+            return;
           }
+
+          if (isIndexedDiscoveryVersion(primaryVersion)) {
+            controller.requestAddIndexedAsset(primaryVersion.indexedAssetId, song.title, primaryVersion.queueState);
+            return;
+          }
+
+          controller.requestAddSongVersion(song.songId, primaryVersion.assetId, song.title, song.queueState);
+        }}
       >
         {canQueue ? "+" : "·"}
       </button>
     </article>
   );
+}
+
+function isIndexedDiscoveryVersion(
+  version: SongDiscoverySong["versions"][number]
+): version is Extract<SongDiscoverySong["versions"][number], { indexedAssetId: string }> {
+  return "indexedAssetId" in version;
 }
 
 const searchHistoryStorageKey = "home_ktv_search_history_v1";

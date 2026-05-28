@@ -96,3 +96,5 @@ https://ktv-admin.shaolongfei.com/
 https://ktv-controller.shaolongfei.com/controller?room=living-room
 https://ktv-tv.shaolongfei.com/?apiBaseUrl=https://ktv-api.shaolongfei.com&roomSlug=living-room&deviceName=Web%20TV
 ```
+
+完整更新流程以 `docs/runbooks/deploy-lxc-dev.md` 为准。部署后必须跑公开入口 smoke，并确认真实曲库 discovery 非空后再交给手机端/TV 端测试。

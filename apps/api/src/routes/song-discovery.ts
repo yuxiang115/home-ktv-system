@@ -1,6 +1,14 @@
 import type { FastifyInstance } from "fastify";
-import type { SongDiscoveryArtist, SongDiscoveryGenre, SongDiscoveryResponse, SongDiscoverySong, SongId } from "@home-ktv/domain";
+import type {
+  SongDiscoveryArtist,
+  SongDiscoveryGenre,
+  SongDiscoveryResponse,
+  SongDiscoverySong,
+  SongId,
+  SongSearchIndexedResult
+} from "@home-ktv/domain";
 import type { AdminCatalogSongRepository, SearchFormalSongRecord } from "../modules/catalog/repositories/song-repository.js";
+import type { KtvIndexReadRepository } from "../modules/ktv-index/ktv-index-read-repository.js";
 import type { QueueEntryRepository } from "../modules/playback/repositories/queue-entry-repository.js";
 import type { RoomRepository } from "../modules/rooms/repositories/room-repository.js";
 
@@ -8,6 +16,12 @@ export interface SongDiscoveryRouteDependencies {
   rooms: RoomRepository;
   songs: AdminCatalogSongRepository;
   queueEntries: QueueEntryRepository;
+  ktvIndex?: Pick<KtvIndexReadRepository, "searchIndexedSongs">;
+  indexedSources?: IndexedSourceIdentityLookup;
+}
+
+export interface IndexedSourceIdentityLookup {
+  findIndexedAssetIdsForCanonicalAssets(assetIds: readonly string[]): Promise<string[]>;
 }
 
 interface SongDiscoveryQuery {
@@ -31,15 +45,15 @@ export async function registerSongDiscoveryRoutes(
       const seed = String(request.query.seed ?? Date.now());
       const limit = parseLimit(request.query.limit);
       const queue = await dependencies.queueEntries.listEffectiveQueue(room.id);
-      const queuedSongIds = queue.map((entry) => entry.songId);
-      const records = await dependencies.songs.searchFormalSongs({
-        query: "",
-        limit: 500,
-        queuedSongIds
-      });
-      const songIds = records.map((record) => record.song.id);
-      const requestCounts = (await dependencies.queueEntries.listGlobalSongRequestCounts?.(songIds)) ?? new Map<SongId, number>();
-      const songs = records.map((record) => discoverySong(record, requestCounts.get(record.song.id) ?? 0));
+      const songs =
+        (await listIndexedDiscoverySongs({
+          dependencies,
+          queuedAssetIds: queue.map((entry) => entry.assetId)
+        })) ??
+        (await listFormalDiscoverySongs({
+          dependencies,
+          queuedSongIds: queue.map((entry) => entry.songId)
+        }));
 
       const response: SongDiscoveryResponse = {
         seed,
@@ -59,8 +73,50 @@ function parseLimit(rawLimit: string | number | undefined): number {
   return Math.min(30, Math.max(1, Number.isFinite(parsedLimit) ? parsedLimit : 30));
 }
 
+async function listIndexedDiscoverySongs(input: {
+  dependencies: SongDiscoveryRouteDependencies;
+  queuedAssetIds: readonly string[];
+}): Promise<SongDiscoverySong[] | null> {
+  if (!input.dependencies.ktvIndex) {
+    return null;
+  }
+
+  const queuedIndexedAssetIds =
+    (await input.dependencies.indexedSources?.findIndexedAssetIdsForCanonicalAssets(input.queuedAssetIds)) ?? [];
+  const records = await input.dependencies.ktvIndex.searchIndexedSongs({
+    query: "",
+    limit: 500,
+    shuffle: true,
+    versionsPerSong: 1,
+    queuedIndexedAssetIds,
+    unreadableIndexedAssetIds: []
+  });
+  if (records.length === 0) {
+    return null;
+  }
+
+  const songIds = records.map((record) => ktvCanonicalSongId(record.indexedSongId));
+  const requestCounts = (await input.dependencies.queueEntries.listGlobalSongRequestCounts?.(songIds)) ?? new Map<SongId, number>();
+  return records.map((record) => indexedDiscoverySong(record, requestCounts.get(ktvCanonicalSongId(record.indexedSongId)) ?? 0));
+}
+
+async function listFormalDiscoverySongs(input: {
+  dependencies: SongDiscoveryRouteDependencies;
+  queuedSongIds: readonly SongId[];
+}): Promise<SongDiscoverySong[]> {
+  const records = await input.dependencies.songs.searchFormalSongs({
+    query: "",
+    limit: 500,
+    queuedSongIds: input.queuedSongIds
+  });
+  const songIds = records.map((record) => record.song.id);
+  const requestCounts = (await input.dependencies.queueEntries.listGlobalSongRequestCounts?.(songIds)) ?? new Map<SongId, number>();
+  return records.map((record) => discoverySong(record, requestCounts.get(record.song.id) ?? 0));
+}
+
 function discoverySong(record: SearchFormalSongRecord, playCount: number): SongDiscoverySong {
   return {
+    source: "formal",
     songId: record.song.id,
     title: record.song.title,
     artistId: record.song.artistId,
@@ -75,8 +131,50 @@ function discoverySong(record: SearchFormalSongRecord, playCount: number): SongD
   };
 }
 
+function indexedDiscoverySong(record: SongSearchIndexedResult, playCount: number): SongDiscoverySong {
+  const genre = indexedGenre(record);
+  return {
+    source: "ktv-index",
+    songId: ktvCanonicalSongId(record.indexedSongId),
+    indexedSongId: record.indexedSongId,
+    title: record.title,
+    artistId: indexedArtistId(record.artistName),
+    artistName: record.artistName,
+    language: "mandarin",
+    genre,
+    matchReason: record.matchReason === "style" ? "default" : record.matchReason,
+    queueState: record.versions.some((version) => version.queueState === "queued") ? "queued" : "not_queued",
+    versions: record.versions,
+    playCount,
+    recommendationWeight: indexedRecommendationWeight(playCount)
+  };
+}
+
 function recommendationWeight(record: SearchFormalSongRecord, playCount: number): number {
   return Math.max(1, record.song.searchWeight) + playCount * 4;
+}
+
+function indexedRecommendationWeight(playCount: number): number {
+  return 1 + playCount * 4;
+}
+
+function ktvCanonicalSongId(indexedSongId: string): SongId {
+  return `song-ktv-${indexedSongId}` as SongId;
+}
+
+function indexedArtistId(artistName: string): string {
+  const normalized = artistName
+    .trim()
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
+    .replace(/^-+|-+$/gu, "");
+  return `ktv-index-artist-${normalized || "unknown"}`;
+}
+
+function indexedGenre(record: SongSearchIndexedResult): string[] {
+  const tags = record.styleTags?.filter((tag) => tag.trim().length > 0) ?? [];
+  return tags.length > 0 ? tags : [record.category || "未打标签"];
 }
 
 function selectWeightedSongs(songs: readonly SongDiscoverySong[], limit: number, seed: string): SongDiscoverySong[] {

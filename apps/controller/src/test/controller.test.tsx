@@ -250,6 +250,30 @@ describe("mobile controller runtime", () => {
     expect(refreshedDiscoveryRequests.length).toBeGreaterThan(initialDiscoveryRequests.length);
   });
 
+  it("adds indexed discovery recommendations through the indexed queue command", async () => {
+    const user = userEvent.setup();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))],
+      songDiscoveryResponse: indexedSongDiscoveryResponse
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    const recommendations = await screen.findByRole("region", { name: "推荐歌曲" });
+    expect(await within(recommendations).findByText("索引晴天")).toBeTruthy();
+
+    await user.click(within(recommendations).getByRole("button", { name: "点歌 索引晴天" }));
+    await flush();
+
+    const addRequest = requests.find((request) => request.url === "/rooms/living-room/commands/add-queue-entry");
+    expect(addRequest?.body).toMatchObject({
+      indexedAssetId: "ktv-asset-discovery-sunny"
+    });
+    expect(addRequest?.body).not.toHaveProperty("songId");
+    expect(addRequest?.body).not.toHaveProperty("assetId");
+  });
+
   it("sends emoji, bullet, and blessing shortcut interactions", async () => {
     const user = userEvent.setup();
     const { requests } = installControllerFetchMock({
@@ -1805,6 +1829,58 @@ function songDiscoveryResponse(seed: string): SongDiscoveryResponse {
   };
 }
 
+function indexedSongDiscoveryResponse(seed: string): SongDiscoveryResponse {
+  const song: SongDiscoverySong = {
+    source: "ktv-index",
+    songId: "song-ktv-ktv-song-discovery-sunny",
+    indexedSongId: "ktv-song-discovery-sunny",
+    title: "索引晴天",
+    artistId: "ktv-index-artist-zhou-jie-lun",
+    artistName: "周杰伦",
+    language: "mandarin",
+    genre: ["流行"],
+    matchReason: "default",
+    queueState: "not_queued",
+    playCount: 0,
+    recommendationWeight: 1,
+    versions: [
+      {
+        indexedAssetId: "ktv-asset-discovery-sunny",
+        displayName: "周杰伦-晴天-国语-流行.mkv",
+        sourceLabel: "KTV索引",
+        extension: ".mkv",
+        sizeBytes: 123456,
+        audioTrackCount: 2,
+        styleTags: ["流行"],
+        category: "流行",
+        queueState: "not_queued",
+        canQueue: true,
+        disabledLabel: null
+      }
+    ]
+  };
+
+  return {
+    seed,
+    recommended: [song],
+    artists: [
+      {
+        artistId: "ktv-index-artist-zhou-jie-lun",
+        artistName: "周杰伦",
+        songCount: 1,
+        songs: [song]
+      }
+    ],
+    genres: [
+      {
+        genre: "流行",
+        songCount: 1,
+        songs: [song]
+      }
+    ]
+  };
+}
+
 function discoverySong(input: {
   songId: string;
   title: string;
@@ -1814,6 +1890,7 @@ function discoverySong(input: {
   playCount: number;
 }): SongDiscoverySong {
   return {
+    source: "formal",
     songId: input.songId,
     title: input.title,
     artistId: input.artistId,

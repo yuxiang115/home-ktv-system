@@ -16,6 +16,7 @@ import { buildNasSample } from "./ktv-index-diagnostics.js";
 export interface SearchKtvIndexedSongsInput {
   query: string;
   limit?: number;
+  shuffle?: boolean;
   versionsPerSong?: number;
   queuedIndexedAssetIds?: readonly string[];
   unreadableIndexedAssetIds?: readonly string[];
@@ -200,8 +201,11 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
     const normalizedQuery = normalizeSearchText(input.query);
     const likeQuery = `%${normalizedQuery}%`;
     const tagQuery = `%${input.query.trim()}%`;
-    const limit = Math.min(30, Math.max(1, input.limit ?? 20));
+    const limit = Math.min(500, Math.max(1, input.limit ?? 20));
     const versionsPerSong = Math.min(8, Math.max(1, input.versionsPerSong ?? 4));
+    const matchedSongOrder = input.shuffle
+      ? "random(), score DESC, s.title ASC, s.primary_artist_name ASC"
+      : "score DESC, s.title ASC, s.primary_artist_name ASC";
 
     const result = await this.db.query<IndexedSearchRow>(
       `WITH matched_songs AS (
@@ -278,7 +282,7 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
             )
          GROUP BY s.id, s.title, s.primary_artist_name, s.normalized_title,
                   s.normalized_primary_artist_name, s.title_pinyin, s.title_initials
-         ORDER BY score DESC, s.title ASC, s.primary_artist_name ASC
+         ORDER BY ${matchedSongOrder}
          LIMIT $4
        ),
        ranked_assets AS (
