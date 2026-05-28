@@ -57,6 +57,9 @@ function parseArgs(args: readonly string[]): CliOptions {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!;
     const next = args[index + 1];
+    if (arg === "--") {
+      continue;
+    }
     if (arg === "--limit" && next) {
       options.limit = readPositiveInteger(next, options.limit);
       index += 1;
