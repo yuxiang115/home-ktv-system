@@ -40,7 +40,15 @@ vi.mock("../runtime/active-playback-controller.js", () => ({
     async ensurePlaying() {
       return mocks.activePlaybackEnsurePlaying();
     }
-  }
+  },
+  isSamePlaybackTarget: (current: RoomSnapshot["currentTarget"], next: RoomSnapshot["currentTarget"]) =>
+    Boolean(
+      current &&
+        next &&
+        current.queueEntryId === next.queueEntryId &&
+        current.sourceType === next.sourceType &&
+        current.assetId === next.assetId
+    )
 }));
 
 vi.mock("../runtime/switch-controller.js", () => ({
@@ -152,6 +160,7 @@ describe("tv app runtime", () => {
         eventType: "ended",
         sessionVersion: 5,
         queueEntryId: "queue-current",
+        sourceType: "nas",
         assetId: "asset-original",
         playbackPositionMs: 60_000,
         vocalMode: "original",
@@ -178,6 +187,7 @@ describe("tv app runtime", () => {
         eventType: "playing",
         sessionVersion: 5,
         queueEntryId: "queue-current",
+        sourceType: "nas",
         assetId: "asset-original",
         playbackPositionMs: 0,
         vocalMode: "original",
@@ -210,6 +220,7 @@ describe("tv app runtime", () => {
         eventType: "loading",
         sessionVersion: 5,
         queueEntryId: "queue-current",
+        sourceType: "nas",
         assetId: "asset-original",
         playbackPositionMs: 1234,
         vocalMode: "original",
@@ -245,6 +256,7 @@ describe("tv app runtime", () => {
         eventType: "playing",
         sessionVersion: 5,
         queueEntryId: "queue-current",
+        sourceType: "nas",
         assetId: "asset-original",
         playbackPositionMs: 0,
         vocalMode: "original",
@@ -327,6 +339,8 @@ function snapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot {
       roomId: "living-room",
       sessionVersion: 5,
       queueEntryId: "queue-current",
+      sourceType: "nas",
+      songId: "song-current",
       assetId: "asset-original",
       currentQueueEntryPreview: {
         queueEntryId: "queue-current",
@@ -354,6 +368,7 @@ function switchTarget(vocalMode: "original" | "instrumental"): SwitchTarget {
     sessionVersion: 5,
     queueEntryId: "queue-current",
     switchKind: "asset",
+    sourceType: "nas",
     fromAssetId: vocalMode === "instrumental" ? "asset-original" : "asset-instrumental",
     toAssetId: vocalMode === "instrumental" ? "asset-instrumental" : "asset-original",
     playbackUrl: `http://ktv.local/media/${vocalMode === "instrumental" ? "asset-instrumental" : "asset-original"}`,

@@ -26,6 +26,7 @@ describe("switch runtime", () => {
     expect(client.telemetry).toMatchObject([
       {
         eventType: "playing",
+        sourceType: "nas",
         assetId: "asset-instrumental",
         playbackPositionMs: 82400,
         vocalMode: "instrumental",
@@ -56,6 +57,7 @@ describe("switch runtime", () => {
     expect(client.telemetry).toMatchObject([
       {
         eventType: "switch_failed",
+        sourceType: "nas",
         assetId: "asset-instrumental",
         vocalMode: "original",
         rollbackAssetId: "asset-original",
@@ -99,6 +101,7 @@ describe("switch runtime", () => {
       {
         eventType: "playing",
         stage: "switch_committed",
+        sourceType: "nas",
         assetId: "asset-real-mv",
         playbackPositionMs: 42300,
         vocalMode: "instrumental"
@@ -146,6 +149,7 @@ describe("switch runtime", () => {
       {
         eventType: "switch_failed",
         stage: "audio_track",
+        sourceType: "nas",
         assetId: "asset-real-mv",
         playbackPositionMs: 42300,
         vocalMode: "original"
@@ -270,6 +274,8 @@ function playbackTarget(input: { assetId: string; vocalMode: PlaybackTarget["voc
     roomId: "living-room",
     sessionVersion: 4,
     queueEntryId: "queue-current",
+    sourceType: "nas",
+    songId: "song-current",
     assetId: input.assetId,
     currentQueueEntryPreview: {
       queueEntryId: "queue-current",
@@ -305,6 +311,7 @@ function switchTarget(input: { resumePositionMs: number }): SwitchTarget {
     sessionVersion: 4,
     queueEntryId: "queue-current",
     switchKind: "asset",
+    sourceType: "nas",
     fromAssetId: "asset-original",
     toAssetId: "asset-instrumental",
     playbackUrl: "http://ktv.local/media/asset-instrumental",
@@ -324,6 +331,7 @@ function audioTrackSwitchTarget(input: {
     sessionVersion: 4,
     queueEntryId: "queue-current",
     switchKind: "audio_track",
+    sourceType: "nas",
     fromAssetId: "asset-real-mv",
     toAssetId: "asset-real-mv",
     playbackUrl: "http://ktv.local/media/asset-real-mv",

@@ -1,6 +1,6 @@
 import type { PlaybackTarget, RoomSnapshot } from "@home-ktv/player-contracts";
 import { describe, expect, it } from "vitest";
-import { ActivePlaybackController } from "../runtime/active-playback-controller.js";
+import { ActivePlaybackController, isSamePlaybackTarget } from "../runtime/active-playback-controller.js";
 import {
   DualVideoPool,
   restoreAudioTracks,
@@ -131,6 +131,18 @@ describe("active playback controller", () => {
     expect(pool.activeTarget).toBeNull();
     expect(activeVideo.paused).toBe(true);
   });
+
+  it("treats the same asset from different source types as different playback targets", () => {
+    expect(
+      isSamePlaybackTarget(
+        playbackTarget(),
+        {
+          ...playbackTarget(),
+          sourceType: "online"
+        }
+      )
+    ).toBe(false);
+  });
 });
 
 class FakeVideo implements KtvVideoElement {
@@ -214,6 +226,8 @@ function playbackTarget(): PlaybackTarget {
     roomId: "living-room",
     sessionVersion: 4,
     queueEntryId: "queue-current",
+    sourceType: "nas",
+    songId: "song-current",
     assetId: "asset-original",
     currentQueueEntryPreview: {
       queueEntryId: "queue-current",

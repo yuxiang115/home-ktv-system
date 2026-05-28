@@ -77,6 +77,7 @@ export class PlayerClient {
     eventType: PlayerTelemetryKind;
     sessionVersion: number;
     queueEntryId: string;
+    sourceType: NonNullable<RoomSnapshot["currentTarget"]>["sourceType"];
     assetId: string;
     playbackPositionMs: number;
     vocalMode: VocalMode;
@@ -92,6 +93,7 @@ export class PlayerClient {
       eventType: input.eventType,
       sessionVersion: input.sessionVersion,
       queueEntryId: input.queueEntryId,
+      sourceType: input.sourceType,
       assetId: input.assetId,
       playbackPositionMs: input.playbackPositionMs,
       vocalMode: input.vocalMode,

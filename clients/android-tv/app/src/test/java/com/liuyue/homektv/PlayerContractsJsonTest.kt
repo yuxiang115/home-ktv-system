@@ -20,8 +20,10 @@ class PlayerContractsJsonTest {
 
         val target = snapshot.currentTarget ?: error("expected current target")
         assertEquals("queue-1", target.queueEntryId)
+        assertEquals("nas", target.sourceType)
+        assertEquals("ktv-song-1", target.songId)
         assertEquals("asset-1", target.assetId)
-        assertEquals("http://192.168.5.64:4000/media/ktv-index/asset-1/raw", target.playbackUrl)
+        assertEquals("http://192.168.5.64:4000/media/nas/asset-1", target.playbackUrl)
         assertEquals(12_345L, target.resumePositionMs)
         assertEquals("稻香", target.currentQueueEntryPreview.songTitle)
         assertEquals("周杰伦", target.currentQueueEntryPreview.artistName)
@@ -65,6 +67,38 @@ class PlayerContractsJsonTest {
     }
 
     @Test
+    fun parsesSwitchTransitionTargetSourceType() {
+        val result = PlayerContractsJson.switchTransitionFromJson(
+            JSONObject(
+                """
+                    {
+                      "status": "ready",
+                      "reason": null,
+                      "switchTarget": {
+                        "roomId": "room-1",
+                        "sessionVersion": 7,
+                        "queueEntryId": "queue-1",
+                        "switchKind": "audio_track",
+                        "sourceType": "nas",
+                        "fromAssetId": "asset-1",
+                        "toAssetId": "asset-1",
+                        "playbackUrl": "http://192.168.5.64:4000/media/nas/asset-1",
+                        "switchFamily": "real-mv-audio-track",
+                        "vocalMode": "original",
+                        "resumePositionMs": 12345,
+                        "rollbackAssetId": "asset-1"
+                      }
+                    }
+                """.trimIndent(),
+            ),
+        )
+
+        assertEquals("ready", result.status)
+        assertEquals("nas", result.switchTarget?.sourceType)
+        assertEquals("asset-1", result.switchTarget?.toAssetId)
+    }
+
+    @Test
     fun ignoresRealtimePingMessages() {
         val snapshot = PlayerContractsJson.roomSnapshotFromRealtimeMessage(
             """{"type":"ping","timestamp":"2026-05-21T00:00:00.000Z"}""",
@@ -93,13 +127,15 @@ class PlayerContractsJsonTest {
                 "roomId": "room-1",
                 "sessionVersion": 7,
                 "queueEntryId": "queue-1",
+                "sourceType": "nas",
+                "songId": "ktv-song-1",
                 "assetId": "asset-1",
                 "currentQueueEntryPreview": {
                   "queueEntryId": "queue-1",
                   "songTitle": "稻香",
                   "artistName": "周杰伦"
                 },
-                "playbackUrl": "http://192.168.5.64:4000/media/ktv-index/asset-1/raw",
+                "playbackUrl": "http://192.168.5.64:4000/media/nas/asset-1",
                 "resumePositionMs": 12345,
                 "vocalMode": "instrumental",
                 "switchFamily": "real-mv-audio-track",

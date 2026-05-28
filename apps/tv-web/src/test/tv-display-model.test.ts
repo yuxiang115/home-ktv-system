@@ -92,6 +92,8 @@ function snapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot {
     },
     currentTarget: {
       assetId: "asset-instrumental",
+      sourceType: "nas",
+      songId: "song-current",
       currentQueueEntryPreview: {
         artistName: "周杰伦",
         queueEntryId: "queue-current",

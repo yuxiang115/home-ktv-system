@@ -57,6 +57,8 @@ object PlayerContractsJson {
             roomId = json.optString("roomId", ""),
             sessionVersion = json.optInt("sessionVersion", 0),
             queueEntryId = json.optString("queueEntryId", ""),
+            sourceType = json.optString("sourceType", "nas").ifBlank { "nas" },
+            songId = json.optString("songId", ""),
             assetId = json.optString("assetId", ""),
             currentQueueEntryPreview = queueEntryPreviewFromJson(
                 json.optJSONObject("currentQueueEntryPreview"),
@@ -80,6 +82,7 @@ object PlayerContractsJson {
             sessionVersion = json.optInt("sessionVersion", 0),
             queueEntryId = json.optString("queueEntryId", ""),
             switchKind = json.optString("switchKind", "asset"),
+            sourceType = json.optString("sourceType", "nas").ifBlank { "nas" },
             fromAssetId = json.optString("fromAssetId", ""),
             toAssetId = json.optString("toAssetId", ""),
             playbackUrl = json.optString("playbackUrl", ""),

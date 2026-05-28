@@ -218,6 +218,8 @@ function playbackTargetFromSwitchTarget(target: SwitchTarget, previousTarget: Pl
     roomId: target.roomId,
     sessionVersion: target.sessionVersion,
     queueEntryId: target.queueEntryId,
+    sourceType: target.sourceType,
+    songId: previousTarget?.songId ?? "",
     assetId: target.toAssetId,
     currentQueueEntryPreview: previousTarget?.currentQueueEntryPreview ?? {
       queueEntryId: target.queueEntryId,

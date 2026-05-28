@@ -72,6 +72,8 @@ class TvPairingOverlayStateTest {
             roomId = "room-1",
             sessionVersion = 1,
             queueEntryId = "queue-1",
+            sourceType = "nas",
+            songId = "song-1",
             assetId = "asset-1",
             currentQueueEntryPreview = QueueEntryPreview("queue-1", "稻香", "周杰伦"),
             playbackUrl = "http://api.local/media/asset-1/raw",

@@ -45,6 +45,7 @@ class PlayerApiPayloadsTest {
             eventType = "playing",
             sessionVersion = 7,
             queueEntryId = "queue-1",
+            sourceType = "nas",
             assetId = "asset-1",
             playbackPositionMs = 12345L,
             vocalMode = "original",
@@ -58,6 +59,7 @@ class PlayerApiPayloadsTest {
         assertEquals("playing", json.getString("eventType"))
         assertEquals(7, json.getInt("sessionVersion"))
         assertEquals("queue-1", json.getString("queueEntryId"))
+        assertEquals("nas", json.getString("sourceType"))
         assertEquals("asset-1", json.getString("assetId"))
         assertEquals(12345L, json.getLong("playbackPositionMs"))
         assertEquals("original", json.getString("vocalMode"))

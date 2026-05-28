@@ -29,6 +29,19 @@ class RoomPlaybackDecisionTest {
     }
 
     @Test
+    fun playsNewTargetWhenSourceTypeChangesForSameQueueAndAsset() {
+        val nextTarget = target(sourceType = "online", assetId = "asset-1", queueEntryId = "queue-1")
+
+        val decision = RoomPlaybackDecision.decide(
+            snapshot = snapshot(currentTarget = nextTarget),
+            activeTarget = target(sourceType = "nas", assetId = "asset-1", queueEntryId = "queue-1"),
+            switchInFlight = false,
+        )
+
+        assertEquals(PlaybackAction.PlayNewTarget(nextTarget), decision)
+    }
+
+    @Test
     fun switchesVocalModeWhenServerHasPendingModeChange() {
         val current = target(vocalMode = "instrumental")
 
@@ -88,19 +101,22 @@ class RoomPlaybackDecisionTest {
     private fun target(
         assetId: String = "asset-1",
         queueEntryId: String = "queue-1",
+        sourceType: String = "nas",
         vocalMode: String = "instrumental",
     ): PlaybackTarget {
         return PlaybackTarget(
             roomId = "room-1",
             sessionVersion = 1,
             queueEntryId = queueEntryId,
+            sourceType = sourceType,
+            songId = "song-1",
             assetId = assetId,
             currentQueueEntryPreview = QueueEntryPreview(
                 queueEntryId = queueEntryId,
                 songTitle = "稻香",
                 artistName = "周杰伦",
             ),
-            playbackUrl = "http://192.168.5.64:4000/media/ktv-index/$assetId/raw",
+            playbackUrl = "http://192.168.5.64:4000/media/$sourceType/$assetId",
             resumePositionMs = 0L,
             vocalMode = vocalMode,
             switchFamily = "real-mv-audio-track",

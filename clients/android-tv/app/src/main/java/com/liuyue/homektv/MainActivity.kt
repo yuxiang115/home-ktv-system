@@ -562,7 +562,7 @@ class MainActivity : Activity() {
             "Room snapshot ${snapshot.sessionVersion}: " +
                 "${target.currentQueueEntryPreview.songTitle} - ${target.currentQueueEntryPreview.artistName}; " +
                 "mode=${target.vocalMode}; volume=${snapshot.volumePercent}; " +
-                "queue=${target.queueEntryId}; next=${target.nextQueueEntryPreview?.songTitle.orEmpty()}",
+                "queue=${target.queueEntryId}; source=${target.sourceType}; next=${target.nextQueueEntryPreview?.songTitle.orEmpty()}",
         )
     }
 
@@ -876,12 +876,13 @@ class MainActivity : Activity() {
         message: String? = null,
         errorCode: String? = null,
     ) {
-        val key = listOf(eventType, target.queueEntryId, target.assetId, target.vocalMode, stage).joinToString(":")
+        val key = listOf(eventType, target.queueEntryId, target.sourceType, target.assetId, target.vocalMode, stage).joinToString(":")
         if (!sentTelemetryKeys.add(key)) return
         sendTelemetry(
             eventType = eventType,
             sessionVersion = target.sessionVersion,
             queueEntryId = target.queueEntryId,
+            sourceType = target.sourceType,
             assetId = target.assetId,
             playbackPositionMs = playbackPositionMs,
             vocalMode = target.vocalMode,
@@ -898,6 +899,7 @@ class MainActivity : Activity() {
             eventType = "playing",
             sessionVersion = switchTarget.sessionVersion,
             queueEntryId = switchTarget.queueEntryId,
+            sourceType = switchTarget.sourceType,
             assetId = switchTarget.toAssetId,
             playbackPositionMs = currentPlaybackPositionMs(),
             vocalMode = switchTarget.vocalMode,
@@ -912,6 +914,7 @@ class MainActivity : Activity() {
             eventType = "switch_failed",
             sessionVersion = switchTarget.sessionVersion,
             queueEntryId = switchTarget.queueEntryId,
+            sourceType = switchTarget.sourceType,
             assetId = switchTarget.toAssetId,
             playbackPositionMs = currentPlaybackPositionMs(),
             vocalMode = activeTarget?.vocalMode ?: switchTarget.vocalMode,
@@ -926,6 +929,7 @@ class MainActivity : Activity() {
         eventType: String,
         sessionVersion: Int,
         queueEntryId: String,
+        sourceType: String,
         assetId: String,
         playbackPositionMs: Long,
         vocalMode: String,
@@ -943,6 +947,7 @@ class MainActivity : Activity() {
             eventType = eventType,
             sessionVersion = sessionVersion,
             queueEntryId = queueEntryId,
+            sourceType = sourceType,
             assetId = assetId,
             playbackPositionMs = playbackPositionMs,
             vocalMode = vocalMode,
@@ -959,6 +964,8 @@ class MainActivity : Activity() {
             roomId = target.roomId,
             sessionVersion = target.sessionVersion,
             queueEntryId = target.queueEntryId,
+            sourceType = target.sourceType,
+            songId = previousTarget.songId,
             assetId = target.toAssetId,
             currentQueueEntryPreview = previousTarget.currentQueueEntryPreview,
             playbackUrl = target.playbackUrl,
@@ -976,7 +983,7 @@ class MainActivity : Activity() {
             target != null -> Log.i(
                 TAG,
                 "Playing room target: ${target.currentQueueEntryPreview.songTitle} - " +
-                    "${target.currentQueueEntryPreview.artistName}; queue=${target.queueEntryId}; asset=${target.assetId}; url=$url",
+                    "${target.currentQueueEntryPreview.artistName}; queue=${target.queueEntryId}; source=${target.sourceType}; asset=${target.assetId}; url=$url",
             )
 
             sample != null -> Log.i(
@@ -1142,7 +1149,7 @@ class MainActivity : Activity() {
     }
 
     private fun TrackRef.stableKey(target: PlaybackTarget): String {
-        return "${target.assetId}:${target.queueEntryId}:${target.vocalMode}:$index:$id"
+        return "${target.sourceType}:${target.assetId}:${target.queueEntryId}:${target.vocalMode}:$index:$id"
     }
 
     private fun String.displayVocalMode(): String {
