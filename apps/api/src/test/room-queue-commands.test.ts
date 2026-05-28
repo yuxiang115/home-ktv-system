@@ -4,6 +4,8 @@ import { AssetGateway } from "../modules/assets/asset-gateway.js";
 import { MediaPathResolver } from "../modules/assets/media-path-resolver.js";
 import type { AssetRepository } from "../modules/catalog/repositories/asset-repository.js";
 import type { SongRepository } from "../modules/catalog/repositories/song-repository.js";
+import type { MediaGateway } from "../modules/media/media-gateway.js";
+import type { PlayableMediaAsset, PlayableMediaLookup, PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
 import { InMemoryControlSessionRepository } from "../modules/controller/repositories/control-session-repository.js";
 import type { PlayerDeviceSessionRepository } from "../modules/player/register-player.js";
 import {
@@ -81,6 +83,48 @@ describe("room queue commands", () => {
     );
 
     expect(rejected.code).toBe("INVALID_VOLUME");
+  });
+
+  it("queues NAS songs directly by source asset without syncing through formal songs/assets", async () => {
+    const playableAsset = createPlayableMediaAsset();
+    const harness = createHarness({
+      queueEntries: [],
+      playableMedia: [playableAsset],
+      songs: [],
+      assets: []
+    });
+
+    const add = expectAccepted(
+      await executeRoomCommand({
+        commandId: "command-add-nas",
+        roomSlug: harness.room.slug,
+        sessionVersion: 1,
+        type: "add-queue-entry",
+        payload: { sourceType: "nas", assetId: playableAsset.assetId },
+        controlSession: harness.controlSession,
+        repositories: harness.repositories,
+        assetGateway: harness.assetGateway,
+        mediaGateway: harness.mediaGateway,
+        config: harness.config,
+        now
+      })
+    );
+
+    expect(add.sessionVersion).toBe(2);
+    const queue = await harness.queueEntries.listEffectiveQueue(harness.room.id);
+    expect(queue[0]).toMatchObject({
+      source: { sourceType: "nas", songId: playableAsset.songId, assetId: playableAsset.assetId },
+      songId: playableAsset.songId,
+      assetId: playableAsset.assetId,
+      status: "loading",
+      playbackOptions: { preferredVocalMode: "instrumental" }
+    });
+    expect(add.snapshot.currentTarget).toMatchObject({
+      sourceType: "nas",
+      songId: playableAsset.songId,
+      assetId: playableAsset.assetId,
+      playbackUrl: `http://ktv.local/media/nas/${playableAsset.assetId}`
+    });
   });
 
   it("accepts add, delete, undo, promote, and skip validation with command idempotency", async () => {
@@ -717,16 +761,27 @@ describe("room queue commands", () => {
   });
 });
 
-function createHarness(options: { queueEntries: readonly QueueEntry[]; targetVocalMode?: VocalMode; realMvAssetOverrides?: Partial<Asset> }) {
+function createHarness(options: {
+  queueEntries: readonly QueueEntry[];
+  targetVocalMode?: VocalMode;
+  realMvAssetOverrides?: Partial<Asset>;
+  playableMedia?: readonly PlayableMediaAsset[];
+  songs?: readonly Song[];
+  assets?: readonly Asset[];
+}) {
   const room = createRoom();
-  const songs = new Map<string, Song>([
+  const songs = new Map<string, Song>(options.songs
+    ? options.songs.map((song) => [song.id, song])
+    : [
     ["song-current", createSong("song-current", "Current", "Artist A", "asset-current-instrumental")],
     ["song-queued", createSong("song-queued", "Queued", "Artist B", "asset-queued-instrumental")],
     ["song-ready", createSong("song-ready", "Ready Song", "Artist Ready", "asset-ready-instrumental")],
     ["song-other", createSong("song-other", "Other Song", "Artist Other", "asset-other-instrumental")],
     ["song-real-mv", createSong("song-real-mv", "Real MV", "Artist MV", "asset-real-mv")]
   ]);
-  const assets = new Map<string, Asset>([
+  const assets = new Map<string, Asset>(options.assets
+    ? options.assets.map((asset) => [asset.id, asset])
+    : [
     ["asset-current-instrumental", createAsset("asset-current-instrumental", "song-current", "instrumental", "family-current")],
     ["asset-current-original", createAsset("asset-current-original", "song-current", "original", "family-current")],
     ["asset-queued-instrumental", createAsset("asset-queued-instrumental", "song-queued", "instrumental", "family-queued")],
@@ -815,12 +870,18 @@ function createHarness(options: { queueEntries: readonly QueueEntry[]; targetVoc
   const playbackEvents = new FakePlaybackEventRepository();
   const assetRepository = new FakeAssetRepository(assets);
   const songRepository = new FakeSongRepository(songs);
+  const playableMedia = new FakePlayableMediaRepository(options.playableMedia ?? []);
   const roomRepository = new FakeRoomRepository(room);
   const assetGateway = new AssetGateway({
     assetRepository,
     mediaPathResolver: new MediaPathResolver({ mediaRoot: "/media-root" }),
     publicBaseUrl: "http://ktv.local"
   });
+  const mediaGateway: Pick<MediaGateway, "createPlaybackUrl"> = {
+    createPlaybackUrl(source: PlayableMediaLookup) {
+      return `http://ktv.local/media/${source.sourceType}/${source.assetId}`;
+    }
+  };
   const config = createConfig();
   const controlSession: ControlSessionInfo = {
     id: "control-session-1",
@@ -841,6 +902,7 @@ function createHarness(options: { queueEntries: readonly QueueEntry[]; targetVoc
     roomRepository,
     playbackSession,
     assetGateway,
+    mediaGateway,
     config,
     controlSession,
     commandRepo,
@@ -849,6 +911,7 @@ function createHarness(options: { queueEntries: readonly QueueEntry[]; targetVoc
       rooms: roomRepository,
       playbackSessions: playbackSession,
       queueEntries,
+      ...(options.playableMedia ? { playableMedia } : {}),
       assets: assetRepository,
       songs: songRepository,
       pairingTokens: roomPairingTokens,
@@ -994,6 +1057,14 @@ class FakeAssetRepository implements AssetRepository {
         candidate.status === "ready" &&
         candidate.switchQualityStatus === "verified"
     );
+  }
+}
+
+class FakePlayableMediaRepository implements PlayableMediaRepository {
+  constructor(private readonly assets: readonly PlayableMediaAsset[]) {}
+
+  async findPlayableBySource(source: PlayableMediaLookup): Promise<PlayableMediaAsset | null> {
+    return this.assets.find((asset) => asset.sourceType === source.sourceType && asset.assetId === source.assetId) ?? null;
   }
 }
 
@@ -1177,6 +1248,51 @@ function createRealMvAsset(overrides: Partial<Asset> = {}): Asset {
     },
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
+    ...overrides
+  };
+}
+
+function createPlayableMediaAsset(overrides: Partial<PlayableMediaAsset> = {}): PlayableMediaAsset {
+  return {
+    sourceType: "nas",
+    songId: "ktv-song-ready",
+    assetId: "ktv-asset-ready",
+    title: "NAS Ready",
+    artistName: "NAS Artist",
+    displayName: "NAS Ready.mkv",
+    filePath: "/nas/NAS Ready.mkv",
+    status: "ready",
+    durationMs: 180000,
+    compatibilityStatus: "playable",
+    compatibilityReasons: [],
+    mediaInfoSummary: {
+      container: "matroska,webm",
+      durationMs: 180000,
+      videoCodec: "h264",
+      resolution: null,
+      fileSizeBytes: 100,
+      audioTracks: [
+        { index: 0, id: "0x1100", label: "Original", language: null, codec: "aac", channels: 2 },
+        { index: 1, id: "0x1101", label: "Instrumental", language: null, codec: "aac", channels: 2 }
+      ]
+    },
+    mediaInfoProvenance: {
+      source: "ffprobe",
+      sourceVersion: null,
+      probedAt: null,
+      importedFrom: null
+    },
+    trackRoles: {
+      original: { index: 0, id: "0x1100", label: "Original" },
+      instrumental: { index: 1, id: "0x1101", label: "Instrumental" }
+    },
+    playbackProfile: {
+      kind: "single_file_audio_tracks",
+      container: "matroska,webm",
+      videoCodec: "h264",
+      audioCodecs: ["aac"],
+      requiresAudioTrackSelection: true
+    },
     ...overrides
   };
 }

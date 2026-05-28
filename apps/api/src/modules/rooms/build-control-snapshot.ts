@@ -176,6 +176,22 @@ async function buildQueuePreview(input: {
   const previews: RoomQueueEntryPreview[] = [];
 
   for (const queueEntry of input.queue) {
+    const playableMedia = await input.repositories.playableMedia?.findPlayableBySource({
+      sourceType: queueEntry.source?.sourceType ?? "nas",
+      assetId: queueEntry.source?.assetId ?? queueEntry.assetId
+    });
+    if (playableMedia) {
+      previews.push(
+        queueEntryPreviewFromPlayableMedia(
+          queueEntry,
+          playableMedia,
+          input.currentQueueEntryId,
+          input.removedQueueIds.has(queueEntry.id)
+        )
+      );
+      continue;
+    }
+
     const song = await input.repositories.songs.findById(queueEntry.songId);
     if (!song) {
       continue;
@@ -185,6 +201,32 @@ async function buildQueuePreview(input: {
   }
 
   return previews;
+}
+
+function queueEntryPreviewFromPlayableMedia(
+  queueEntry: QueueEntry,
+  playableMedia: { title: string; artistName: string },
+  currentQueueEntryId: string | null,
+  removed: boolean
+): RoomQueueEntryPreview {
+  const isCurrent = currentQueueEntryId === queueEntry.id;
+  const canDelete = !removed && !isCurrent && queueEntry.status === "queued";
+  const canPromote = !removed && !isCurrent && (queueEntry.status === "queued" || queueEntry.status === "preparing" || queueEntry.status === "loading");
+
+  return {
+    queueEntryId: queueEntry.id,
+    sourceType: queueEntry.source?.sourceType ?? "nas",
+    songId: queueEntry.source?.songId ?? queueEntry.songId,
+    assetId: queueEntry.source?.assetId ?? queueEntry.assetId,
+    songTitle: playableMedia.title,
+    artistName: playableMedia.artistName,
+    requestedBy: queueEntry.requestedBy,
+    queuePosition: queueEntry.queuePosition,
+    status: removed ? "removed" : queueEntry.status,
+    canPromote: removed ? false : canPromote,
+    canDelete: removed ? false : canDelete,
+    undoExpiresAt: removed ? queueEntry.undoExpiresAt : null
+  };
 }
 
 function queueEntryPreview(

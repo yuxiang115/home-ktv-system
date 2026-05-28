@@ -8,6 +8,8 @@ import { MediaPathResolver } from "../modules/assets/media-path-resolver.js";
 import type { AssetRepository } from "../modules/catalog/repositories/asset-repository.js";
 import type { SongRepository } from "../modules/catalog/repositories/song-repository.js";
 import { InMemoryControlSessionRepository } from "../modules/controller/repositories/control-session-repository.js";
+import type { MediaGateway } from "../modules/media/media-gateway.js";
+import type { PlayableMediaAsset, PlayableMediaLookup, PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
 import type { ControlSnapshotRepositories } from "../modules/rooms/build-control-snapshot.js";
 import { RoomSnapshotBroadcaster, type RoomSnapshotConnection } from "../modules/realtime/room-snapshot-broadcaster.js";
 import { registerRealtimeRoutes, MOBILE_REALTIME_RENEW_INTERVAL_MS } from "../routes/realtime.js";
@@ -212,25 +214,11 @@ describe("realtime room sync", () => {
     await server.close();
   });
 
-  it("broadcasts accepted indexed add snapshots with canonical queue previews", async () => {
+  it("broadcasts accepted NAS add snapshots with source-aware queue previews", async () => {
+    const playableAsset = createPlayableMediaAsset();
     const harness = createHarness({
       queueEntries: [],
-      indexedQueueCommands: {
-        async executeIndexedAddQueueEntry(input) {
-          expect(input).toMatchObject({
-            roomSlug: "living-room",
-            indexedAssetId: "ktv-asset-1",
-            deviceId: "phone-1"
-          });
-          return {
-            status: "accepted",
-            commandId: input.commandId,
-            sessionVersion: 2,
-            snapshot: indexedAddSnapshot(),
-            controlSessionCookie: "ktv_control_session=control-session-1; Path=/"
-          };
-        }
-      }
+      playableMedia: [playableAsset]
     });
     const server = await createRealtimeServer(harness);
     const messages: unknown[] = [];
@@ -256,10 +244,11 @@ describe("realtime room sync", () => {
         cookie: "ktv_control_session=control-session-1"
       },
       payload: {
-        commandId: "command-indexed-add-realtime",
+        commandId: "command-nas-add-realtime",
         sessionVersion: 1,
         deviceId: "phone-1",
-        indexedAssetId: "ktv-asset-1"
+        sourceType: "nas",
+        assetId: playableAsset.assetId
       }
     });
 
@@ -267,8 +256,11 @@ describe("realtime room sync", () => {
     await waitFor(() => messages.some((message) => isSnapshotUpdated(message)));
     const snapshotMessage = messages.find((message) => isSnapshotUpdated(message)) as { payload: RoomControlSnapshot };
     expect(snapshotMessage.payload.queue[0]).toMatchObject({
-      songId: "song-ktv-ktv-song-1",
-      assetId: "asset-ktv-ktv-asset-1"
+      sourceType: "nas",
+      songId: playableAsset.songId,
+      assetId: playableAsset.assetId,
+      songTitle: playableAsset.title,
+      artistName: playableAsset.artistName
     });
     const serialized = JSON.stringify(snapshotMessage.payload);
     expect(serialized).not.toContain(["ktv", "_song_assets"].join(""));
@@ -302,40 +294,6 @@ function createPairing() {
     qrPayload: "payload",
     token: "token",
     tokenExpiresAt: now.toISOString()
-  };
-}
-
-function indexedAddSnapshot(): RoomControlSnapshot {
-  return {
-    type: "room.control.snapshot",
-    roomId: "living-room",
-    roomSlug: "living-room",
-    sessionVersion: 2,
-    state: "idle",
-    pairing: createPairing(),
-    tvPresence: { online: true, deviceName: "TV", lastSeenAt: now.toISOString(), conflict: null },
-    controllers: { onlineCount: 1 },
-    currentTarget: null,
-    switchTarget: null,
-    targetVocalMode: "instrumental",
-    queue: [
-      {
-        queueEntryId: "queue-indexed-1",
-        sourceType: "nas",
-        songId: "song-ktv-ktv-song-1",
-        assetId: "asset-ktv-ktv-asset-1",
-        songTitle: "七里香",
-        artistName: "周杰伦",
-        requestedBy: "phone-1",
-        queuePosition: 1,
-        status: "queued",
-        canPromote: false,
-        canDelete: true,
-        undoExpiresAt: null
-      }
-    ],
-    notice: null,
-    generatedAt: now.toISOString()
   };
 }
 
@@ -401,19 +359,21 @@ async function createRealtimeServer(harness: ReturnType<typeof createHarness>) {
     config: createConfig(),
     repositories: harness.repositories,
     assetGateway: harness.assetGateway,
+    ...(harness.mediaGateway ? { mediaGateway: harness.mediaGateway } : {}),
     broadcaster: harness.broadcaster
   });
   await registerControlCommandRoutes(server, {
     config: createConfig(),
     repositories: harness.repositories,
     assetGateway: harness.assetGateway,
-    broadcaster: harness.broadcaster,
-    ...(harness.indexedQueueCommands ? { indexedQueueCommands: harness.indexedQueueCommands } : {})
+    ...(harness.mediaGateway ? { mediaGateway: harness.mediaGateway } : {}),
+    broadcaster: harness.broadcaster
   });
   await registerPlayerRoutes(server, {
     config: createConfig(),
     repositories: harness.repositories,
     assetGateway: harness.assetGateway,
+    ...(harness.mediaGateway ? { mediaGateway: harness.mediaGateway } : {}),
     broadcaster: harness.broadcaster
   });
   await server.ready();
@@ -422,7 +382,7 @@ async function createRealtimeServer(harness: ReturnType<typeof createHarness>) {
 
 function createHarness(options: {
   queueEntries?: readonly QueueEntry[];
-  indexedQueueCommands?: Parameters<typeof registerControlCommandRoutes>[1]["indexedQueueCommands"];
+  playableMedia?: readonly PlayableMediaAsset[];
 } = {}) {
   const room = createRoom();
   const currentTestTime = new Date();
@@ -480,10 +440,17 @@ function createHarness(options: {
   ]);
   const broadcaster = new RoomSnapshotBroadcaster();
   const commandRepo = new FakeRoomSessionCommandRepository();
+  const mediaGateway: Pick<MediaGateway, "createPlaybackUrl"> | undefined = options.playableMedia
+    ? {
+        createPlaybackUrl(source: PlayableMediaLookup) {
+          return `http://ktv.local/media/${source.sourceType}/${source.assetId}`;
+        }
+      }
+    : undefined;
   return {
     room,
     broadcaster,
-    indexedQueueCommands: options.indexedQueueCommands,
+    ...(mediaGateway ? { mediaGateway } : {}),
     assetGateway: new AssetGateway({
       assetRepository: createAssetRepository(assets),
       mediaPathResolver: new MediaPathResolver({ mediaRoot: "/media-root" }),
@@ -494,6 +461,7 @@ function createHarness(options: {
       rooms: new FakeRoomRepository(room),
       playbackSessions,
       queueEntries,
+      ...(options.playableMedia ? { playableMedia: new FakePlayableMediaRepository(options.playableMedia) } : {}),
       assets: createAssetRepository(assets),
       songs: createSongRepository(songs),
       pairingTokens: roomPairingTokens,
@@ -583,6 +551,51 @@ function createAsset(
   };
 }
 
+function createPlayableMediaAsset(overrides: Partial<PlayableMediaAsset> = {}): PlayableMediaAsset {
+  return {
+    sourceType: "nas",
+    songId: "ktv-song-realtime",
+    assetId: "ktv-asset-realtime",
+    title: "Realtime Song",
+    artistName: "Realtime Artist",
+    displayName: "Realtime Song.mkv",
+    filePath: "/nas/Realtime Song.mkv",
+    status: "ready",
+    durationMs: 180000,
+    compatibilityStatus: "playable",
+    compatibilityReasons: [],
+    mediaInfoSummary: {
+      container: "matroska,webm",
+      durationMs: 180000,
+      videoCodec: "h264",
+      resolution: null,
+      fileSizeBytes: 100,
+      audioTracks: [
+        { index: 0, id: "0x1100", label: "Original", language: null, codec: "aac", channels: 2 },
+        { index: 1, id: "0x1101", label: "Instrumental", language: null, codec: "aac", channels: 2 }
+      ]
+    },
+    mediaInfoProvenance: {
+      source: "ffprobe",
+      sourceVersion: null,
+      probedAt: null,
+      importedFrom: null
+    },
+    trackRoles: {
+      original: { index: 0, id: "0x1100", label: "Original" },
+      instrumental: { index: 1, id: "0x1101", label: "Instrumental" }
+    },
+    playbackProfile: {
+      kind: "single_file_audio_tracks",
+      container: "matroska,webm",
+      videoCodec: "h264",
+      audioCodecs: ["aac"],
+      requiresAudioTrackSelection: true
+    },
+    ...overrides
+  };
+}
+
 function createQueueEntry(id: string, queuePosition: number, status: QueueEntry["status"]): QueueEntry {
   return {
     id,
@@ -633,6 +646,14 @@ function createAssetRepository(assets: Map<string, Asset>): AssetRepository {
       );
     }
   };
+}
+
+class FakePlayableMediaRepository implements PlayableMediaRepository {
+  constructor(private readonly assets: readonly PlayableMediaAsset[]) {}
+
+  async findPlayableBySource(source: PlayableMediaLookup): Promise<PlayableMediaAsset | null> {
+    return this.assets.find((asset) => asset.sourceType === source.sourceType && asset.assetId === source.assetId) ?? null;
+  }
 }
 
 class FakePlaybackSessionRepository implements PlaybackSessionRepository {

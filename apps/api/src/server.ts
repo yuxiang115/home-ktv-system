@@ -26,7 +26,6 @@ import { createScanScheduler, type ScanScheduler, type ScanSchedulerOptions } fr
 import { createOnlineRuntime } from "./modules/online/runtime.js";
 import type { OnlineCandidateProvider } from "./modules/online/provider-registry.js";
 import type { PlayerDeviceSessionRepository } from "./modules/player/register-player.js";
-import { PgIndexedQueueCommandService } from "./modules/playback/indexed-queue-command-service.js";
 import {
   InMemoryControlSessionRepository,
   type ControlSessionRepository
@@ -130,15 +129,6 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
         playableMedia: new NasPlayableMediaRepository(pool),
         mediaPathResolver,
         publicBaseUrl: resolvedConfig.publicBaseUrl
-      })
-    : null;
-  const indexedQueueCommands = pool
-    ? new PgIndexedQueueCommandService({
-        pool,
-        config: resolvedConfig,
-        assetGateway,
-        createRepositories: (db) =>
-          createPgRuntimeRepositories(db, { mediaPathMappings: resolvedConfig.mediaPathMappings })
       })
     : null;
   const broadcaster = new RoomSnapshotBroadcaster();
@@ -277,8 +267,7 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     assetGateway,
     ...(mediaGateway ? { mediaGateway } : {}),
     broadcaster,
-    online: onlineRuntime.tasks,
-    ...(indexedQueueCommands ? { indexedQueueCommands } : {})
+    online: onlineRuntime.tasks
   });
 
   return server;
