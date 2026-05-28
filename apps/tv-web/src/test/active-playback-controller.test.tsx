@@ -48,6 +48,36 @@ describe("active playback controller", () => {
     expect(activeVideo.audioTracks?.[1]?.enabled).toBe(true);
   });
 
+  it("maps positive probe stream indexes to selectable audio track order when ids do not match", () => {
+    const activeVideo = new FakeVideo({
+      audioTracks: [
+        { id: "runtime-track-a", label: "SoundHandler", enabled: true },
+        { id: "runtime-track-b", label: "SoundHandler", enabled: false }
+      ]
+    });
+
+    const result = selectAudioTrack(activeVideo, { index: 2, id: "stream-2", label: "Audio 2" });
+
+    expect(result.status).toBe("selected");
+    expect(activeVideo.audioTracks?.[0]?.enabled).toBe(false);
+    expect(activeVideo.audioTracks?.[1]?.enabled).toBe(true);
+  });
+
+  it("prefers positive probe stream index before matching overlapping runtime ids", () => {
+    const activeVideo = new FakeVideo({
+      audioTracks: [
+        { id: "1", label: "SoundHandler", enabled: false },
+        { id: "2", label: "SoundHandler", enabled: true }
+      ]
+    });
+
+    const result = selectAudioTrack(activeVideo, { index: 1, id: "2", label: "Audio 1" });
+
+    expect(result.status).toBe("selected");
+    expect(activeVideo.audioTracks?.[0]?.enabled).toBe(true);
+    expect(activeVideo.audioTracks?.[1]?.enabled).toBe(false);
+  });
+
   it("primes and starts the current playback target", async () => {
     const activeVideo = new FakeVideo();
     const pool = new DualVideoPool(activeVideo, new FakeVideo());
