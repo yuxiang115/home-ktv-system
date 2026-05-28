@@ -112,6 +112,18 @@ bash deploy/docker/ktv.sh tag-styles-import -- --input /data/home-ktv-media/tagg
 
 `tag-styles-jsonl` 不连接 PostgreSQL，只读取 `songs.jsonl` 并追加 `results.jsonl`，可安全续跑。`--concurrency` 是单进程内并发，推荐先从 5 开始观察网易云 API 的失败率。导入阶段会先按旧 `sourceSongId` 匹配当前歌曲，再按归一化歌名和歌手匹配。
 
+服务器全量运行时建议使用独立 job 容器，避免重新部署主服务时杀掉 `api` 容器内的 `docker compose exec` 任务：
+
+```bash
+bash deploy/docker/ktv.sh tag-styles-job start -- --input /data/home-ktv-media/tagging/full/songs.jsonl --output /data/home-ktv-media/tagging/full/results.jsonl
+bash deploy/docker/ktv.sh tag-styles-job status
+bash deploy/docker/ktv.sh tag-styles-job logs
+bash deploy/docker/ktv.sh tag-styles-job stats
+bash deploy/docker/ktv.sh tag-styles-job import-dry-run
+```
+
+独立 job 的状态和日志默认保存在 `/opt/home-ktv-jobs/style-tagging`，结果 JSONL 仍保存在媒体目录，后续可统一导入数据库。
+
 ## Rebuild Flow
 
 Run migrations:

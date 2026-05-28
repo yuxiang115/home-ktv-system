@@ -175,3 +175,14 @@ bash deploy/docker/ktv.sh tag-styles-import -- --input /data/home-ktv-media/tagg
 ```
 
 `tag-styles-jsonl` has no database dependency. It skips existing `songKey + source` rows in the result file on resume. Use `--concurrency` for bounded in-process parallelism; start with 5 and check provider failure rate before increasing. Low-coverage songs can be supplemented by the LLM fallback in batches. Tagging failures do not affect search, queueing, or playback.
+
+For server-scale runs, prefer the independent job container:
+
+```bash
+bash deploy/docker/ktv.sh tag-styles-job start -- --input /data/home-ktv-media/tagging/full/songs.jsonl --output /data/home-ktv-media/tagging/full/results.jsonl
+bash deploy/docker/ktv.sh tag-styles-job status
+bash deploy/docker/ktv.sh tag-styles-job logs
+bash deploy/docker/ktv.sh tag-styles-job stats
+```
+
+The job uses `home-ktv-style-tags-job` and stores host-side state under `/opt/home-ktv-jobs/style-tagging`, so normal main-service rebuilds do not stop the tagging process.

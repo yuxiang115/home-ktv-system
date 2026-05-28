@@ -139,6 +139,15 @@ pnpm ktv:tags:import -- --input runtime/media/tagging/full/results.jsonl --dry-r
 pnpm ktv:tags:import -- --input runtime/media/tagging/full/results.jsonl --apply
 ```
 
+服务器上长时间运行全量标签任务时，优先使用独立 job 容器，避免主服务重新部署时中断：
+
+```bash
+bash deploy/docker/ktv.sh tag-styles-job resume
+bash deploy/docker/ktv.sh tag-styles-job status
+bash deploy/docker/ktv.sh tag-styles-job logs
+bash deploy/docker/ktv.sh tag-styles-job stats
+```
+
 ## 本地资源目录
 
 这些目录是本地运行资源或生成产物，默认不提交：

@@ -65,9 +65,15 @@ bash deploy/docker/ktv.sh logs api
 bash deploy/docker/ktv.sh probe-index -- --limit 300 --concurrency 2
 bash deploy/docker/ktv.sh tag-styles-export -- --out /data/home-ktv-media/tagging/full/songs.jsonl
 bash deploy/docker/ktv.sh tag-styles-jsonl -- --input /data/home-ktv-media/tagging/full/songs.jsonl --output /data/home-ktv-media/tagging/full/results.jsonl --source netease --concurrency 5
+bash deploy/docker/ktv.sh tag-styles-job resume
+bash deploy/docker/ktv.sh tag-styles-job status
+bash deploy/docker/ktv.sh tag-styles-job logs
+bash deploy/docker/ktv.sh tag-styles-job stats
 bash deploy/docker/ktv.sh tag-styles-import -- --input /data/home-ktv-media/tagging/full/results.jsonl --dry-run
 bash deploy/docker/ktv.sh stop
 ```
+
+`tag-styles-jsonl` 适合短任务或手动批次。全量长任务建议使用 `tag-styles-job`，它会启动独立的 `home-ktv-style-tags-job` 容器，状态和日志写到 `/opt/home-ktv-jobs/style-tagging`，主服务 `restart` 不会停止该任务。
 
 ## 服务
 
