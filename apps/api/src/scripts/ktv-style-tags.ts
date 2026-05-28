@@ -22,7 +22,6 @@ export interface KtvStyleTagsCliOptions {
 }
 
 interface DbClient extends QueryExecutor {
-  connect?(): Promise<unknown>;
   end(): Promise<void>;
 }
 
@@ -55,7 +54,6 @@ export async function runKtvStyleTagsCli(
   }
 
   const db = (dependencies.createDbClient ?? createPgClient)(options.databaseUrl);
-  await db.connect?.();
   try {
     const client = new HttpNeteaseStyleTaggerClient({ baseUrl: options.baseUrl });
     const service = new KtvStyleTaggingService(db, {

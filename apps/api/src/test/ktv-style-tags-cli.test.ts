@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { parseKtvStyleTagsCliOptions } from "../scripts/ktv-style-tags.js";
+import { describe, expect, it, vi } from "vitest";
+import { parseKtvStyleTagsCliOptions, runKtvStyleTagsCli } from "../scripts/ktv-style-tags.js";
 
 describe("ktv-style-tags CLI options", () => {
   it("parses safe sample defaults and explicit apply mode", () => {
@@ -36,5 +36,27 @@ describe("ktv-style-tags CLI options", () => {
 
     expect(options.limit).toBe(50);
     expect(options.apply).toBe(false);
+  });
+
+  it("does not call Pool.connect before using query-based clients", async () => {
+    const connect = vi.fn(() => {
+      throw new Error("connect should not be called");
+    });
+    const end = vi.fn(async () => {});
+    const db = {
+      connect,
+      end,
+      query: vi.fn(async () => ({ rows: [] }))
+    };
+
+    await expect(
+      runKtvStyleTagsCli(["--limit", "1", "--dry-run"], {
+        createDbClient: () => db,
+        env: { DATABASE_URL: "postgres://ktv:ktv@127.0.0.1:5432/home_ktv" },
+        stdout: () => {}
+      })
+    ).resolves.toBe(0);
+    expect(connect).not.toHaveBeenCalled();
+    expect(end).toHaveBeenCalled();
   });
 });
