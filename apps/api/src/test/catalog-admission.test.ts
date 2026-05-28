@@ -409,23 +409,21 @@ describe("CatalogAdmissionService", () => {
     );
   });
 
-  it("mirrors catalog search columns and indexes in migration and schemaSql", async () => {
+  it("keeps historical formal catalog search migration but uses NAS search indexes in final schema", async () => {
     const migrationSql = await readFile(new URL("../db/migrations/0005_catalog_search.sql", import.meta.url), "utf8");
 
-    for (const sql of [migrationSql, schemaSql]) {
-      expect(sql).toContain("CREATE EXTENSION IF NOT EXISTS pg_trgm");
-      expect(sql).toContain("artist_pinyin");
-      expect(sql).toContain("artist_initials");
-      expect(sql).toContain("songs_normalized_title_trgm_idx");
-      expect(sql).toContain("songs_artist_name_trgm_idx");
-      expect(sql).toContain("songs_title_pinyin_trgm_idx");
-      expect(sql).toContain("songs_title_initials_idx");
-      expect(sql).toContain("songs_artist_pinyin_trgm_idx");
-      expect(sql).toContain("songs_artist_initials_idx");
-      expect(sql).toContain("songs_aliases_gin_idx");
-      expect(sql).toContain("songs_search_hints_gin_idx");
-      expect(sql).toContain("assets_queueable_search_idx");
-    }
+    expect(migrationSql).toContain("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+    expect(migrationSql).toContain("songs_normalized_title_trgm_idx");
+    expect(migrationSql).toContain("assets_queueable_search_idx");
+
+    expect(schemaSql).toContain("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+    expect(schemaSql).toContain("ktv_songs_normalized_title_trgm_idx");
+    expect(schemaSql).toContain("ktv_songs_title_pinyin_trgm_idx");
+    expect(schemaSql).toContain("ktv_songs_title_initials_idx");
+    expect(schemaSql).toContain("ktv_songs_primary_artist_idx");
+    expect(schemaSql).toContain("ktv_song_assets_active_song_idx");
+    expect(schemaSql).not.toContain("CREATE INDEX IF NOT EXISTS songs_normalized_title_trgm_idx");
+    expect(schemaSql).not.toContain("CREATE INDEX IF NOT EXISTS assets_queueable_search_idx");
   });
 });
 

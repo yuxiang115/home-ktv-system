@@ -374,51 +374,36 @@ export const schemaSql = `
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
-CREATE TABLE IF NOT EXISTS songs (
+CREATE TABLE IF NOT EXISTS online_songs (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  provider text NOT NULL,
+  provider_song_id text NOT NULL,
   title text NOT NULL,
   normalized_title text NOT NULL,
   title_pinyin text NOT NULL DEFAULT '',
   title_initials text NOT NULL DEFAULT '',
-  artist_id text NOT NULL,
-  artist_name text NOT NULL,
-  artist_pinyin text NOT NULL DEFAULT '',
-  artist_initials text NOT NULL DEFAULT '',
-  language text NOT NULL DEFAULT 'mandarin',
-  status text NOT NULL DEFAULT 'ready' CHECK (status IN ('ready', 'review_required', 'unavailable')),
-  genre text[] NOT NULL DEFAULT '{}',
+  primary_artist_name text NOT NULL,
+  normalized_primary_artist_name text NOT NULL,
   tags text[] NOT NULL DEFAULT '{}',
-  aliases text[] NOT NULL DEFAULT '{}',
-  search_hints text[] NOT NULL DEFAULT '{}',
-  release_year integer,
-  canonical_duration_ms integer,
-  search_weight integer NOT NULL DEFAULT 0,
-  default_asset_id text,
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(provider, provider_song_id)
 );
 
-CREATE TABLE IF NOT EXISTS assets (
+CREATE TABLE IF NOT EXISTS online_song_assets (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  song_id text NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
-  source_type text NOT NULL CHECK (source_type IN ('local', 'online_cached', 'online_ephemeral')),
-  asset_kind text NOT NULL CHECK (asset_kind IN ('video', 'audio+lyrics', 'dual-track-video')),
-  display_name text NOT NULL DEFAULT '',
-  file_path text NOT NULL,
-  duration_ms integer NOT NULL CHECK (duration_ms >= 0),
-  lyric_mode text NOT NULL CHECK (lyric_mode IN ('hard_sub', 'soft_sub', 'external_lrc', 'none')),
-  vocal_mode text NOT NULL CHECK (vocal_mode IN ('original', 'instrumental', 'dual', 'unknown')),
-  status text NOT NULL CHECK (status IN ('ready', 'caching', 'failed', 'unavailable', 'stale', 'promoted')),
-  switch_family text,
-  switch_quality_status text NOT NULL CHECK (switch_quality_status IN ('verified', 'review_required', 'rejected', 'unknown')),
-  compatibility_status text NOT NULL DEFAULT 'unknown' CHECK (compatibility_status IN ('unknown', 'review_required', 'playable', 'unsupported')),
-  compatibility_reasons jsonb NOT NULL DEFAULT '[]'::jsonb,
-  media_info_summary jsonb NOT NULL DEFAULT '{"container":null,"durationMs":null,"videoCodec":null,"resolution":null,"fileSizeBytes":0,"audioTracks":[]}'::jsonb,
-  media_info_provenance jsonb NOT NULL DEFAULT '{"source":"unknown","sourceVersion":null,"probedAt":null,"importedFrom":null}'::jsonb,
-  track_roles jsonb NOT NULL DEFAULT '{"original":null,"instrumental":null}'::jsonb,
-  playback_profile jsonb NOT NULL DEFAULT '{"kind":"separate_asset_pair","container":null,"videoCodec":null,"audioCodecs":[],"requiresAudioTrackSelection":false}'::jsonb,
+  song_id text NOT NULL REFERENCES online_songs(id) ON DELETE CASCADE,
+  provider text NOT NULL,
+  provider_asset_id text NOT NULL,
+  media_url text NOT NULL,
+  cache_path text,
+  status text NOT NULL CHECK (status IN ('ready', 'caching', 'failed', 'unavailable')),
+  duration_ms integer CHECK (duration_ms IS NULL OR duration_ms >= 0),
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(provider, provider_asset_id)
 );
 
 CREATE TABLE IF NOT EXISTS rooms (
@@ -434,8 +419,11 @@ CREATE TABLE IF NOT EXISTS rooms (
 CREATE TABLE IF NOT EXISTS queue_entries (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
   room_id text NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-  song_id text NOT NULL REFERENCES songs(id) ON DELETE RESTRICT,
-  asset_id text NOT NULL REFERENCES assets(id) ON DELETE RESTRICT,
+  source_type text NOT NULL CHECK (source_type IN ('nas', 'online')),
+  nas_song_id text,
+  nas_asset_id text,
+  online_song_id text,
+  online_asset_id text,
   requested_by text NOT NULL,
   queue_position integer NOT NULL,
   status text NOT NULL CHECK (status IN ('queued', 'preparing', 'loading', 'playing', 'played', 'skipped', 'failed', 'removed')),
@@ -464,7 +452,6 @@ CREATE TABLE IF NOT EXISTS device_sessions (
 CREATE TABLE IF NOT EXISTS playback_sessions (
   room_id text PRIMARY KEY REFERENCES rooms(id) ON DELETE CASCADE,
   current_queue_entry_id text REFERENCES queue_entries(id) ON DELETE SET NULL,
-  active_asset_id text REFERENCES assets(id) ON DELETE SET NULL,
   target_vocal_mode text NOT NULL CHECK (target_vocal_mode IN ('original', 'instrumental', 'dual', 'unknown')),
   player_state text NOT NULL CHECK (player_state IN ('idle', 'preparing', 'loading', 'playing', 'paused', 'recovering', 'error')),
   player_position_ms integer NOT NULL DEFAULT 0 CHECK (player_position_ms >= 0),
@@ -484,32 +471,17 @@ CREATE TABLE IF NOT EXISTS playback_events (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-ALTER TABLE songs
-  ADD CONSTRAINT songs_default_asset_fk
-  FOREIGN KEY (default_asset_id) REFERENCES assets(id) ON DELETE SET NULL;
-
 ALTER TABLE rooms
   ADD CONSTRAINT rooms_default_player_device_fk
   FOREIGN KEY (default_player_device_id) REFERENCES device_sessions(id) ON DELETE SET NULL;
 
-CREATE INDEX IF NOT EXISTS assets_song_switch_mode_idx ON assets(song_id, switch_family, vocal_mode);
-CREATE INDEX IF NOT EXISTS assets_ready_switch_idx ON assets(switch_family, vocal_mode, status, switch_quality_status);
-CREATE INDEX IF NOT EXISTS assets_compatibility_status_idx ON assets(compatibility_status, status);
-CREATE INDEX IF NOT EXISTS songs_normalized_title_trgm_idx ON songs USING gin (normalized_title gin_trgm_ops);
-CREATE INDEX IF NOT EXISTS songs_artist_name_trgm_idx ON songs USING gin (lower(artist_name) gin_trgm_ops);
-CREATE INDEX IF NOT EXISTS songs_title_pinyin_trgm_idx ON songs USING gin (title_pinyin gin_trgm_ops);
-CREATE INDEX IF NOT EXISTS songs_title_initials_idx ON songs (title_initials);
-CREATE INDEX IF NOT EXISTS songs_artist_pinyin_trgm_idx ON songs USING gin (artist_pinyin gin_trgm_ops);
-CREATE INDEX IF NOT EXISTS songs_artist_initials_idx ON songs (artist_initials);
-CREATE INDEX IF NOT EXISTS songs_aliases_gin_idx ON songs USING gin (aliases);
-CREATE INDEX IF NOT EXISTS songs_search_hints_gin_idx ON songs USING gin (search_hints);
-CREATE INDEX IF NOT EXISTS assets_queueable_search_idx
-  ON assets(song_id, switch_family, source_type, status, switch_quality_status)
-  WHERE status = 'ready' AND switch_quality_status = 'verified';
 CREATE INDEX IF NOT EXISTS queue_entries_room_position_idx ON queue_entries(room_id, status, queue_position, priority);
 CREATE INDEX IF NOT EXISTS queue_entries_room_effective_position_idx
   ON queue_entries(room_id, status, queue_position)
   WHERE status IN ('queued', 'preparing', 'loading', 'playing');
+CREATE INDEX IF NOT EXISTS queue_entries_nas_song_counts_idx
+  ON queue_entries(source_type, nas_song_id)
+  WHERE source_type = 'nas' AND status <> 'removed';
 CREATE INDEX IF NOT EXISTS playback_events_room_created_idx ON playback_events(room_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS candidate_tasks (
@@ -539,7 +511,8 @@ CREATE TABLE IF NOT EXISTS candidate_tasks (
   failure_reason text,
   recent_event jsonb NOT NULL DEFAULT '{}'::jsonb,
   provider_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
-  ready_asset_id text REFERENCES assets(id) ON DELETE SET NULL,
+  ready_source_type text CHECK (ready_source_type IN ('online')),
+  ready_online_asset_id text REFERENCES online_song_assets(id) ON DELETE SET NULL,
   selected_at timestamptz,
   review_required_at timestamptz,
   fetching_at timestamptz,
@@ -628,7 +601,7 @@ CREATE INDEX IF NOT EXISTS control_commands_room_created_idx
 
 CREATE TABLE IF NOT EXISTS song_cover_cache (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  source_kind text NOT NULL CHECK (source_kind IN ('formal', 'ktv-index')),
+  source_kind text NOT NULL CHECK (source_kind IN ('nas', 'online')),
   source_song_id text NOT NULL,
   title text NOT NULL,
   artist_name text NOT NULL,
@@ -741,6 +714,8 @@ CREATE INDEX IF NOT EXISTS ktv_song_artists_artist_idx
   ON ktv_song_artists(artist_id, song_id);
 CREATE UNIQUE INDEX IF NOT EXISTS ktv_song_assets_path_uq
   ON ktv_song_assets(file_path);
+CREATE UNIQUE INDEX IF NOT EXISTS ktv_song_assets_id_song_id_uq
+  ON ktv_song_assets(id, song_id);
 CREATE INDEX IF NOT EXISTS ktv_song_assets_song_idx
   ON ktv_song_assets(song_id);
 CREATE INDEX IF NOT EXISTS ktv_song_assets_technical_status_idx
@@ -837,7 +812,38 @@ CREATE TABLE IF NOT EXISTS ktv_song_tagging_cache (
 CREATE INDEX IF NOT EXISTS ktv_song_tagging_cache_updated_idx
   ON ktv_song_tagging_cache(source, updated_at DESC);
 
-CREATE UNIQUE INDEX IF NOT EXISTS source_records_ktv_index_asset_uq
-  ON source_records(provider, provider_item_id)
-  WHERE provider = 'ktv-index' AND provider_item_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS online_song_assets_id_song_id_uq
+  ON online_song_assets(id, song_id);
+
+ALTER TABLE queue_entries
+  ADD CONSTRAINT queue_entries_source_identity_ck
+  CHECK (
+    (
+      source_type = 'nas'
+      AND nas_song_id IS NOT NULL
+      AND nas_asset_id IS NOT NULL
+      AND online_song_id IS NULL
+      AND online_asset_id IS NULL
+    )
+    OR
+    (
+      source_type = 'online'
+      AND online_song_id IS NOT NULL
+      AND online_asset_id IS NOT NULL
+      AND nas_song_id IS NULL
+      AND nas_asset_id IS NULL
+    )
+  );
+
+ALTER TABLE queue_entries
+  ADD CONSTRAINT queue_entries_nas_asset_song_fk
+  FOREIGN KEY (nas_asset_id, nas_song_id)
+  REFERENCES ktv_song_assets(id, song_id)
+  ON DELETE RESTRICT;
+
+ALTER TABLE queue_entries
+  ADD CONSTRAINT queue_entries_online_asset_song_fk
+  FOREIGN KEY (online_asset_id, online_song_id)
+  REFERENCES online_song_assets(id, song_id)
+  ON DELETE RESTRICT;
 `;

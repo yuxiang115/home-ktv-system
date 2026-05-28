@@ -13,14 +13,14 @@ const sourceIdentityMigrationUrl = new URL(
 );
 
 describe("KTV catalog sync source identity schema", () => {
-  it("adds a partial unique source_records identity for KTV indexed assets", async () => {
+  it("keeps the historical source_records migration but removes it from final schema", async () => {
     const migrationSql = await readFile(sourceIdentityMigrationUrl, "utf8");
 
-    for (const sql of [migrationSql, schemaSql]) {
-      expect(sql).toContain("source_records_ktv_index_asset_uq");
-      expect(sql).toContain("provider = 'ktv-index'");
-      expect(sql).toContain("WHERE provider = 'ktv-index' AND provider_item_id IS NOT NULL");
-    }
+    expect(migrationSql).toContain("source_records_ktv_index_asset_uq");
+    expect(migrationSql).toContain("provider = 'ktv-index'");
+    expect(migrationSql).toContain("WHERE provider = 'ktv-index' AND provider_item_id IS NOT NULL");
+    expect(schemaSql).not.toContain("source_records_ktv_index_asset_uq");
+    expect(schemaSql).not.toContain("CREATE TABLE IF NOT EXISTS source_records");
   });
 });
 
