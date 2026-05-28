@@ -60,6 +60,8 @@ describe("NAS / online catalog migration", () => {
   });
 
   it("drops retired catalog and admission tables in the same release", () => {
+    expect(migrationSql).toContain("DROP CONSTRAINT IF EXISTS import_candidates_default_candidate_file_fk");
+    expect(migrationSql).toContain("DROP CONSTRAINT IF EXISTS songs_default_asset_fk");
     expect(migrationSql).toContain("DROP TABLE IF EXISTS source_records");
     expect(migrationSql).toContain("DROP TABLE IF EXISTS import_candidate_files");
     expect(migrationSql).toContain("DROP TABLE IF EXISTS import_candidates");

@@ -151,6 +151,12 @@ ALTER TABLE candidate_tasks
 
 ALTER TABLE candidate_tasks DROP COLUMN IF EXISTS ready_asset_id;
 
+ALTER TABLE import_candidates
+  DROP CONSTRAINT IF EXISTS import_candidates_default_candidate_file_fk;
+
+ALTER TABLE songs
+  DROP CONSTRAINT IF EXISTS songs_default_asset_fk;
+
 DROP TABLE IF EXISTS source_records;
 DROP TABLE IF EXISTS import_candidate_files;
 DROP TABLE IF EXISTS import_candidates;
