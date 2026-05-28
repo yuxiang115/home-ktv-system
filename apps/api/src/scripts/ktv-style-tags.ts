@@ -97,6 +97,8 @@ export function parseKtvStyleTagsCliOptions(
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     switch (arg) {
+      case "--":
+        break;
       case "--help":
       case "-h":
         options.help = true;

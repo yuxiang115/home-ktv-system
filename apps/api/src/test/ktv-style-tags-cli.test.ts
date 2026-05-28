@@ -28,4 +28,13 @@ describe("ktv-style-tags CLI options", () => {
     expect(options.onlyMissing).toBe(true);
     expect(options.limit).toBe(50);
   });
+
+  it("ignores the pnpm argument separator when it is forwarded by a wrapper script", () => {
+    const options = parseKtvStyleTagsCliOptions(["--", "--limit", "50", "--dry-run"], {
+      DATABASE_URL: "postgres://ktv:ktv@127.0.0.1:5432/home_ktv"
+    });
+
+    expect(options.limit).toBe(50);
+    expect(options.apply).toBe(false);
+  });
 });
