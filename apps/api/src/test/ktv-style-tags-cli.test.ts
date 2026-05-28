@@ -14,9 +14,18 @@ describe("ktv-style-tags CLI options", () => {
       taggingSource: "netease-playlist-v1",
       baseUrl: "http://127.0.0.1:3301",
       limit: 300,
+      progressEvery: 10,
       apply: true,
       onlyMissing: true
     });
+  });
+
+  it("parses progress cadence for long-running samples", () => {
+    const options = parseKtvStyleTagsCliOptions(["--limit", "300", "--progress-every", "25"], {
+      DATABASE_URL: "postgres://ktv:ktv@127.0.0.1:5432/home_ktv"
+    });
+
+    expect(options.progressEvery).toBe(25);
   });
 
   it("defaults to dry-run unless --apply is present", () => {

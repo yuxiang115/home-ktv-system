@@ -22,6 +22,18 @@ export interface KtvStyleTaggingRunInput {
   limit: number;
   apply: boolean;
   onlyMissing: boolean;
+  onProgress?: (event: KtvStyleTaggingProgressEvent) => void;
+}
+
+export interface KtvStyleTaggingProgressEvent {
+  selected: number;
+  processed: number;
+  title: string;
+  artistName: string;
+  status: "tagged" | "empty" | "failed";
+  tagCount: number;
+  elapsedMs: number;
+  errorMessage: string | null;
 }
 
 export interface KtvStyleTaggingRunResult {
@@ -66,6 +78,7 @@ export class KtvStyleTaggingService {
     let failedSongs = 0;
     let writtenTags = 0;
     let totalTags = 0;
+    let processed = 0;
 
     if (input.apply) {
       await this.ensureTaxonomy();
@@ -81,6 +94,7 @@ export class KtvStyleTaggingService {
         const result = await this.options.tagger.tagSong(song);
         const tags = result.tags.filter((tag) => isAllowedKtvStyleTag(tag.tag));
         totalTags += tags.length;
+        processed += 1;
 
         if (tags.length === 0) {
           emptySongs += 1;
@@ -88,6 +102,16 @@ export class KtvStyleTaggingService {
             await this.replaceSongTags(song.id, input.source, []);
             await this.upsertStatus({ songId: song.id, source: input.source, status: "empty", tagCount: 0, runId });
           }
+          input.onProgress?.({
+            selected: songs.length,
+            processed,
+            title: song.title,
+            artistName: song.artistName,
+            status: "empty",
+            tagCount: 0,
+            elapsedMs: this.now() - startedAt,
+            errorMessage: null
+          });
           continue;
         }
 
@@ -104,7 +128,19 @@ export class KtvStyleTaggingService {
           });
           writtenTags += tags.length;
         }
+        input.onProgress?.({
+          selected: songs.length,
+          processed,
+          title: song.title,
+          artistName: song.artistName,
+          status: "tagged",
+          tagCount: tags.length,
+          elapsedMs: this.now() - startedAt,
+          errorMessage: null
+        });
       } catch (error) {
+        processed += 1;
+        const errorMessage = error instanceof Error ? error.message : String(error);
         failedSongs += 1;
         if (input.apply) {
           await this.upsertStatus({
@@ -113,9 +149,19 @@ export class KtvStyleTaggingService {
             status: "failed",
             tagCount: 0,
             runId,
-            errorMessage: error instanceof Error ? error.message : String(error)
+            errorMessage
           });
         }
+        input.onProgress?.({
+          selected: songs.length,
+          processed,
+          title: song.title,
+          artistName: song.artistName,
+          status: "failed",
+          tagCount: 0,
+          elapsedMs: this.now() - startedAt,
+          errorMessage
+        });
       }
     }
 

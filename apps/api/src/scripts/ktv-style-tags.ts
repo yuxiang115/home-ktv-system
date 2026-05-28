@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { Pool } from "pg";
 import type { QueryExecutor } from "../db/query-executor.js";
 import {
+  CachedNeteaseStyleTaggerClient,
   HttpNeteaseStyleTaggerClient,
   NeteaseStyleTagger
 } from "../modules/ktv-index/netease-style-tagger.js";
@@ -17,6 +18,7 @@ export interface KtvStyleTagsCliOptions {
   help: boolean;
   limit: number;
   onlyMissing: boolean;
+  progressEvery: number;
   source: "netease";
   taggingSource: string;
 }
@@ -55,7 +57,11 @@ export async function runKtvStyleTagsCli(
 
   const db = (dependencies.createDbClient ?? createPgClient)(options.databaseUrl);
   try {
-    const client = new HttpNeteaseStyleTaggerClient({ baseUrl: options.baseUrl });
+    const client = new CachedNeteaseStyleTaggerClient(
+      db,
+      new HttpNeteaseStyleTaggerClient({ baseUrl: options.baseUrl }),
+      options.taggingSource
+    );
     const service = new KtvStyleTaggingService(db, {
       tagger: new NeteaseStyleTagger({ client })
     });
@@ -63,7 +69,14 @@ export async function runKtvStyleTagsCli(
       source: options.taggingSource,
       limit: options.limit,
       apply: options.apply,
-      onlyMissing: options.onlyMissing
+      onlyMissing: options.onlyMissing,
+      onProgress: (event) => {
+        if (event.processed === event.selected || event.processed % options.progressEvery === 0) {
+          stdout(
+            `progress=${event.processed}/${event.selected} status=${event.status} tags=${event.tagCount} elapsedMs=${event.elapsedMs} song=${event.artistName} - ${event.title}`
+          );
+        }
+      }
     });
     stdout("KTV style tagging summary");
     stdout(`mode=${options.apply ? "apply" : "dry-run"} source=${options.taggingSource}`);
@@ -88,6 +101,7 @@ export function parseKtvStyleTagsCliOptions(
     help: false,
     limit: 300,
     onlyMissing: true,
+    progressEvery: 10,
     source: "netease",
     taggingSource: DEFAULT_SOURCE
   };
@@ -123,6 +137,10 @@ export function parseKtvStyleTagsCliOptions(
         break;
       case "--limit":
         options.limit = parsePositiveInteger(requireValue(args, index, arg), arg);
+        index += 1;
+        break;
+      case "--progress-every":
+        options.progressEvery = parsePositiveInteger(requireValue(args, index, arg), arg);
         index += 1;
         break;
       case "--source": {
@@ -179,6 +197,7 @@ Options:
   --dry-run             Call tagger and print summary without writing tags.
   --only-missing        Process songs missing this source. Default.
   --all                 Process all active indexed songs.
+  --progress-every <n>  Print one progress line every n songs. Default: 10.
   --source netease      Use Netease playlist semantics.
   --base-url <url>      NeteaseCloudMusicApi URL. Default: NETEASE_API_BASE_URL or http://127.0.0.1:3301.
   --database-url <url>  PostgreSQL URL. Defaults to DATABASE_URL.

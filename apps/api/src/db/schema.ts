@@ -795,6 +795,18 @@ CREATE INDEX IF NOT EXISTS ktv_song_tagging_runs_source_started_idx
 CREATE INDEX IF NOT EXISTS ktv_song_tagging_status_source_status_idx
   ON ktv_song_tagging_status(source, status, updated_at DESC);
 
+CREATE TABLE IF NOT EXISTS ktv_song_tagging_cache (
+  source text NOT NULL,
+  cache_key text NOT NULL,
+  payload jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (source, cache_key)
+);
+
+CREATE INDEX IF NOT EXISTS ktv_song_tagging_cache_updated_idx
+  ON ktv_song_tagging_cache(source, updated_at DESC);
+
 CREATE UNIQUE INDEX IF NOT EXISTS source_records_ktv_index_asset_uq
   ON source_records(provider, provider_item_id)
   WHERE provider = 'ktv-index' AND provider_item_id IS NOT NULL;

@@ -62,6 +62,29 @@ describe("KtvStyleTaggingService", () => {
     expect(db.songTags.size).toBe(0);
     expect(db.runs).toHaveLength(0);
   });
+
+  it("reports progress after each processed song", async () => {
+    const db = new FakeStyleTaggingDb();
+    const progress: Array<Record<string, unknown>> = [];
+    const service = new KtvStyleTaggingService(db, {
+      tagger: new FakeTagger(),
+      now: () => 1000
+    });
+
+    await service.run({
+      source: "netease-playlist-v1",
+      limit: 3,
+      apply: false,
+      onlyMissing: true,
+      onProgress: (event) => progress.push(event)
+    });
+
+    expect(progress).toEqual([
+      expect.objectContaining({ processed: 1, selected: 3, status: "tagged", title: "七里香", artistName: "周杰伦", tagCount: 2 }),
+      expect.objectContaining({ processed: 2, selected: 3, status: "empty", title: "未知歌", artistName: "未知歌手", tagCount: 0 }),
+      expect.objectContaining({ processed: 3, selected: 3, status: "failed", title: "失败歌", artistName: "失败歌手", tagCount: 0 })
+    ]);
+  });
 });
 
 class FakeTagger implements KtvStyleTagger {

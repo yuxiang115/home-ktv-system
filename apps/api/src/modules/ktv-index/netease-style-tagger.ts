@@ -1,3 +1,4 @@
+import type { QueryExecutor } from "../../db/query-executor.js";
 import { isAllowedKtvStyleTag } from "./style-taxonomy.js";
 
 export interface KtvStyleTagEvidence {
@@ -390,6 +391,52 @@ export class HttpNeteaseStyleTaggerClient implements NeteaseStyleTaggerClient {
   }
 }
 
+export class CachedNeteaseStyleTaggerClient implements NeteaseStyleTaggerClient {
+  constructor(
+    private readonly db: QueryExecutor,
+    private readonly upstream: NeteaseStyleTaggerClient,
+    private readonly source: string
+  ) {}
+
+  async searchSongs(input: { keywords: string; limit: number }): Promise<NeteaseSongCandidate[]> {
+    return this.cached(`searchSongs:${stableStringify(input)}`, () => this.upstream.searchSongs(input));
+  }
+
+  async searchPlaylists(input: { keywords: string; limit: number }): Promise<NeteasePlaylistCandidate[]> {
+    return this.cached(`searchPlaylists:${stableStringify(input)}`, () => this.upstream.searchPlaylists(input));
+  }
+
+  async getPlaylistDetail(id: number): Promise<NeteasePlaylistDetail | null> {
+    return this.cached(`playlistDetail:${id}`, () => this.upstream.getPlaylistDetail(id));
+  }
+
+  private async cached<TPayload>(cacheKey: string, load: () => Promise<TPayload>): Promise<TPayload> {
+    const cached = await this.db.query<{ payload: TPayload }>(
+      `SELECT payload
+       FROM ktv_song_tagging_cache
+       WHERE source = $1
+         AND cache_key = $2
+       LIMIT 1`,
+      [this.source, cacheKey]
+    );
+    const row = cached.rows[0];
+    if (row) {
+      return row.payload;
+    }
+
+    const payload = await load();
+    await this.db.query(
+      `INSERT INTO ktv_song_tagging_cache (source, cache_key, payload)
+       VALUES ($1, $2, $3::jsonb)
+       ON CONFLICT (source, cache_key)
+       DO UPDATE SET payload = EXCLUDED.payload,
+                     updated_at = now()`,
+      [this.source, cacheKey, JSON.stringify(payload)]
+    );
+    return payload;
+  }
+}
+
 function playlistQueries(artistName: string, title: string): string[] {
   return [
     `${artistName} ${title}`,
@@ -442,6 +489,10 @@ function normalizeText(value: string): string {
     .toLocaleLowerCase()
     .replace(/[\s_·・/\\|]+/gu, "")
     .replace(/[()（）【】\[\]《》<>"'“”‘’\-—:：,，.。!！?？]/gu, "");
+}
+
+function stableStringify(value: Record<string, string | number>): string {
+  return JSON.stringify(Object.keys(value).sort().map((key) => [key, value[key]]));
 }
 
 function addTagEvidence(
