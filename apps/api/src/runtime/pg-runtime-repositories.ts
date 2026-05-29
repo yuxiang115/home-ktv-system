@@ -9,11 +9,11 @@ import { PgKtvIndexReadRepository, type KtvIndexReadRepository } from "../module
 import { NasPlayableMediaRepository } from "../modules/media/nas-playable-media-repository.js";
 import type { PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
 import { PgPlayerDeviceSessionRepository } from "../modules/player/register-player.js";
-import { PgPlaybackEventRepository } from "../modules/playback/repositories/playback-event-repository.js";
+import { InMemoryPlaybackEventRepository } from "../modules/playback/repositories/playback-event-repository.js";
 import { PgPlaybackSessionRepository } from "../modules/playback/repositories/playback-session-repository.js";
 import { PgQueueEntryRepository } from "../modules/playback/repositories/queue-entry-repository.js";
 import {
-  PgRoomSessionCommandRepository,
+  InMemoryRoomSessionCommandRepository,
   type RoomSessionCommandRepository
 } from "../modules/playback/repositories/room-session-command-repository.js";
 import { PgRoomPairingTokenRepository } from "../modules/rooms/repositories/pairing-token-repository.js";
@@ -46,9 +46,9 @@ export function createPgRuntimeRepositories(
     songCovers: new PgSongCoverCacheRepository(db),
     pairingTokens: new PgRoomPairingTokenRepository(db),
     controlSessions: new PgControlSessionRepository(db),
-    controlCommands: new PgRoomSessionCommandRepository(db),
+    controlCommands: new InMemoryRoomSessionCommandRepository(),
     deviceSessions: new PgPlayerDeviceSessionRepository(db),
-    playbackEvents: new PgPlaybackEventRepository(db),
+    playbackEvents: new InMemoryPlaybackEventRepository(),
     ktvIndex: new PgKtvIndexReadRepository(db, {
       ...(options.mediaPathMappings ? { pathMappings: options.mediaPathMappings } : {})
     })

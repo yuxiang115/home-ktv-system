@@ -8,14 +8,9 @@ export const tableNames = {
   onlineSongs: "online_songs",
   onlineSongAssets: "online_song_assets",
   rooms: "rooms",
+  roomClients: "room_clients",
   queueEntries: "queue_entries",
-  deviceSessions: "device_sessions",
-  playbackSessions: "playback_sessions",
-  playbackEvents: "playback_events",
   candidateTasks: "candidate_tasks",
-  roomPairingTokens: "room_pairing_tokens",
-  controlSessions: "control_sessions",
-  controlCommands: "control_commands",
   songCoverCache: "song_cover_cache",
   ktvIndexRuns: "ktv_index_runs",
   ktvArtists: "ktv_artists",
@@ -31,7 +26,7 @@ export const enumValues = {
   compatibilityStatus: ["unknown", "review_required", "playable", "unsupported"],
   roomStatus: ["active", "inactive", "maintenance"],
   queueEntryStatus: ["queued", "preparing", "loading", "playing", "played", "skipped", "failed", "removed"],
-  deviceType: ["tv", "mobile"],
+  clientType: ["tv", "controller"],
   playerState: ["idle", "preparing", "loading", "playing", "paused", "recovering", "error"],
   onlineCandidateTaskStatus: [
     "discovered",
@@ -86,6 +81,19 @@ export interface RoomRow {
   name: string;
   status: string;
   default_player_device_id: string | null;
+  pairing_token_value: string | null;
+  pairing_token_hash: string | null;
+  pairing_token_expires_at: Date | null;
+  pairing_token_rotated_at: Date | null;
+  current_queue_entry_id: string | null;
+  target_vocal_mode: string;
+  player_state: string;
+  player_position_ms: number;
+  next_queue_entry_id: string | null;
+  playback_version: number;
+  volume_percent: number;
+  media_started_at: Date | null;
+  playback_updated_at: Date;
   created_at: Date;
   updated_at: Date;
 }
@@ -111,38 +119,19 @@ export interface QueueEntryRow {
   undo_expires_at: Date | null;
 }
 
-export interface DeviceSessionRow {
+export interface RoomClientRow {
   id: string;
   room_id: string;
-  device_type: string;
+  client_type: string;
+  device_id: string;
   device_name: string;
   last_seen_at: Date | null;
+  expires_at: Date | null;
+  revoked_at: Date | null;
   capabilities: Record<string, unknown>;
   pairing_token: string | null;
   created_at: Date;
   updated_at: Date;
-}
-
-export interface PlaybackSessionRow {
-  room_id: string;
-  current_queue_entry_id: string | null;
-  target_vocal_mode: string;
-  player_state: string;
-  player_position_ms: number;
-  next_queue_entry_id: string | null;
-  version: number;
-  volume_percent: number;
-  media_started_at: Date | null;
-  updated_at: Date;
-}
-
-export interface PlaybackEventRow {
-  id: string;
-  room_id: string;
-  queue_entry_id: string | null;
-  event_type: string;
-  event_payload: Record<string, unknown>;
-  created_at: Date;
 }
 
 export interface CandidateTaskRow {
@@ -178,37 +167,16 @@ export interface CandidateTaskRow {
 
 export interface RoomPairingTokenRow {
   room_id: string;
-  token_value: string;
-  token_hash: string;
-  token_expires_at: Date;
-  rotated_at: Date;
+  token_value: string | null;
+  token_hash: string | null;
+  token_expires_at: Date | null;
+  rotated_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
 
-export interface ControlSessionRow {
-  id: string;
-  room_id: string;
-  device_id: string;
-  device_name: string;
-  last_seen_at: Date;
-  expires_at: Date;
-  revoked_at: Date | null;
-  created_at: Date;
-  updated_at: Date;
-}
-
-export interface ControlCommandRow {
-  command_id: string;
-  room_id: string;
-  control_session_id: string;
-  session_version: number;
-  command_type: string;
-  command_payload: Record<string, unknown>;
-  result_status: string;
-  result_payload: Record<string, unknown>;
-  created_at: Date;
-}
+export type DeviceSessionRow = RoomClientRow;
+export type ControlSessionRow = RoomClientRow;
 
 export const schemaSql = `
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -252,6 +220,19 @@ CREATE TABLE IF NOT EXISTS rooms (
   name text NOT NULL,
   status text NOT NULL CHECK (status IN ('active', 'inactive', 'maintenance')),
   default_player_device_id text,
+  pairing_token_value text,
+  pairing_token_hash text,
+  pairing_token_expires_at timestamptz,
+  pairing_token_rotated_at timestamptz,
+  current_queue_entry_id text,
+  target_vocal_mode text NOT NULL DEFAULT 'instrumental' CHECK (target_vocal_mode IN ('original', 'instrumental', 'dual', 'unknown')),
+  player_state text NOT NULL DEFAULT 'idle' CHECK (player_state IN ('idle', 'preparing', 'loading', 'playing', 'paused', 'recovering', 'error')),
+  player_position_ms integer NOT NULL DEFAULT 0 CHECK (player_position_ms >= 0),
+  next_queue_entry_id text,
+  playback_version integer NOT NULL DEFAULT 1 CHECK (playback_version > 0),
+  volume_percent integer NOT NULL DEFAULT 50 CHECK (volume_percent >= 0 AND volume_percent <= 100),
+  media_started_at timestamptz,
+  playback_updated_at timestamptz NOT NULL DEFAULT now(),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -277,52 +258,50 @@ CREATE TABLE IF NOT EXISTS queue_entries (
   undo_expires_at timestamptz
 );
 
-CREATE TABLE IF NOT EXISTS device_sessions (
+CREATE TABLE IF NOT EXISTS room_clients (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
   room_id text NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-  device_type text NOT NULL CHECK (device_type IN ('tv', 'mobile')),
+  client_type text NOT NULL CHECK (client_type IN ('tv', 'controller')),
+  device_id text NOT NULL,
   device_name text NOT NULL,
   last_seen_at timestamptz,
+  expires_at timestamptz,
+  revoked_at timestamptz,
   capabilities jsonb NOT NULL DEFAULT '{}'::jsonb,
   pairing_token text,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS playback_sessions (
-  room_id text PRIMARY KEY REFERENCES rooms(id) ON DELETE CASCADE,
-  current_queue_entry_id text REFERENCES queue_entries(id) ON DELETE SET NULL,
-  target_vocal_mode text NOT NULL CHECK (target_vocal_mode IN ('original', 'instrumental', 'dual', 'unknown')),
-  player_state text NOT NULL CHECK (player_state IN ('idle', 'preparing', 'loading', 'playing', 'paused', 'recovering', 'error')),
-  player_position_ms integer NOT NULL DEFAULT 0 CHECK (player_position_ms >= 0),
-  next_queue_entry_id text REFERENCES queue_entries(id) ON DELETE SET NULL,
-  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
-  volume_percent integer NOT NULL DEFAULT 50 CHECK (volume_percent >= 0 AND volume_percent <= 100),
-  media_started_at timestamptz,
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS playback_events (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  room_id text NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-  queue_entry_id text REFERENCES queue_entries(id) ON DELETE SET NULL,
-  event_type text NOT NULL,
-  event_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(room_id, client_type, device_id),
+  CONSTRAINT room_clients_controller_expiry_ck
+    CHECK (client_type <> 'controller' OR expires_at IS NOT NULL)
 );
 
 ALTER TABLE rooms
   ADD CONSTRAINT rooms_default_player_device_fk
-  FOREIGN KEY (default_player_device_id) REFERENCES device_sessions(id) ON DELETE SET NULL;
+  FOREIGN KEY (default_player_device_id) REFERENCES room_clients(id) ON DELETE SET NULL;
+
+ALTER TABLE rooms
+  ADD CONSTRAINT rooms_current_queue_entry_fk
+  FOREIGN KEY (current_queue_entry_id) REFERENCES queue_entries(id) ON DELETE SET NULL;
+
+ALTER TABLE rooms
+  ADD CONSTRAINT rooms_next_queue_entry_fk
+  FOREIGN KEY (next_queue_entry_id) REFERENCES queue_entries(id) ON DELETE SET NULL;
+
+ALTER TABLE queue_entries
+  ADD CONSTRAINT queue_entries_removed_by_control_session_fk
+  FOREIGN KEY (removed_by_control_session_id) REFERENCES room_clients(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS queue_entries_room_position_idx ON queue_entries(room_id, status, queue_position, priority);
 CREATE INDEX IF NOT EXISTS queue_entries_room_effective_position_idx
   ON queue_entries(room_id, status, queue_position)
   WHERE status IN ('queued', 'preparing', 'loading', 'playing');
-CREATE INDEX IF NOT EXISTS queue_entries_nas_song_counts_idx
-  ON queue_entries(source_type, nas_song_id)
-  WHERE source_type = 'nas';
-CREATE INDEX IF NOT EXISTS playback_events_room_created_idx ON playback_events(room_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS room_clients_room_type_seen_idx
+  ON room_clients(room_id, client_type, last_seen_at DESC)
+  WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS room_clients_controller_active_idx
+  ON room_clients(room_id, expires_at, last_seen_at DESC)
+  WHERE client_type = 'controller' AND revoked_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS candidate_tasks (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -377,67 +356,6 @@ CREATE INDEX IF NOT EXISTS candidate_tasks_room_recent_idx
 INSERT INTO rooms (id, slug, name, status)
 VALUES ('living-room', 'living-room', 'Living Room', 'active')
 ON CONFLICT (slug) DO NOTHING;
-
-INSERT INTO playback_sessions (room_id, target_vocal_mode, player_state, player_position_ms, version)
-VALUES ('living-room', 'instrumental', 'idle', 0, 1)
-ON CONFLICT (room_id) DO NOTHING;
-
-CREATE TABLE IF NOT EXISTS room_pairing_tokens (
-  room_id text PRIMARY KEY REFERENCES rooms(id) ON DELETE CASCADE,
-  token_value text NOT NULL,
-  token_hash text NOT NULL,
-  token_expires_at timestamptz NOT NULL,
-  rotated_at timestamptz NOT NULL DEFAULT now(),
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS control_sessions (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  room_id text NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-  device_id text NOT NULL,
-  device_name text NOT NULL DEFAULT 'Mobile Controller',
-  last_seen_at timestamptz NOT NULL DEFAULT now(),
-  expires_at timestamptz NOT NULL,
-  revoked_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(room_id, device_id)
-);
-
-CREATE TABLE IF NOT EXISTS control_commands (
-  command_id text PRIMARY KEY,
-  room_id text NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-  control_session_id text NOT NULL REFERENCES control_sessions(id) ON DELETE CASCADE,
-  session_version integer NOT NULL CHECK (session_version >= 0),
-  command_type text NOT NULL CHECK (command_type IN (
-    'add-queue-entry',
-    'delete-queue-entry',
-    'undo-delete-queue-entry',
-    'promote-queue-entry',
-    'skip-current',
-    'switch-vocal-mode',
-    'player-ended'
-  )),
-  command_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
-  result_status text NOT NULL CHECK (result_status IN ('accepted', 'duplicate', 'conflict', 'rejected')),
-  result_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
-ALTER TABLE queue_entries
-  ADD CONSTRAINT queue_entries_removed_by_control_session_fk
-  FOREIGN KEY (removed_by_control_session_id) REFERENCES control_sessions(id) ON DELETE SET NULL;
-
-CREATE INDEX IF NOT EXISTS room_pairing_tokens_expiry_idx
-  ON room_pairing_tokens(room_id, token_expires_at);
-
-CREATE INDEX IF NOT EXISTS control_sessions_room_active_idx
-  ON control_sessions(room_id, expires_at, last_seen_at DESC)
-  WHERE revoked_at IS NULL;
-
-CREATE INDEX IF NOT EXISTS control_commands_room_created_idx
-  ON control_commands(room_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS song_cover_cache (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -501,6 +419,8 @@ CREATE TABLE IF NOT EXISTS ktv_songs (
   title_initials text NOT NULL DEFAULT '',
   primary_artist_name text NOT NULL,
   normalized_primary_artist_name text NOT NULL,
+  request_count integer NOT NULL DEFAULT 0 CHECK (request_count >= 0),
+  last_requested_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -548,6 +468,9 @@ CREATE INDEX IF NOT EXISTS ktv_songs_title_initials_idx
   ON ktv_songs(title_initials);
 CREATE INDEX IF NOT EXISTS ktv_songs_primary_artist_idx
   ON ktv_songs(normalized_primary_artist_name);
+CREATE INDEX IF NOT EXISTS ktv_songs_request_count_idx
+  ON ktv_songs(request_count DESC, last_requested_at DESC)
+  WHERE request_count > 0;
 CREATE UNIQUE INDEX IF NOT EXISTS ktv_songs_normalized_title_artist_uq
   ON ktv_songs(normalized_title, normalized_primary_artist_name);
 CREATE INDEX IF NOT EXISTS ktv_song_artists_artist_idx

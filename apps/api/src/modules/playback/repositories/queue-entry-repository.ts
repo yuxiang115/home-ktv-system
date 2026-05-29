@@ -148,11 +148,9 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
     }
 
     const result = await this.db.query<{ song_id: string; request_count: string | number }>(
-      `SELECT nas_song_id AS song_id, COUNT(*) AS request_count
-       FROM queue_entries
-       WHERE source_type = 'nas'
-         AND nas_song_id = ANY($1::text[])
-       GROUP BY nas_song_id`,
+      `SELECT id AS song_id, request_count
+       FROM ktv_songs
+       WHERE id = ANY($1::text[])`,
       [songIds]
     );
 
@@ -248,7 +246,22 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
       throw new Error("Queue entry insert did not return a row");
     }
 
+    if (source.sourceType === "nas") {
+      await this.incrementNasRequestCount(source.songId, input.requestedAt ?? null);
+    }
+
     return mapQueueEntryRow(row);
+  }
+
+  private async incrementNasRequestCount(songId: SongId, requestedAt: Date | null): Promise<void> {
+    await this.db.query(
+      `UPDATE ktv_songs
+       SET request_count = request_count + 1,
+           last_requested_at = COALESCE($2, now()),
+           updated_at = now()
+       WHERE id = $1`,
+      [songId, requestedAt]
+    );
   }
 
   async markRemoved(input: MarkRemovedQueueEntryInput): Promise<QueueEntry | null> {

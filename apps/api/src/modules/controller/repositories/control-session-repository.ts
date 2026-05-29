@@ -37,6 +37,10 @@ export interface ControlSessionRepository {
 }
 
 function mapControlSessionRow(row: ControlSessionRow): ControlSession {
+  if (row.last_seen_at === null || row.expires_at === null) {
+    throw new Error(`Controller client ${row.id} does not have session timestamps`);
+  }
+
   return {
     id: row.id as ControlSessionId,
     roomId: row.room_id as RoomId,
@@ -55,15 +59,16 @@ export class PgControlSessionRepository implements ControlSessionRepository {
 
   async upsertForDevice(input: UpsertControlSessionInput): Promise<ControlSession> {
     const result = await this.db.query<ControlSessionRow>(
-      `INSERT INTO control_sessions (room_id, device_id, device_name, last_seen_at, expires_at)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (room_id, device_id) DO UPDATE
+      `INSERT INTO room_clients (room_id, client_type, device_id, device_name, last_seen_at, expires_at, capabilities)
+       VALUES ($1, 'controller', $2, $3, $4, $5, '{}'::jsonb)
+       ON CONFLICT (room_id, client_type, device_id) DO UPDATE
        SET device_name = EXCLUDED.device_name,
            last_seen_at = EXCLUDED.last_seen_at,
            expires_at = EXCLUDED.expires_at,
            revoked_at = NULL,
            updated_at = now()
-       RETURNING id, room_id, device_id, device_name, last_seen_at, expires_at, revoked_at, created_at, updated_at`,
+       RETURNING id, room_id, client_type, device_id, device_name, last_seen_at, expires_at,
+                 revoked_at, capabilities, pairing_token, created_at, updated_at`,
       [input.roomId, input.deviceId, input.deviceName, input.lastSeenAt, input.expiresAt]
     );
 
@@ -77,9 +82,11 @@ export class PgControlSessionRepository implements ControlSessionRepository {
 
   async findActiveByIdAndDevice(input: FindActiveControlSessionInput): Promise<ControlSession | null> {
     const result = await this.db.query<ControlSessionRow>(
-      `SELECT id, room_id, device_id, device_name, last_seen_at, expires_at, revoked_at, created_at, updated_at
-       FROM control_sessions
+      `SELECT id, room_id, client_type, device_id, device_name, last_seen_at, expires_at,
+              revoked_at, capabilities, pairing_token, created_at, updated_at
+       FROM room_clients
        WHERE id = $1
+         AND client_type = 'controller'
          AND device_id = $2
          AND revoked_at IS NULL
          AND expires_at > $3
@@ -93,13 +100,15 @@ export class PgControlSessionRepository implements ControlSessionRepository {
 
   async touch(input: TouchControlSessionInput): Promise<ControlSession | null> {
     const result = await this.db.query<ControlSessionRow>(
-      `UPDATE control_sessions
+      `UPDATE room_clients
        SET last_seen_at = $2,
            expires_at = $3,
            updated_at = now()
        WHERE id = $1
+         AND client_type = 'controller'
          AND revoked_at IS NULL
-       RETURNING id, room_id, device_id, device_name, last_seen_at, expires_at, revoked_at, created_at, updated_at`,
+       RETURNING id, room_id, client_type, device_id, device_name, last_seen_at, expires_at,
+                 revoked_at, capabilities, pairing_token, created_at, updated_at`,
       [input.sessionId, input.lastSeenAt, input.expiresAt]
     );
 
@@ -110,8 +119,9 @@ export class PgControlSessionRepository implements ControlSessionRepository {
   async countActiveByRoom(roomId: RoomId, activeAfter: Date): Promise<number> {
     const result = await this.db.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count
-       FROM control_sessions
+       FROM room_clients
        WHERE room_id = $1
+         AND client_type = 'controller'
          AND revoked_at IS NULL
          AND expires_at > $2
          AND last_seen_at >= $2`,

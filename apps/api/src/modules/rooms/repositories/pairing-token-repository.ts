@@ -16,6 +16,15 @@ export interface RoomPairingTokenRepository {
 }
 
 function mapRoomPairingTokenRow(row: RoomPairingTokenRow): RoomPairingToken {
+  if (
+    row.token_value === null ||
+    row.token_hash === null ||
+    row.token_expires_at === null ||
+    row.rotated_at === null
+  ) {
+    throw new Error(`Room ${row.room_id} does not have a complete pairing token`);
+  }
+
   return {
     roomId: row.room_id as RoomId,
     tokenValue: row.token_value,
@@ -32,9 +41,19 @@ export class PgRoomPairingTokenRepository implements RoomPairingTokenRepository 
 
   async findByRoomId(roomId: RoomId): Promise<RoomPairingToken | null> {
     const result = await this.db.query<RoomPairingTokenRow>(
-      `SELECT room_id, token_value, token_hash, token_expires_at, rotated_at, created_at, updated_at
-       FROM room_pairing_tokens
-       WHERE room_id = $1
+      `SELECT id AS room_id,
+              pairing_token_value AS token_value,
+              pairing_token_hash AS token_hash,
+              pairing_token_expires_at AS token_expires_at,
+              pairing_token_rotated_at AS rotated_at,
+              created_at,
+              updated_at
+       FROM rooms
+       WHERE id = $1
+         AND pairing_token_value IS NOT NULL
+         AND pairing_token_hash IS NOT NULL
+         AND pairing_token_expires_at IS NOT NULL
+         AND pairing_token_rotated_at IS NOT NULL
        LIMIT 1`,
       [roomId]
     );
@@ -45,15 +64,20 @@ export class PgRoomPairingTokenRepository implements RoomPairingTokenRepository 
 
   async upsert(input: UpsertRoomPairingTokenInput): Promise<RoomPairingToken> {
     const result = await this.db.query<RoomPairingTokenRow>(
-      `INSERT INTO room_pairing_tokens (room_id, token_value, token_hash, token_expires_at, rotated_at)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (room_id) DO UPDATE
-       SET token_value = EXCLUDED.token_value,
-           token_hash = EXCLUDED.token_hash,
-           token_expires_at = EXCLUDED.token_expires_at,
-           rotated_at = EXCLUDED.rotated_at,
+      `UPDATE rooms
+       SET pairing_token_value = $2,
+           pairing_token_hash = $3,
+           pairing_token_expires_at = $4,
+           pairing_token_rotated_at = $5,
            updated_at = now()
-       RETURNING room_id, token_value, token_hash, token_expires_at, rotated_at, created_at, updated_at`,
+       WHERE id = $1
+       RETURNING id AS room_id,
+                 pairing_token_value AS token_value,
+                 pairing_token_hash AS token_hash,
+                 pairing_token_expires_at AS token_expires_at,
+                 pairing_token_rotated_at AS rotated_at,
+                 created_at,
+                 updated_at`,
       [input.roomId, input.tokenValue, input.tokenHash, input.tokenExpiresAt, input.now]
     );
 

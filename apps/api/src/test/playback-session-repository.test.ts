@@ -5,7 +5,7 @@ import { PgPlaybackSessionRepository } from "../modules/playback/repositories/pl
 const now = new Date("2026-05-01T10:00:00.000Z");
 
 describe("PgPlaybackSessionRepository", () => {
-  it("starts a queue entry without reading or writing active_asset_id", async () => {
+  it("starts a queue entry from rooms playback columns without active_asset_id", async () => {
     const db = new RecordingDb([
       {
         room_id: "living-room",
@@ -32,6 +32,8 @@ describe("PgPlaybackSessionRepository", () => {
       mediaStartedAt: now
     });
 
+    expect(db.queries[0]).toContain("UPDATE rooms");
+    expect(db.queries[0]).not.toContain("playback_sessions");
     expect(db.queries[0]).not.toContain("active_asset_id");
     expect(db.values[0]).not.toContain("asset-1");
     expect(session).toMatchObject({
@@ -39,6 +41,31 @@ describe("PgPlaybackSessionRepository", () => {
       currentQueueEntryId: "queue-1",
       activeAssetId: null
     });
+  });
+
+  it("finds playback state from rooms playback columns", async () => {
+    const db = new RecordingDb([
+      {
+        room_id: "living-room",
+        current_queue_entry_id: null,
+        target_vocal_mode: "instrumental",
+        player_state: "idle",
+        player_position_ms: 0,
+        next_queue_entry_id: null,
+        version: 1,
+        volume_percent: 50,
+        media_started_at: null,
+        updated_at: now
+      }
+    ]);
+    const repository = new PgPlaybackSessionRepository(db);
+
+    const session = await repository.findByRoomId("living-room");
+
+    expect(db.queries[0]).toContain("FROM rooms");
+    expect(db.queries[0]).not.toContain("playback_sessions");
+    expect(db.queries[0]).toContain("playback_version AS version");
+    expect(session?.playerState).toBe("idle");
   });
 });
 

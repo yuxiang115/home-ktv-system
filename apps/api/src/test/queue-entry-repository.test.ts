@@ -47,24 +47,55 @@ describe("PgQueueEntryRepository", () => {
     });
   });
 
-  it("counts global NAS song requests by source-native song id", async () => {
+  it("counts global NAS song requests from ktv_songs persistent counters", async () => {
     const db = new RecordingDb([{ song_id: "ktv-song-1", request_count: "3" }]);
     const repository = new PgQueueEntryRepository(db);
 
     const counts = await repository.listGlobalSongRequestCounts(["ktv-song-1"]);
 
-    expect(db.queries[0]).toContain("source_type = 'nas'");
-    expect(db.queries[0]).toContain("nas_song_id = ANY");
+    expect(db.queries[0]).toContain("FROM ktv_songs");
+    expect(db.queries[0]).toContain("id = ANY");
+    expect(db.queries[0]).not.toContain("FROM queue_entries");
     expect(counts.get("ktv-song-1")).toBe(3);
   });
 
-  it("keeps removed NAS queue entries in lifetime request counts", async () => {
-    const db = new RecordingDb([{ song_id: "ktv-song-1", request_count: "4" }]);
+  it("increments ktv_songs counters when appending a NAS queue entry", async () => {
+    const db = new RecordingDb([
+      {
+        id: "queue-1",
+        room_id: "living-room",
+        source_type: "nas",
+        nas_song_id: "ktv-song-1",
+        nas_asset_id: "ktv-asset-1",
+        online_song_id: null,
+        online_asset_id: null,
+        requested_by: "phone-a",
+        queue_position: 1,
+        status: "queued",
+        priority: 0,
+        playback_options: {},
+        requested_at: now,
+        started_at: null,
+        ended_at: null,
+        removed_at: null,
+        removed_by_control_session_id: null,
+        undo_expires_at: null
+      }
+    ]);
     const repository = new PgQueueEntryRepository(db);
 
-    await repository.listGlobalSongRequestCounts(["ktv-song-1"]);
+    await repository.append({
+      roomId: "living-room",
+      source: { sourceType: "nas", songId: "ktv-song-1", assetId: "ktv-asset-1" },
+      requestedBy: "phone-a",
+      queuePosition: 1,
+      requestedAt: now
+    });
 
-    expect(db.queries[0]).not.toContain("status <> 'removed'");
+    expect(db.queries[1]).toContain("UPDATE ktv_songs");
+    expect(db.queries[1]).toContain("request_count = request_count + 1");
+    expect(db.queries[1]).toContain("last_requested_at");
+    expect(db.values[1]).toEqual(["ktv-song-1", now]);
   });
 });
 
