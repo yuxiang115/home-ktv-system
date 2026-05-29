@@ -150,26 +150,6 @@ async function main(currentCommand, currentArg, currentArgs) {
       ensureDirs();
       await runForeground("pnpm", ["-F", "@home-ktv/api", "probe:ktv-index", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
       return;
-    case "tag-styles":
-      requireEnvFile();
-      ensureDirs();
-      await runForeground("pnpm", ["-F", "@home-ktv/api", "tag:ktv-styles", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
-      return;
-    case "tag-styles-export":
-      requireEnvFile();
-      ensureDirs();
-      await runForeground("pnpm", ["-F", "@home-ktv/api", "tag:ktv-styles:export", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
-      return;
-    case "tag-styles-jsonl":
-      requireEnvFile();
-      ensureDirs();
-      await runForeground("pnpm", ["-F", "@home-ktv/api", "tag:ktv-styles:jsonl", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
-      return;
-    case "tag-styles-import":
-      requireEnvFile();
-      ensureDirs();
-      await runForeground("pnpm", ["-F", "@home-ktv/api", "tag:ktv-styles:import", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
-      return;
     case "help":
     case "-h":
     case "--help":
@@ -530,10 +510,6 @@ function printUsage(error = false) {
     "  doctor      Run deployment self-checks",
     "  smoke       Run public web deployment smoke checks",
     "  probe-index Probe indexed KTV media technical metadata",
-    "  tag-styles  Tag indexed KTV songs directly against PostgreSQL",
-    "  tag-styles-export Export active indexed songs to JSONL",
-    "  tag-styles-jsonl  Tag exported songs from JSONL without database dependency",
-    "  tag-styles-import Import staged JSONL style tag results into PostgreSQL",
     "  stop        Stop services",
     "  help        Show this help",
     "",

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -10,14 +9,12 @@ import sys
 import time
 import urllib.error
 import urllib.request
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
 
 SOURCE = "llm-style-v1"
-BASE_STATUS_SOURCE = "netease-playlist-v1"
 DEFAULT_BATCH_SIZE = 30
 DEFAULT_CONFIDENCE = 0.72
 
@@ -158,6 +155,7 @@ KTV_STYLE_TAXONOMY = [
 ]
 
 ALLOWED_TAGS = frozenset(tag for group in KTV_STYLE_TAXONOMY for tag in group["tags"])
+TAG_GROUP_BY_TAG = {tag: group["name"] for group in KTV_STYLE_TAXONOMY for tag in group["tags"]}
 
 
 def main(argv=None):
@@ -514,7 +512,7 @@ def candidate_sql(max_existing_tags, limit):
     return f"""
 WITH existing_tags AS (
   SELECT s.id AS song_id,
-         count(DISTINCT st.tag_id)::integer AS tag_count
+         count(st.tag_name)::integer AS tag_count
   FROM ktv_songs s
   LEFT JOIN ktv_song_style_tags st ON st.song_id = s.id
   GROUP BY s.id
@@ -527,16 +525,8 @@ SELECT json_build_object(
 )::text
 FROM ktv_songs s
 JOIN ktv_song_assets a ON a.song_id = s.id AND a.missing_at IS NULL
-JOIN ktv_song_tagging_status base_status
-  ON base_status.song_id = s.id
- AND base_status.source = {sql_literal(BASE_STATUS_SOURCE)}
- AND base_status.status IN ('tagged', 'empty', 'failed')
 JOIN existing_tags ON existing_tags.song_id = s.id
-LEFT JOIN ktv_song_tagging_status llm_status
-  ON llm_status.song_id = s.id
- AND llm_status.source = {sql_literal(SOURCE)}
-WHERE llm_status.status IS DISTINCT FROM 'tagged'
-  AND existing_tags.tag_count <= {int(max_existing_tags)}
+WHERE existing_tags.tag_count <= {int(max_existing_tags)}
 GROUP BY s.id, s.title, s.primary_artist_name, s.updated_at, existing_tags.tag_count
 ORDER BY existing_tags.tag_count ASC, s.updated_at DESC, s.id ASC
 {limit_sql}
@@ -606,66 +596,14 @@ def detect_postgres_container():
 
 
 def build_import_sql(rows):
-    run_id = f"style-run-{uuid.uuid4()}"
-    summary = summarize_rows(rows)
-    statements = ["BEGIN;", *taxonomy_sql()]
-    statements.append(
-        "\n".join(
-            [
-                "INSERT INTO ktv_song_tagging_runs (id, source, status, selected_count, processed_count, tagged_count, empty_count, failed_count, average_tags, options, summary, finished_at)",
-                "VALUES (",
-                f"  {sql_literal(run_id)},",
-                f"  {sql_literal(SOURCE)},",
-                "  'completed',",
-                f"  {summary['total']},",
-                f"  {summary['total']},",
-                f"  {summary['tagged']},",
-                f"  {summary['empty']},",
-                f"  {summary['failed']},",
-                f"  {summary['averageTags']},",
-                f"  {sql_literal(json.dumps({'runner': 'python-jsonl'}, ensure_ascii=False))}::jsonb,",
-                f"  {sql_literal(json.dumps(summary, ensure_ascii=False))}::jsonb,",
-                "  now()",
-                ");",
-            ]
-        )
-    )
+    statements = ["BEGIN;"]
     for row in rows:
-        statements.extend(song_import_sql(row, run_id))
+        statements.extend(song_import_sql(row))
     statements.append("COMMIT;")
     return "\n".join(statements)
 
 
-def taxonomy_sql():
-    statements = []
-    for group in KTV_STYLE_TAXONOMY:
-        statements.append(
-            f"""
-INSERT INTO ktv_style_groups (id, name, sort_order)
-VALUES ({sql_literal(group['id'])}, {sql_literal(group['name'])}, {int(group['sortOrder'])})
-ON CONFLICT (name)
-DO UPDATE SET sort_order = EXCLUDED.sort_order,
-              enabled = true,
-              updated_at = now();
-""".strip()
-        )
-        for index, tag in enumerate(group["tags"], start=1):
-            statements.append(
-                f"""
-INSERT INTO ktv_style_tags (group_id, id, name, normalized_name, sort_order)
-VALUES ({sql_literal(group['id'])}, {sql_literal(ktv_style_tag_id(tag))}, {sql_literal(tag)}, {sql_literal(normalize_tag_name(tag))}, {index})
-ON CONFLICT (normalized_name)
-DO UPDATE SET group_id = EXCLUDED.group_id,
-              name = EXCLUDED.name,
-              sort_order = EXCLUDED.sort_order,
-              enabled = true,
-              updated_at = now();
-""".strip()
-            )
-    return statements
-
-
-def song_import_sql(row, run_id):
+def song_import_sql(row):
     song_id = row["songId"]
     status = row.get("status")
     tags = normalize_tags(row.get("tags", []))
@@ -673,60 +611,18 @@ def song_import_sql(row, run_id):
         raise ValueError(f"invalid row status for song {song_id}: {status}")
     if status == "tagged" and not tags:
         status = "empty"
-    tag_count = len(tags)
-    confidence = DEFAULT_CONFIDENCE if tag_count else None
-    statements = [
-        f"""
-DELETE FROM ktv_song_style_tags
-WHERE song_id = {sql_literal(song_id)}
-  AND source = {sql_literal(SOURCE)}
-  AND locked = false;
-""".strip()
-    ]
+    statements = []
     for tag in tags:
-        evidence = {"tag": tag, "evidence": ["llm-style-v1:batch-tag"]}
+        tag_group = find_tag_group(tag)
         statements.append(
             f"""
-INSERT INTO ktv_song_style_tags (song_id, tag_id, source, confidence, evidence)
-VALUES ({sql_literal(song_id)}, {sql_literal(ktv_style_tag_id(tag))}, {sql_literal(SOURCE)}, {DEFAULT_CONFIDENCE}, {sql_literal(json.dumps(evidence, ensure_ascii=False))}::jsonb)
-ON CONFLICT (song_id, tag_id, source)
-DO UPDATE SET confidence = EXCLUDED.confidence,
-              evidence = EXCLUDED.evidence,
-              updated_at = now();
+INSERT INTO ktv_song_style_tags (song_id, tag_name, tag_group)
+VALUES ({sql_literal(song_id)}, {sql_literal(tag)}, {sql_literal(tag_group)})
+ON CONFLICT (song_id, tag_name, tag_group)
+DO UPDATE SET updated_at = now();
 """.strip()
         )
-    statements.append(
-        f"""
-INSERT INTO ktv_song_tagging_status (
-  song_id, source, status, tag_count, confidence, run_id, error_message
-)
-VALUES (
-  {sql_literal(song_id)},
-  {sql_literal(SOURCE)},
-  {sql_literal(status)},
-  {tag_count},
-  {sql_literal(confidence)},
-  {sql_literal(run_id)},
-  NULL
-)
-ON CONFLICT (song_id, source)
-DO UPDATE SET status = EXCLUDED.status,
-              tag_count = EXCLUDED.tag_count,
-              confidence = EXCLUDED.confidence,
-              run_id = EXCLUDED.run_id,
-              error_message = EXCLUDED.error_message,
-              updated_at = now();
-""".strip()
-    )
     return statements
-
-
-def ktv_style_tag_id(tag):
-    return f"style-tag-{hashlib.sha1(tag.encode('utf-8')).hexdigest()[:16]}"
-
-
-def normalize_tag_name(tag):
-    return tag.strip().lower()
 
 
 def sql_literal(value):
@@ -902,6 +798,13 @@ def format_timestamp():
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
+
+
+def find_tag_group(tag):
+    tag_group = TAG_GROUP_BY_TAG.get(tag)
+    if not tag_group:
+        raise ValueError(f"unknown style tag group for tag: {tag}")
+    return tag_group
 
 
 if __name__ == "__main__":

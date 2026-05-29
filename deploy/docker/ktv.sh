@@ -21,11 +21,6 @@ Commands:
   logs [svc]  Follow logs for all services or one service
   doctor      Run deployment self-checks
   probe-index Probe indexed KTV media technical metadata inside the API container
-  tag-styles  Tag indexed KTV songs with style tags inside the API container
-  tag-styles-export Export active indexed songs to JSONL inside the API container
-  tag-styles-jsonl  Tag exported songs from JSONL without database dependency
-  tag-styles-job    Manage an independent JSONL style tagging job container
-  tag-styles-import Import staged JSONL style tag results into PostgreSQL
   fetch-covers Batch fetch song cover metadata inside the API container
   cover-coverage Test cover lookup coverage without writing database rows
   stop        Stop services
@@ -36,16 +31,6 @@ USAGE
 
 compose() {
   docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" "$@"
-}
-
-compose_exec_env_args() {
-  local name
-  for name in "$@"; do
-    if [[ -n "${!name:-}" ]]; then
-      printf '%s\n' "-e"
-      printf '%s\n' "${name}"
-    fi
-  done
 }
 
 ensure_env() {
@@ -116,49 +101,6 @@ case "${command}" in
       shift
     fi
     compose exec -T api pnpm -F @home-ktv/api probe:ktv-index -- "$@"
-    ;;
-  tag-styles)
-    ensure_env
-    if [[ "${1:-}" == "--" ]]; then
-      shift
-    fi
-    mapfile -t exec_env_args < <(compose_exec_env_args \
-      LLM_API_BASE_URL \
-      LLM_API_KEY \
-      LLM_MODEL \
-      LLM_MAX_TOKENS \
-      LLM_TIMEOUT_MS \
-      KTV_LLM_BASE_URL \
-      KTV_LLM_API_KEY \
-      KTV_LLM_MODEL \
-      KTV_LLM_MAX_TOKENS \
-      KTV_LLM_TIMEOUT_MS)
-    compose exec -T "${exec_env_args[@]}" api pnpm -F @home-ktv/api tag:ktv-styles -- "$@"
-    ;;
-  tag-styles-export)
-    ensure_env
-    if [[ "${1:-}" == "--" ]]; then
-      shift
-    fi
-    compose exec -T api pnpm -F @home-ktv/api tag:ktv-styles:export -- "$@"
-    ;;
-  tag-styles-jsonl)
-    ensure_env
-    if [[ "${1:-}" == "--" ]]; then
-      shift
-    fi
-    compose exec -T api pnpm -F @home-ktv/api tag:ktv-styles:jsonl -- "$@"
-    ;;
-  tag-styles-job)
-    ensure_env
-    node "${ROOT_DIR}/scripts/tools/style-tagging-job.mjs" "$@"
-    ;;
-  tag-styles-import)
-    ensure_env
-    if [[ "${1:-}" == "--" ]]; then
-      shift
-    fi
-    compose exec -T api pnpm -F @home-ktv/api tag:ktv-styles:import -- "$@"
     ;;
   fetch-covers)
     ensure_env
