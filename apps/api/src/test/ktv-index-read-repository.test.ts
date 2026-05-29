@@ -61,6 +61,11 @@ describe("PgKtvIndexReadRepository", () => {
     expect(searchQuery?.text).toContain("ktv_artists");
     expect(searchQuery?.text).not.toContain("s.category");
     expect(searchQuery?.text).toContain("ktv_song_style_tags");
+    expect(searchQuery?.text).toContain("st.tag_name");
+    expect(searchQuery?.text).toContain("ORDER BY tag_group, tag_name");
+    expect(searchQuery?.text).not.toContain("JOIN ktv_style_tags");
+    expect(searchQuery?.text).not.toContain("JOIN ktv_style_groups");
+    expect(searchQuery?.text).not.toContain("st.tag_id");
     expect(searchQuery?.values).toEqual(["七里香", "%七里香%", "%七里香%", 10, 2]);
   });
 

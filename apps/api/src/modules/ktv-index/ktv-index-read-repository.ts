@@ -213,14 +213,11 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
                 s.title,
                 s.primary_artist_name,
                 COALESCE((
-                  SELECT array_agg(tag_name ORDER BY group_sort, tag_sort, tag_name)
+                  SELECT array_agg(tag_name ORDER BY tag_group, tag_name)
                   FROM (
-                    SELECT DISTINCT t.name AS tag_name,
-                           g.sort_order AS group_sort,
-                           t.sort_order AS tag_sort
+                    SELECT DISTINCT st.tag_name,
+                           st.tag_group
                     FROM ktv_song_style_tags st
-                    JOIN ktv_style_tags t ON t.id = st.tag_id AND t.enabled = true
-                    JOIN ktv_style_groups g ON g.id = t.group_id AND g.enabled = true
                     WHERE st.song_id = s.id
                   ) style_tag_rows
                 ), ARRAY[]::text[]) AS style_tags,
@@ -236,9 +233,8 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
                   WHEN EXISTS (
                     SELECT 1
                     FROM ktv_song_style_tags st
-                    JOIN ktv_style_tags t ON t.id = st.tag_id AND t.enabled = true
                     WHERE st.song_id = s.id
-                      AND (t.normalized_name LIKE $2 OR t.name ILIKE $3)
+                      AND (replace(lower(st.tag_name), ' ', '') LIKE $2 OR st.tag_name ILIKE $3)
                   ) THEN 35
                   ELSE 0
                 END AS score,
@@ -253,9 +249,8 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
                   WHEN EXISTS (
                     SELECT 1
                     FROM ktv_song_style_tags st
-                    JOIN ktv_style_tags t ON t.id = st.tag_id AND t.enabled = true
                     WHERE st.song_id = s.id
-                      AND (t.normalized_name LIKE $2 OR t.name ILIKE $3)
+                      AND (replace(lower(st.tag_name), ' ', '') LIKE $2 OR st.tag_name ILIKE $3)
                   ) THEN 'style'
                   ELSE 'default'
                 END AS match_reason
@@ -276,9 +271,8 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
             OR EXISTS (
               SELECT 1
               FROM ktv_song_style_tags st
-              JOIN ktv_style_tags t ON t.id = st.tag_id AND t.enabled = true
               WHERE st.song_id = s.id
-                AND (t.normalized_name LIKE $2 OR t.name ILIKE $3)
+                AND (replace(lower(st.tag_name), ' ', '') LIKE $2 OR st.tag_name ILIKE $3)
             )
          GROUP BY s.id, s.title, s.primary_artist_name, s.normalized_title,
                   s.normalized_primary_artist_name, s.title_pinyin, s.title_initials
