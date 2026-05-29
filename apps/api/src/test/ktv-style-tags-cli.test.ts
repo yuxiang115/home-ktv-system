@@ -39,12 +39,14 @@ describe("ktv-style-tags CLI options", () => {
         "test-key",
         "--llm-model",
         "local-model",
-      "--max-existing-tags",
-      "1",
-      "--batch",
-      "--limit",
-      "50",
-      "--apply"
+        "--llm-timeout-ms",
+        "180000",
+        "--max-existing-tags",
+        "1",
+        "--batch",
+        "--limit",
+        "50",
+        "--apply"
       ],
       { DATABASE_URL: "postgres://ktv:ktv@127.0.0.1:5432/home_ktv" }
     );
@@ -55,6 +57,7 @@ describe("ktv-style-tags CLI options", () => {
       llmBaseUrl: "192.168.5.103:8317",
       llmApiKey: "test-key",
       llmModel: "local-model",
+      llmTimeoutMs: 180000,
       maxExistingTags: 1,
       requiredStatusSource: "netease-playlist-v1",
       batch: true,

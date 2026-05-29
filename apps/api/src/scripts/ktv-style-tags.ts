@@ -28,6 +28,7 @@ export interface KtvStyleTagsCliOptions {
   llmBaseUrl: string | undefined;
   llmMaxTokens: number | undefined;
   llmModel: string | undefined;
+  llmTimeoutMs: number | undefined;
   maxExistingTags: number | undefined;
   onlyMissing: boolean;
   progressEvery: number;
@@ -121,6 +122,7 @@ export function parseKtvStyleTagsCliOptions(
     llmBaseUrl: clean(env.LLM_API_BASE_URL) ?? clean(env.KTV_LLM_BASE_URL),
     llmMaxTokens: parseOptionalPositiveInteger(clean(env.LLM_MAX_TOKENS) ?? clean(env.KTV_LLM_MAX_TOKENS), "LLM_MAX_TOKENS"),
     llmModel: clean(env.LLM_MODEL) ?? clean(env.KTV_LLM_MODEL),
+    llmTimeoutMs: parseOptionalPositiveInteger(clean(env.LLM_TIMEOUT_MS) ?? clean(env.KTV_LLM_TIMEOUT_MS), "LLM_TIMEOUT_MS"),
     maxExistingTags: undefined,
     onlyMissing: true,
     progressEvery: 10,
@@ -171,6 +173,10 @@ export function parseKtvStyleTagsCliOptions(
         break;
       case "--llm-max-tokens":
         options.llmMaxTokens = parsePositiveInteger(requireValue(args, index, arg), arg);
+        index += 1;
+        break;
+      case "--llm-timeout-ms":
+        options.llmTimeoutMs = parsePositiveInteger(requireValue(args, index, arg), arg);
         index += 1;
         break;
       case "--max-existing-tags":
@@ -244,6 +250,9 @@ function createTagger(options: KtvStyleTagsCliOptions, db: QueryExecutor) {
     model: options.llmModel,
     ...(options.llmMaxTokens !== undefined || options.batch
       ? { maxTokens: options.llmMaxTokens ?? 2048 }
+      : {}),
+    ...(options.llmTimeoutMs !== undefined || options.batch
+      ? { timeoutMs: options.llmTimeoutMs ?? 180_000 }
       : {})
   };
 
@@ -313,6 +322,7 @@ Options:
   --llm-api-key <key>   OpenAI-compatible API key. Defaults to LLM_API_KEY or KTV_LLM_API_KEY.
   --llm-model <model>   Chat model name. Defaults to LLM_MODEL or KTV_LLM_MODEL.
   --llm-max-tokens <n>  Completion token limit. Default: 2048 in --batch mode, 96 otherwise.
+  --llm-timeout-ms <n>  Request timeout. Default: 180000 in --batch mode, 60000 otherwise.
   --max-existing-tags <n>
                         With --source llm, process songs whose aggregate tag count is <= n. Default: 1.
   --fallback-from-source <source>
