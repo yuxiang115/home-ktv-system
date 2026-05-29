@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   HttpLlmStyleTaggerClient,
   LlmStyleTagger,
+  parseLlmStyleTagBatchResponse,
   parseLlmStyleTagResponse,
   type LlmStyleTaggerClient
 } from "../modules/ktv-index/llm-style-tagger.js";
@@ -34,6 +35,47 @@ describe("LlmStyleTagger", () => {
       model: "local-model",
       tagCount: 3
     });
+  });
+
+  it("parses a batch response by stable song id", () => {
+    const results = parseLlmStyleTagBatchResponse(
+      "{\"results\":[{\"id\":\"song-1\",\"tags\":[\"华语\",\"流行\",\"不存在\"]},{\"id\":\"song-2\",\"tags\":[\"粤语\",\"经典老歌\"]}]}",
+      [
+        { id: "song-1", title: "七里香", artistName: "周杰伦" },
+        { id: "song-2", title: "海阔天空", artistName: "Beyond" }
+      ],
+      6
+    );
+
+    expect(results.get("song-1")).toEqual(["华语", "流行"]);
+    expect(results.get("song-2")).toEqual(["粤语", "经典老歌"]);
+  });
+
+  it("rejects a malformed batch response so the whole batch can be retried", () => {
+    expect(() => parseLlmStyleTagBatchResponse(
+      "{\"results\":[{\"id\":\"song-1\",\"tags\":[\"华语\"]}]}",
+      [
+        { id: "song-1", title: "七里香", artistName: "周杰伦" },
+        { id: "song-2", title: "海阔天空", artistName: "Beyond" }
+      ],
+      6
+    )).toThrow("missing result for song id song-2");
+  });
+
+  it("tags a batch of songs with a single client request", async () => {
+    const client: LlmStyleTaggerClient = {
+      complete: vi.fn(async () => "{\"results\":[{\"id\":\"song-1\",\"tags\":[\"华语\",\"流行\"]},{\"id\":\"song-2\",\"tags\":[\"粤语\"]}]}")
+    };
+    const tagger = new LlmStyleTagger({ client, model: "local-model" });
+
+    const results = await tagger.tagSongs([
+      { id: "song-1", title: "七里香", artistName: "周杰伦" },
+      { id: "song-2", title: "海阔天空", artistName: "Beyond" }
+    ]);
+
+    expect(client.complete).toHaveBeenCalledTimes(1);
+    expect(results.get("song-1")?.tags.map((tag) => tag.tag)).toEqual(["华语", "流行"]);
+    expect(results.get("song-2")?.tags.map((tag) => tag.tag)).toEqual(["粤语"]);
   });
 
   it("calls an OpenAI-compatible chat completions endpoint", async () => {

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { QueryExecutor } from "../db/query-executor.js";
+import type { KtvStyleTaggerResult } from "../modules/ktv-index/netease-style-tagger.js";
 import {
   KtvStyleTaggingService,
+  type KtvBatchStyleTagger,
   type KtvStyleTagger,
   type KtvStyleTaggingProgressEvent,
   type KtvStyleTaggingSong
@@ -133,6 +135,54 @@ describe("KtvStyleTaggingService", () => {
     expect(db.lastSelectSql).toContain("status.status = 'tagged'");
     expect(db.lastSelectValues).toEqual(["llm-style-v1", true, 10, 1, "netease-playlist-v1"]);
   });
+
+  it("can tag a selected batch with one tagger call", async () => {
+    const db = new FakeStyleTaggingDb();
+    const tagger = new FakeBatchTagger();
+    const service = new KtvStyleTaggingService(db, {
+      tagger,
+      now: () => 1000
+    });
+
+    const result = await service.run({
+      source: "llm-style-v1",
+      limit: 3,
+      apply: true,
+      onlyMissing: true,
+      batch: true
+    });
+
+    expect(tagger.batches).toEqual([["song-1", "song-2", "song-3"]]);
+    expect(result).toMatchObject({
+      selected: 3,
+      processed: 3,
+      taggedSongs: 2,
+      emptySongs: 1,
+      failedSongs: 0,
+      writtenTags: 3
+    });
+    expect(db.status.get("song-1:llm-style-v1")).toMatchObject({ status: "tagged", tagCount: 2 });
+    expect(db.status.get("song-2:llm-style-v1")).toMatchObject({ status: "empty", tagCount: 0 });
+  });
+
+  it("does not write per-song failures when a batch request fails", async () => {
+    const db = new FakeStyleTaggingDb();
+    const service = new KtvStyleTaggingService(db, {
+      tagger: new FailingBatchTagger(),
+      now: () => 1000
+    });
+
+    await expect(service.run({
+      source: "llm-style-v1",
+      limit: 3,
+      apply: true,
+      onlyMissing: true,
+      batch: true
+    })).rejects.toThrow("batch failed");
+
+    expect(db.songTags.size).toBe(0);
+    expect([...db.status.keys()]).toEqual([]);
+  });
 });
 
 class FakeTagger implements KtvStyleTagger {
@@ -151,6 +201,44 @@ class FakeTagger implements KtvStyleTagger {
       return { tags: [], evidence: { source: "fake" } };
     }
     throw new Error("netease failed");
+  }
+}
+
+class FakeBatchTagger implements KtvBatchStyleTagger {
+  readonly batches: string[][] = [];
+
+  async tagSong(song: KtvStyleTaggingSong) {
+    return (await this.tagSongs([song])).get(song.id)!;
+  }
+
+  async tagSongs(songs: readonly KtvStyleTaggingSong[]) {
+    this.batches.push(songs.map((song) => song.id));
+    const results = new Map<string, KtvStyleTaggerResult>();
+    results.set("song-1", {
+      tags: [
+        { tag: "华语", confidence: 0.72, evidence: ["llm-style-v1:batch"] },
+        { tag: "流行", confidence: 0.72, evidence: ["llm-style-v1:batch"] }
+      ],
+      evidence: { source: "fake-batch" }
+    });
+    results.set("song-2", { tags: [], evidence: { source: "fake-batch" } });
+    results.set("song-3", {
+      tags: [
+        { tag: "粤语", confidence: 0.72, evidence: ["llm-style-v1:batch"] }
+      ],
+      evidence: { source: "fake-batch" }
+    });
+    return results;
+  }
+}
+
+class FailingBatchTagger implements KtvBatchStyleTagger {
+  async tagSong(): Promise<KtvStyleTaggerResult> {
+    throw new Error("batch failed");
+  }
+
+  async tagSongs(): Promise<ReadonlyMap<string, KtvStyleTaggerResult>> {
+    throw new Error("batch failed");
   }
 }
 

@@ -17,11 +17,16 @@ export interface KtvStyleTagger {
   tagSong(song: KtvStyleTaggingSong): Promise<KtvStyleTaggerResult>;
 }
 
+export interface KtvBatchStyleTagger extends KtvStyleTagger {
+  tagSongs(songs: readonly KtvStyleTaggingSong[]): Promise<ReadonlyMap<string, KtvStyleTaggerResult>>;
+}
+
 export interface KtvStyleTaggingRunInput {
   source: string;
   limit: number;
   apply: boolean;
   onlyMissing: boolean;
+  batch?: boolean;
   maxExistingTags?: number;
   requiredStatusSource?: string;
   onProgress?: (event: KtvStyleTaggingProgressEvent) => void;
@@ -84,6 +89,14 @@ export class KtvStyleTaggingService {
 
     if (input.apply) {
       await this.ensureTaxonomy();
+    }
+
+    if (input.batch) {
+      const batchResult = await this.runBatch(input, songs, runId, startedAt);
+      if (input.apply && runId) {
+        await this.finishRun(runId, batchResult);
+      }
+      return batchResult;
     }
 
     for (const row of songs) {
@@ -186,6 +199,91 @@ export class KtvStyleTaggingService {
     return result;
   }
 
+  private async runBatch(
+    input: KtvStyleTaggingRunInput,
+    rows: readonly KtvSongRow[],
+    runId: string | null,
+    startedAt: number
+  ): Promise<KtvStyleTaggingRunResult> {
+    const tagger = asBatchTagger(this.options.tagger);
+    const songs = rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      artistName: row.primary_artist_name
+    }));
+    const batchResults = await tagger.tagSongs(songs);
+    let taggedSongs = 0;
+    let emptySongs = 0;
+    let writtenTags = 0;
+    let totalTags = 0;
+    let processed = 0;
+
+    for (const song of songs) {
+      const result = batchResults.get(song.id);
+      if (!result) {
+        throw new Error(`Batch tagger did not return song id ${song.id}`);
+      }
+      const tags = result.tags.filter((tag) => isAllowedKtvStyleTag(tag.tag));
+      totalTags += tags.length;
+      processed += 1;
+
+      if (tags.length === 0) {
+        emptySongs += 1;
+        if (input.apply) {
+          await this.replaceSongTags(song.id, input.source, []);
+          await this.upsertStatus({ songId: song.id, source: input.source, status: "empty", tagCount: 0, runId });
+        }
+        input.onProgress?.({
+          selected: songs.length,
+          processed,
+          title: song.title,
+          artistName: song.artistName,
+          status: "empty",
+          tagCount: 0,
+          elapsedMs: this.now() - startedAt,
+          errorMessage: null
+        });
+        continue;
+      }
+
+      taggedSongs += 1;
+      if (input.apply) {
+        await this.replaceSongTags(song.id, input.source, tags);
+        await this.upsertStatus({
+          songId: song.id,
+          source: input.source,
+          status: "tagged",
+          tagCount: tags.length,
+          confidence: average(tags.map((tag) => tag.confidence)),
+          runId
+        });
+        writtenTags += tags.length;
+      }
+      input.onProgress?.({
+        selected: songs.length,
+        processed,
+        title: song.title,
+        artistName: song.artistName,
+        status: "tagged",
+        tagCount: tags.length,
+        elapsedMs: this.now() - startedAt,
+        errorMessage: null
+      });
+    }
+
+    return {
+      runId,
+      selected: songs.length,
+      processed: songs.length,
+      taggedSongs,
+      emptySongs,
+      failedSongs: 0,
+      writtenTags,
+      averageTags: taggedSongs > 0 ? Math.round((totalTags / taggedSongs) * 1000) / 1000 : 0,
+      elapsedMs: this.now() - startedAt
+    };
+  }
+
   private async selectSongs(input: KtvStyleTaggingRunInput): Promise<KtvSongRow[]> {
     if (input.maxExistingTags !== undefined) {
       const requiredStatusJoin = input.requiredStatusSource
@@ -249,6 +347,7 @@ export class KtvStyleTaggingService {
         selectedCount,
         JSON.stringify({
           apply: input.apply,
+          batch: input.batch ?? false,
           onlyMissing: input.onlyMissing,
           limit: input.limit,
           maxExistingTags: input.maxExistingTags ?? null,
@@ -395,4 +494,11 @@ function average(values: readonly number[]): number {
 
 function clampConfidence(value: number): number {
   return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
+}
+
+function asBatchTagger(tagger: KtvStyleTagger): KtvBatchStyleTagger {
+  if ("tagSongs" in tagger && typeof tagger.tagSongs === "function") {
+    return tagger as KtvBatchStyleTagger;
+  }
+  throw new Error("Batch tagging requires a tagger that implements tagSongs");
 }

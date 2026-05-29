@@ -20,11 +20,13 @@ const LLM_SOURCE = "llm-style-v1";
 export interface KtvStyleTagsCliOptions {
   apply: boolean;
   baseUrl: string;
+  batch: boolean;
   databaseUrl: string | undefined;
   help: boolean;
   limit: number;
   llmApiKey: string | undefined;
   llmBaseUrl: string | undefined;
+  llmMaxTokens: number | undefined;
   llmModel: string | undefined;
   maxExistingTags: number | undefined;
   onlyMissing: boolean;
@@ -75,6 +77,7 @@ export async function runKtvStyleTagsCli(
       source: options.taggingSource,
       limit: options.limit,
       apply: options.apply,
+      batch: options.batch,
       onlyMissing: options.onlyMissing,
       onProgress: (event: KtvStyleTaggingProgressEvent) => {
         if (event.processed === event.selected || event.processed % options.progressEvery === 0) {
@@ -109,12 +112,14 @@ export function parseKtvStyleTagsCliOptions(
 ): KtvStyleTagsCliOptions {
   const options: KtvStyleTagsCliOptions = {
     apply: false,
+    batch: false,
     baseUrl: clean(env.NETEASE_API_BASE_URL) ?? "http://127.0.0.1:3301",
     databaseUrl: clean(env.DATABASE_URL),
     help: false,
     limit: 300,
     llmApiKey: clean(env.LLM_API_KEY) ?? clean(env.KTV_LLM_API_KEY),
     llmBaseUrl: clean(env.LLM_API_BASE_URL) ?? clean(env.KTV_LLM_BASE_URL),
+    llmMaxTokens: parseOptionalPositiveInteger(clean(env.LLM_MAX_TOKENS) ?? clean(env.KTV_LLM_MAX_TOKENS), "LLM_MAX_TOKENS"),
     llmModel: clean(env.LLM_MODEL) ?? clean(env.KTV_LLM_MODEL),
     maxExistingTags: undefined,
     onlyMissing: true,
@@ -139,6 +144,9 @@ export function parseKtvStyleTagsCliOptions(
       case "--dry-run":
         options.apply = false;
         break;
+      case "--batch":
+        options.batch = true;
+        break;
       case "--all":
         options.onlyMissing = false;
         break;
@@ -159,6 +167,10 @@ export function parseKtvStyleTagsCliOptions(
         break;
       case "--llm-model":
         options.llmModel = requireValue(args, index, arg);
+        index += 1;
+        break;
+      case "--llm-max-tokens":
+        options.llmMaxTokens = parsePositiveInteger(requireValue(args, index, arg), arg);
         index += 1;
         break;
       case "--max-existing-tags":
@@ -226,12 +238,17 @@ function createTagger(options: KtvStyleTagsCliOptions, db: QueryExecutor) {
     throw new Error("LLM_MODEL, KTV_LLM_MODEL, or --llm-model is required for --source llm");
   }
 
+  const clientOptions = {
+    apiKey: options.llmApiKey,
+    baseUrl: options.llmBaseUrl,
+    model: options.llmModel,
+    ...(options.llmMaxTokens !== undefined || options.batch
+      ? { maxTokens: options.llmMaxTokens ?? 2048 }
+      : {})
+  };
+
   return new LlmStyleTagger({
-    client: new HttpLlmStyleTaggerClient({
-      apiKey: options.llmApiKey,
-      baseUrl: options.llmBaseUrl,
-      model: options.llmModel
-    }),
+    client: new HttpLlmStyleTaggerClient(clientOptions),
     model: options.llmModel
   });
 }
@@ -254,6 +271,13 @@ function parsePositiveInteger(raw: string, optionName: string): number {
     throw new Error(`${optionName} must be a positive integer`);
   }
   return value;
+}
+
+function parseOptionalPositiveInteger(raw: string | undefined, optionName: string): number | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  return parsePositiveInteger(raw, optionName);
 }
 
 function parseNonNegativeInteger(raw: string, optionName: string): number {
@@ -284,9 +308,11 @@ Options:
   --source netease      Use Netease playlist semantics.
   --base-url <url>      NeteaseCloudMusicApi URL. Default: NETEASE_API_BASE_URL or http://127.0.0.1:3301.
   --source llm          Use LLM fallback semantics. Defaults to --max-existing-tags 1.
+  --batch               With --source llm, classify the selected songs with one LLM request.
   --llm-base-url <url>  OpenAI-compatible base URL. Defaults to LLM_API_BASE_URL or KTV_LLM_BASE_URL.
   --llm-api-key <key>   OpenAI-compatible API key. Defaults to LLM_API_KEY or KTV_LLM_API_KEY.
   --llm-model <model>   Chat model name. Defaults to LLM_MODEL or KTV_LLM_MODEL.
+  --llm-max-tokens <n>  Completion token limit. Default: 2048 in --batch mode, 96 otherwise.
   --max-existing-tags <n>
                         With --source llm, process songs whose aggregate tag count is <= n. Default: 1.
   --fallback-from-source <source>

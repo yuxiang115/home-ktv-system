@@ -70,10 +70,12 @@ bash deploy/docker/ktv.sh tag-styles-job status
 bash deploy/docker/ktv.sh tag-styles-job logs
 bash deploy/docker/ktv.sh tag-styles-job stats
 bash deploy/docker/ktv.sh tag-styles-import -- --input /data/home-ktv-media/tagging/full/results.jsonl --dry-run
+node scripts/tools/run-style-tagging-llm-batch.mjs --llm-max-existing-tags 0
 bash deploy/docker/ktv.sh stop
 ```
 
 `tag-styles-jsonl` 适合短任务或手动批次。全量长任务建议使用 `tag-styles-job`，它会启动独立的 `home-ktv-style-tags-job` 容器，状态和日志写到 `/opt/home-ktv-jobs/style-tagging`，主服务 `restart` 不会停止该任务。
+`run-style-tagging-llm-batch.mjs` 用于 LLM 兜底补标签，一次请求处理一批歌曲；整批失败时不写入单曲失败状态，由外层脚本等待后重试。
 
 ## 服务
 
