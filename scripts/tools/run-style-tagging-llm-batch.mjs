@@ -23,7 +23,7 @@ export function parseArgs(argv) {
     composeFile: path.join(ROOT_DIR, "deploy", "docker", "compose.yml"),
     envFile: path.join(ROOT_DIR, "deploy", "docker", ".env"),
     help: false,
-    llmBatch: 30,
+    llmBatch: 15,
     llmMaxExistingTags: 0,
     maxStalledBatches: 5,
     progressEvery: 5,
@@ -222,7 +222,7 @@ function printUsage() {
   node scripts/tools/run-style-tagging-llm-batch.mjs
 
 Options:
-  --llm-batch <n>              Songs per LLM request. Default: 30.
+  --llm-batch <n>              Songs per LLM request. Default: 15.
   --llm-max-existing-tags <n>  Process songs with this many tags or fewer. Default: 0.
   --progress-every <n>         Inner progress cadence. Default: 5.
   --sleep-ms <n>               Delay after failed batch. Default: 60000.
