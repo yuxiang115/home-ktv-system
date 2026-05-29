@@ -24,6 +24,7 @@ export function parseArgs(argv) {
     envFile: path.join(ROOT_DIR, "deploy", "docker", ".env"),
     help: false,
     llmBatch: 30,
+    llmMaxExistingTags: 1,
     llmProgressEvery: 5,
     maxLlmStalledBatches: 5,
     maxNeteaseStalledBatches: 5,
@@ -50,6 +51,8 @@ export function parseArgs(argv) {
       options.neteaseBatch = readPositiveInteger(readValue(argv, ++index, arg), arg);
     } else if (arg === "--llm-batch") {
       options.llmBatch = readPositiveInteger(readValue(argv, ++index, arg), arg);
+    } else if (arg === "--llm-max-existing-tags") {
+      options.llmMaxExistingTags = readNonNegativeInteger(readValue(argv, ++index, arg), arg);
     } else if (arg === "--sleep-ms") {
       options.sleepMs = readPositiveInteger(readValue(argv, ++index, arg), arg);
     } else if (arg === "--max-netease-stalled-batches") {
@@ -91,6 +94,8 @@ export function buildTagStylesArgs(kind, options) {
     "--limit",
     String(options.llmBatch),
     "--apply",
+    "--max-existing-tags",
+    String(options.llmMaxExistingTags),
     "--progress-every",
     String(options.llmProgressEvery)
   ];
@@ -121,7 +126,7 @@ WHERE source = 'netease-playlist-v1'
   AND status IN ('empty', 'failed');`;
 }
 
-export function llmLowCoverageSql() {
+export function llmLowCoverageSql(options = parseArgs([])) {
   return `WITH candidate AS (
   SELECT s.id,
          count(DISTINCT st.tag_id)::integer AS tag_count
@@ -136,7 +141,7 @@ export function llmLowCoverageSql() {
    AND llm_status.source = 'llm-style-v1'
   WHERE llm_status.status IS DISTINCT FROM 'tagged'
   GROUP BY s.id
-  HAVING count(DISTINCT st.tag_id) <= 1
+  HAVING count(DISTINCT st.tag_id) <= ${options.llmMaxExistingTags}
 )
 SELECT count(*) FROM candidate;`;
 }
@@ -196,7 +201,7 @@ function drainNetease(context) {
 function drainLlm(context) {
   let stalled = 0;
   while (true) {
-    const lowBefore = readCount(context.queryScalar, llmLowCoverageSql());
+    const lowBefore = readCount(context.queryScalar, llmLowCoverageSql(context.options));
     logLine(context.log, `llm remaining lowCoverage=${lowBefore}`);
 
     if (lowBefore <= 0) {
@@ -207,7 +212,7 @@ function drainLlm(context) {
     const code = context.run("bash", buildTagStylesArgs("llm", context.options), {
       cwd: context.options.rootDir
     });
-    const lowAfter = readCount(context.queryScalar, llmLowCoverageSql());
+    const lowAfter = readCount(context.queryScalar, llmLowCoverageSql(context.options));
     if (code !== 0) {
       logLine(context.log, `llm batch failed code=${code}; sleep before retry`);
       context.sleep(context.options.sleepMs);
@@ -303,6 +308,14 @@ function readPositiveInteger(raw, optionName) {
   return value;
 }
 
+function readNonNegativeInteger(raw, optionName) {
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${optionName} must be a non-negative integer`);
+  }
+  return value;
+}
+
 function printUsage() {
   console.log(`Usage:
   node scripts/tools/run-style-tagging-full.mjs
@@ -310,6 +323,8 @@ function printUsage() {
 Options:
   --netease-batch <n>   Netease primary batch size. Default: 500.
   --llm-batch <n>       LLM fallback batch size. Default: 30.
+  --llm-max-existing-tags <n>
+                         LLM fallback only processes songs with this many tags or fewer. Default: 1.
   --netease-base-url <url>
                          NeteaseCloudMusicApi URL inside Docker. Default: http://ktv-netease-api:3000.
   --sleep-ms <n>        Delay after failed command. Default: 60000.
