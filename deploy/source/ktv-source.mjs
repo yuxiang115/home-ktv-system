@@ -21,19 +21,19 @@ const SERVICES = {
     port: 4000
   },
   admin: {
-    args: ["-F", "@home-ktv/admin", "preview", "--", "--host", "0.0.0.0", "--port", "5174"],
+    args: ["-F", "@home-ktv/admin", "preview", "--host", "0.0.0.0", "--port", "5174"],
     command: "pnpm",
     healthFile: "apps/admin/dist/index.html",
     port: 5174
   },
   controller: {
-    args: ["-F", "@home-ktv/controller", "preview", "--", "--host", "0.0.0.0", "--port", "5176"],
+    args: ["-F", "@home-ktv/controller", "preview", "--host", "0.0.0.0", "--port", "5176"],
     command: "pnpm",
     healthFile: "apps/controller/dist/index.html",
     port: 5176
   },
   "tv-web": {
-    args: ["-F", "@home-ktv/tv-web", "preview", "--", "--host", "0.0.0.0", "--port", "5173"],
+    args: ["-F", "@home-ktv/tv-web", "preview", "--host", "0.0.0.0", "--port", "5173"],
     command: "pnpm",
     healthFile: "apps/tv-web/dist/index.html",
     port: 5173

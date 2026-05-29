@@ -24,6 +24,15 @@ test("deployment docs make source deployment the server default", async () => {
   assert.match(lxcRunbook, /bash deploy\/source\/ktv\.sh deploy/u);
 });
 
+test("source deployment preview commands pass ports to vite", async () => {
+  const sourceScript = await readText("deploy/source/ktv-source.mjs");
+
+  assert.doesNotMatch(sourceScript, /"preview",\s*"--",\s*"--host"/u);
+  assert.match(sourceScript, /"preview",\s*"--host",\s*"0\.0\.0\.0",\s*"--port",\s*"5174"/u);
+  assert.match(sourceScript, /"preview",\s*"--host",\s*"0\.0\.0\.0",\s*"--port",\s*"5176"/u);
+  assert.match(sourceScript, /"preview",\s*"--host",\s*"0\.0\.0\.0",\s*"--port",\s*"5173"/u);
+});
+
 async function readText(relativePath) {
   return readFile(path.join(ROOT_DIR, relativePath), "utf8");
 }
