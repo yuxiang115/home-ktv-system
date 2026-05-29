@@ -33,6 +33,14 @@ test("source deployment preview commands pass ports to vite", async () => {
   assert.match(sourceScript, /"preview",\s*"--host",\s*"0\.0\.0\.0",\s*"--port",\s*"5173"/u);
 });
 
+test("source deployment stops legacy Docker app containers but keeps PostgreSQL", async () => {
+  const sourceScript = await readText("deploy/source/ktv-source.mjs");
+
+  assert.match(sourceScript, /const LEGACY_DOCKER_APP_SERVICES = \["api", "admin", "controller", "tv-web"\]/u);
+  assert.match(sourceScript, /await stopLegacyDockerAppContainers\(\)/u);
+  assert.doesNotMatch(sourceScript, /const LEGACY_DOCKER_APP_SERVICES = \[[^\]]*"postgres"/u);
+});
+
 test("vite preview configs allow deployment hostnames", async () => {
   const adminConfig = await readText("apps/admin/vite.config.ts");
   const controllerConfig = await readText("apps/controller/vite.config.ts");

@@ -12,6 +12,9 @@ const EXAMPLE_ENV = path.join(ROOT_DIR, "deploy", "env", "server.env.example");
 const RUNTIME_DIR = resolveFromRoot(process.env.KTV_RUNTIME_DIR?.trim() || "runtime");
 const LOG_DIR = path.join(RUNTIME_DIR, "logs");
 const PID_DIR = path.join(RUNTIME_DIR, "pids");
+const DOCKER_COMPOSE_FILE = path.join(ROOT_DIR, "deploy", "docker", "compose.yml");
+const DOCKER_ENV_FILE = path.join(ROOT_DIR, "deploy", "docker", ".env");
+const LEGACY_DOCKER_APP_SERVICES = ["api", "admin", "controller", "tv-web"];
 
 const SERVICES = {
   api: {
@@ -67,6 +70,7 @@ async function main(currentCommand, currentArg, currentArgs) {
       await runForeground("git", ["pull", "--ff-only"]);
       await installDependencies();
       await buildApps();
+      await stopLegacyDockerAppContainers();
       for (const service of serviceNames()) {
         await stopService(service);
       }
@@ -94,6 +98,7 @@ async function main(currentCommand, currentArg, currentArgs) {
     case "start":
       requireEnvFile();
       ensureDirs();
+      await stopLegacyDockerAppContainers();
       await runMigration();
       for (const service of serviceNames()) {
         await startService(service);
@@ -103,6 +108,7 @@ async function main(currentCommand, currentArg, currentArgs) {
     case "restart":
       requireEnvFile();
       ensureDirs();
+      await stopLegacyDockerAppContainers();
       for (const service of serviceNames()) {
         await stopService(service);
       }
@@ -220,6 +226,26 @@ async function buildApps() {
 
 async function runMigration() {
   await runForeground("pnpm", ["db:migrate"], buildRuntimeConfig().env);
+}
+
+async function stopLegacyDockerAppContainers() {
+  if (process.env.KTV_SKIP_LEGACY_DOCKER_STOP === "1" || !existsSync(DOCKER_COMPOSE_FILE)) {
+    return;
+  }
+
+  const args = ["compose"];
+  if (existsSync(DOCKER_ENV_FILE)) {
+    args.push("--env-file", DOCKER_ENV_FILE);
+  }
+  args.push("-f", DOCKER_COMPOSE_FILE, "stop", ...LEGACY_DOCKER_APP_SERVICES);
+
+  const result = await runForegroundSoft("docker", args);
+  if (result.ok) {
+    console.log("legacy Docker app containers stopped; PostgreSQL container is left running");
+    return;
+  }
+
+  console.warn(`legacy Docker app stop skipped: ${result.message}`);
 }
 
 async function startService(service) {
@@ -356,6 +382,27 @@ function runForeground(program, args, env = process.env) {
         return;
       }
       reject(new Error(`${program} ${args.join(" ")} failed with exit code ${code}`));
+    });
+  });
+}
+
+function runForegroundSoft(program, args, env = process.env) {
+  return new Promise((resolve) => {
+    const child = spawn(program, args, {
+      cwd: ROOT_DIR,
+      env: { ...process.env, ...env },
+      stdio: "inherit"
+    });
+
+    child.on("error", (error) => {
+      resolve({ message: error instanceof Error ? error.message : String(error), ok: false });
+    });
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve({ message: "", ok: true });
+        return;
+      }
+      resolve({ message: `${program} ${args.join(" ")} failed with exit code ${code}`, ok: false });
     });
   });
 }

@@ -256,6 +256,10 @@ export async function checkCommand(name, command, dependencies = {}) {
   try {
     const result = await runShellCommand(command);
     if (result.code === 0) {
+      const stoppedLine = firstStoppedServiceLine(result.stdout);
+      if (stoppedLine) {
+        return fail("services", name, stoppedLine);
+      }
       return pass("services", name, firstLine(result.stdout) || "command exited 0");
     }
     return warn("services", name, firstLine(result.stderr) || `command exited ${result.code}`);
@@ -549,10 +553,17 @@ function ensureTrailingSlash(url) {
 }
 
 function firstLine(value) {
-  return value
+  return String(value ?? "")
     .split(/\r?\n/u)
     .map((line) => line.trim())
     .find(Boolean);
+}
+
+function firstStoppedServiceLine(value) {
+  return String(value ?? "")
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .find((line) => /^\S+\s+stopped(?:\s|\(|$)/u.test(line));
 }
 
 async function readJsonResponse(response) {

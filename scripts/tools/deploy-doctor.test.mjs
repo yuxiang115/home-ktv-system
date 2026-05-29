@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   buildDeployConfig,
   buildDoctorReport,
+  checkCommand,
   checkCors,
   checkMediaPaths,
   loadEnvFile,
@@ -226,6 +227,20 @@ test("buildDoctorReport returns FAIL when API health probe fails", async () => {
   } finally {
     await rm(dir, { force: true, recursive: true });
   }
+});
+
+test("checkCommand fails source status output with stopped services", async () => {
+  const check = await checkCommand("service status", "bash deploy/source/ktv.sh status", {
+    runShellCommand: async () => ({
+      code: 0,
+      stderr: "",
+      stdout: "api          stopped\nadmin        running (pid 123)\ncontroller   running (pid 124)\ntv-web       running (pid 125)\n"
+    })
+  });
+
+  assert.equal(check.status, "FAIL");
+  assert.equal(check.name, "service status");
+  assert.match(check.message, /api\s+stopped/u);
 });
 
 test("buildDoctorReport includes raw KTV index diagnostics metrics", async () => {
