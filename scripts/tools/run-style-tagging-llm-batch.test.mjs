@@ -6,10 +6,10 @@ import {
   parseArgs
 } from "./run-style-tagging-llm-batch.mjs";
 
-test("parseArgs defaults to 10-song LLM batch requests", () => {
+test("parseArgs defaults to 30-song LLM batch requests", () => {
   const options = parseArgs([]);
 
-  assert.equal(options.llmBatch, 10);
+  assert.equal(options.llmBatch, 30);
   assert.equal(options.llmMaxExistingTags, 0);
   assert.equal(options.progressEvery, 5);
 });
@@ -31,7 +31,7 @@ test("buildBatchTagStylesArgs enables one LLM request per selected batch", () =>
     "--source",
     "llm",
     "--limit",
-    "10",
+    "30",
     "--apply",
     "--max-existing-tags",
     "0",

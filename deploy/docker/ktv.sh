@@ -38,6 +38,16 @@ compose() {
   docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" "$@"
 }
 
+compose_exec_env_args() {
+  local name
+  for name in "$@"; do
+    if [[ -n "${!name:-}" ]]; then
+      printf '%s\n' "-e"
+      printf '%s\n' "${name}"
+    fi
+  done
+}
+
 ensure_env() {
   if [[ ! -f "${ENV_FILE}" ]]; then
     echo "Missing ${ENV_FILE}. Run setup first." >&2
@@ -112,7 +122,18 @@ case "${command}" in
     if [[ "${1:-}" == "--" ]]; then
       shift
     fi
-    compose exec -T api pnpm -F @home-ktv/api tag:ktv-styles -- "$@"
+    mapfile -t exec_env_args < <(compose_exec_env_args \
+      LLM_API_BASE_URL \
+      LLM_API_KEY \
+      LLM_MODEL \
+      LLM_MAX_TOKENS \
+      LLM_TIMEOUT_MS \
+      KTV_LLM_BASE_URL \
+      KTV_LLM_API_KEY \
+      KTV_LLM_MODEL \
+      KTV_LLM_MAX_TOKENS \
+      KTV_LLM_TIMEOUT_MS)
+    compose exec -T "${exec_env_args[@]}" api pnpm -F @home-ktv/api tag:ktv-styles -- "$@"
     ;;
   tag-styles-export)
     ensure_env
