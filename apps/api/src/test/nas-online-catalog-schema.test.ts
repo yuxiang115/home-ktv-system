@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { schemaSql, tableNames } from "../db/schema.js";
@@ -7,6 +7,8 @@ const migrationSql = readFileSync(
   resolve(process.cwd(), "src/db/migrations/0017_nas_online_catalog_refactor.sql"),
   "utf8"
 );
+const cleanupMigrationPath = resolve(process.cwd(), "src/db/migrations/0018_drop_empty_queue_entries_unmapped_archive.sql");
+const cleanupMigrationSql = existsSync(cleanupMigrationPath) ? readFileSync(cleanupMigrationPath, "utf8") : "";
 
 describe("NAS / online catalog final schema", () => {
   it("removes legacy formal catalog tables from the final schema", () => {
@@ -70,5 +72,11 @@ describe("NAS / online catalog migration", () => {
     expect(migrationSql).toContain("DROP TABLE IF EXISTS assets");
     expect(migrationSql).toContain("DROP TABLE IF EXISTS songs");
   });
-}
-);
+
+  it("drops the empty unmapped queue archive only after guarding against data loss", () => {
+    expect(cleanupMigrationSql).toContain("queue_entries_unmapped_archive");
+    expect(cleanupMigrationSql).toContain("archive_has_rows");
+    expect(cleanupMigrationSql).toContain("RAISE EXCEPTION");
+    expect(cleanupMigrationSql).toContain("DROP TABLE public.queue_entries_unmapped_archive");
+  });
+});

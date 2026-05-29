@@ -10,7 +10,7 @@ docker compose --env-file deploy/docker/.env -f deploy/docker/compose.yml \
   exec -T postgres psql -U ktv -d home_ktv
 ```
 
-当前线上库有 25 张业务表。PostgreSQL 字段序号里有少量跳号，这是因为历史迁移删除过字段；本文只列出现存字段。
+当前线上库有 24 张业务表。PostgreSQL 字段序号里有少量跳号，这是因为历史迁移删除过字段；本文只列出现存字段。
 
 ## 总体分组
 
@@ -47,7 +47,6 @@ song_cover_cache，按 source_kind + source_song_id 定位歌曲
 
 运维与迁移
 schema_migrations
-queue_entries_unmapped_archive
 ```
 
 ## 表总览
@@ -74,10 +73,9 @@ queue_entries_unmapped_archive
 | `playback_events` | 46 | 播放事件日志。 |
 | `playback_sessions` | 1 | 每个房间当前播放状态。 |
 | `queue_entries` | 18 | 房间点歌队列，支持 NAS 和线上歌曲来源。 |
-| `queue_entries_unmapped_archive` | 0 | NAS/online 曲库重构迁移时无法映射队列的归档表。 |
 | `room_pairing_tokens` | 1 | 房间配对 token。 |
 | `rooms` | 1 | KTV 房间。 |
-| `schema_migrations` | 17 | 已执行的数据库迁移文件。 |
+| `schema_migrations` | 18 | 已执行的数据库迁移文件。 |
 | `song_cover_cache` | 300 | 歌曲封面查询和缓存元数据。 |
 
 ## 关系总览
@@ -609,38 +607,6 @@ NAS 曲库里的逻辑歌曲。
 - 有效队列索引：`(room_id, status, queue_position) WHERE status IN ('queued', 'preparing', 'loading', 'playing')`。
 - 推荐统计索引：`(source_type, nas_song_id) WHERE source_type = 'nas'`。
 
-### `queue_entries_unmapped_archive`
-
-NAS/online 曲库重构迁移时创建的归档表，当前行数为 0。
-
-| 字段 | 类型 | 可空 | 默认值 | 说明 |
-| --- | --- | --- | --- | --- |
-| `id` | `text` | 是 | - | 归档的队列项 ID。 |
-| `room_id` | `text` | 是 | - | 归档的房间 ID。 |
-| `song_id` | `text` | 是 | - | 重构前的旧歌曲 ID。 |
-| `asset_id` | `text` | 是 | - | 重构前的旧资源 ID。 |
-| `requested_by` | `text` | 是 | - | 归档的点歌来源。 |
-| `queue_position` | `integer` | 是 | - | 归档的队列顺序。 |
-| `status` | `text` | 是 | - | 归档的状态。 |
-| `priority` | `integer` | 是 | - | 归档的优先级。 |
-| `playback_options` | `jsonb` | 是 | - | 归档的播放选项。 |
-| `requested_at` | `timestamptz` | 是 | - | 归档时间字段。 |
-| `started_at` | `timestamptz` | 是 | - | 归档时间字段。 |
-| `ended_at` | `timestamptz` | 是 | - | 归档时间字段。 |
-| `removed_at` | `timestamptz` | 是 | - | 归档时间字段。 |
-| `removed_by_control_session_id` | `text` | 是 | - | 归档的控制端会话 ID。 |
-| `undo_expires_at` | `timestamptz` | 是 | - | 归档的撤销截止时间。 |
-| `source_type` | `text` | 是 | - | 归档的来源类型。 |
-| `nas_song_id` | `text` | 是 | - | 归档的 NAS 歌曲 ID。 |
-| `nas_asset_id` | `text` | 是 | - | 归档的 NAS 资源 ID。 |
-| `online_song_id` | `text` | 是 | - | 归档的线上歌曲 ID。 |
-| `online_asset_id` | `text` | 是 | - | 归档的线上资源 ID。 |
-| `archived_at` | `timestamptz` | 是 | - | 归档时间。 |
-
-索引和约束：
-
-- 没有主键或外键。这张表由 `CREATE TABLE AS` 生成，只用于迁移保底。
-
 ### `room_pairing_tokens`
 
 房间和设备配对 token。
@@ -707,6 +673,7 @@ KTV 房间表。
 - `0015_ktv_tagging_status_per_source.sql`
 - `0016_song_cover_cache.sql`
 - `0017_nas_online_catalog_refactor.sql`
+- `0018_drop_empty_queue_entries_unmapped_archive.sql`
 
 ### `song_cover_cache`
 
@@ -743,7 +710,7 @@ KTV 房间表。
 
 - `online_songs` 和 `online_song_assets` 当前为空。它们存在的原因是让队列结构提前支持清晰的 `nas`/`online` 来源拆分。
 - `queue_entries` 已经不再依赖旧的 `songs`/`assets` 桥接表。NAS 点歌队列通过 `nas_song_id` 和 `nas_asset_id` 直接指向 `ktv_songs` 与 `ktv_song_assets`。
-- `queue_entries_unmapped_archive` 当前为空，只用于保留重构迁移时无法映射的历史队列记录。
+- `queue_entries_unmapped_archive` 已删除。它原本只是 NAS/online 重构迁移的临时兜底表；删除迁移会在表非空时直接失败，避免误删需要人工检查的数据。
 - `song_cover_cache` 是封面元数据最合适的归属位置。后续如果把图片下载到本地，建议在这里扩展 `external_image_url`、`local_image_path`、`image_content_type`、`image_size_bytes`、`downloaded_at` 等字段，不要放到 `ktv_songs` 或 `ktv_song_assets` 主表。
 - `ktv_song_assets.file_path` 上重复的两个唯一索引可以作为后续小迁移清理。
 - `song_cover_cache` 最大的结构取舍是它使用 `(source_kind, source_song_id)` 这种多来源键，因此 PostgreSQL 不能直接给它同时加到 `ktv_songs` 和 `online_songs` 的外键。它更灵活，但约束强度弱于拆成具体来源表。

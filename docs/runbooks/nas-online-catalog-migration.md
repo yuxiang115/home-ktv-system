@@ -67,7 +67,7 @@ docker compose --env-file deploy/docker/.env -f deploy/docker/compose.yml exec -
        LIMIT 20;"
 ```
 
-如果这条 SQL 返回数据，迁移会把这些不可映射队列归档到 `queue_entries_unmapped_archive`，并从有效队列中删除。迁移前可以先清空队列或确认这些旧队列可以丢弃。
+如果这条 SQL 返回数据，`0017` 迁移会把这些不可映射队列归档到 `queue_entries_unmapped_archive`，并从有效队列中删除。后续 `0018` 迁移会删除这个归档表，但会先检查它是否为空；如果表内有数据，迁移会失败并要求人工检查。迁移前可以先清空队列或确认这些旧队列可以丢弃。
 
 确认封面缓存来源分布：
 
