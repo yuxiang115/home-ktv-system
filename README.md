@@ -130,22 +130,12 @@ pnpm hot-songs:update
 
 ## 真实曲库维护
 
-真实曲库索引、技术探测、封面拉取和风格标签流程见 [docs/KTV-FULL-INDEX.md](docs/KTV-FULL-INDEX.md)。全量风格标签建议使用 JSONL 暂存：
+真实曲库索引、技术探测、封面拉取和风格标签流程见 [docs/KTV-FULL-INDEX.md](docs/KTV-FULL-INDEX.md)。风格标签现在只保留 `ktv_song_style_tags` 关系表，批量补标签使用独立 Python runner：
 
 ```bash
-pnpm ktv:tags:export -- --out runtime/media/tagging/full/songs.jsonl
-pnpm ktv:tags:jsonl -- --input runtime/media/tagging/full/songs.jsonl --output runtime/media/tagging/full/results.jsonl --source netease --concurrency 5
-pnpm ktv:tags:import -- --input runtime/media/tagging/full/results.jsonl --dry-run
-pnpm ktv:tags:import -- --input runtime/media/tagging/full/results.jsonl --apply
-```
-
-服务器上长时间运行全量标签任务时，优先使用独立 job 容器，避免主服务重新部署时中断：
-
-```bash
-bash deploy/docker/ktv.sh tag-styles-job resume
-bash deploy/docker/ktv.sh tag-styles-job status
-bash deploy/docker/ktv.sh tag-styles-job logs
-bash deploy/docker/ktv.sh tag-styles-job stats
+python3 scripts/tools/run_style_tagging_llm_batch.py run --max-existing-tags 1 --batch-size 30 --output runtime/tagging/llm/llm-style-tags.jsonl
+python3 scripts/tools/run_style_tagging_llm_batch.py import --output runtime/tagging/llm/llm-style-tags.jsonl --dry-run
+python3 scripts/tools/run_style_tagging_llm_batch.py import --output runtime/tagging/llm/llm-style-tags.jsonl --apply
 ```
 
 ## 本地资源目录

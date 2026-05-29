@@ -16,7 +16,7 @@ Tables:
 - `ktv_songs`: title, primary artist, normalized search keys.
 - `ktv_song_artists`: many-to-many song/artist links for duet and multi-artist songs.
 - `ktv_song_assets`: actual playable files, path, size, parse confidence, technical metadata, missing marker.
-- `ktv_style_groups`, `ktv_style_tags`, `ktv_song_style_tags`: multi-style tagging model. One song can belong to multiple style tags.
+- `ktv_song_style_tags`: simplified style-tag relation. One song can belong to multiple style tags through multiple rows.
 
 The existing playback catalog remains separate. This KTV index is the fast lookup layer for finding song versions, artist catalogs, style tags, and playable file paths.
 
@@ -84,62 +84,52 @@ Exception policy:
 
 ## Style Tags
 
-歌曲风格不再依赖文件名中的原始分类。当前使用独立标签表：
+歌曲风格不再依赖文件名中的原始分类。当前数据库只保留一张关系表：
 
-- `ktv_style_groups`: 标签分组，例如语言、年代、情绪、曲风。
-- `ktv_style_tags`: 具体标签。
-- `ktv_song_style_tags`: 歌曲和标签的多对多关系，带来源字段。
-- `ktv_song_tagging_status`: 每首歌在某个标签来源下的处理状态。
+- `ktv_song_style_tags.song_id`: 歌曲 ID。
+- `ktv_song_style_tags.tag_name`: 标签名，例如国语、流行、KTV必点。
+- `ktv_song_style_tags.tag_group`: 标签分组，例如语种地区、核心曲风、KTV场景。
 
-主标签来源优先使用网易云 API；低覆盖歌曲可以用 LLM 批量补充。标签回填不影响搜索、点歌和播放。
+一首歌有多个标签时写多行，唯一约束是 `(song_id, tag_name, tag_group)`。数据库不再保存标签字典、打标运行状态或缓存；这些状态由外部脚本自己的 JSONL 和 state 文件承担。标签回填不影响搜索、点歌和播放。
 
-长时间全量打标签时优先使用 JSONL 暂存流程，避免 PostgreSQL 重建、迁移或重启中断任务：
-
-```bash
-pnpm ktv:tags:export -- --out runtime/media/tagging/full/songs.jsonl
-pnpm ktv:tags:jsonl -- --input runtime/media/tagging/full/songs.jsonl --output runtime/media/tagging/full/results.jsonl --source netease --concurrency 5
-pnpm ktv:tags:import -- --input runtime/media/tagging/full/results.jsonl --dry-run
-pnpm ktv:tags:import -- --input runtime/media/tagging/full/results.jsonl --apply
-```
-
-Docker 部署建议把暂存文件放在媒体挂载目录，容器重建后仍然保留：
-
-```bash
-bash deploy/docker/ktv.sh tag-styles-export -- --out /data/home-ktv-media/tagging/full/songs.jsonl
-bash deploy/docker/ktv.sh tag-styles-jsonl -- --input /data/home-ktv-media/tagging/full/songs.jsonl --output /data/home-ktv-media/tagging/full/results.jsonl --source netease --concurrency 5
-bash deploy/docker/ktv.sh tag-styles-import -- --input /data/home-ktv-media/tagging/full/results.jsonl --apply
-```
-
-`tag-styles-jsonl` 不连接 PostgreSQL，只读取 `songs.jsonl` 并追加 `results.jsonl`，可安全续跑。`--concurrency` 是单进程内并发，推荐先从 5 开始观察网易云 API 的失败率。导入阶段会先按旧 `sourceSongId` 匹配当前歌曲，再按归一化歌名和歌手匹配。
-
-LLM 低覆盖补标签使用独立 Python runner，避免依赖正在部署的 API 容器。它会先把结果追加到 JSONL 和 state 文件，全部完成后再统一导入数据库：
+LLM 批量补标签使用独立 Python runner。它会先把结果追加到 JSONL 和 state 文件，全部完成后再统一导入数据库：
 
 ```bash
 python3 scripts/tools/run_style_tagging_llm_batch.py run \
   --max-existing-tags 1 \
   --batch-size 30 \
-  --output /opt/home-ktv-jobs/style-tagging/llm-lowcoverage-results.jsonl
+  --output runtime/tagging/llm/llm-style-tags.jsonl
 
 python3 scripts/tools/run_style_tagging_llm_batch.py import \
-  --output /opt/home-ktv-jobs/style-tagging/llm-lowcoverage-results.jsonl \
+  --output runtime/tagging/llm/llm-style-tags.jsonl \
   --dry-run
 
 python3 scripts/tools/run_style_tagging_llm_batch.py import \
-  --output /opt/home-ktv-jobs/style-tagging/llm-lowcoverage-results.jsonl \
+  --output runtime/tagging/llm/llm-style-tags.jsonl \
   --apply
 ```
 
-服务器全量运行时建议使用独立 job 容器，避免重新部署主服务时杀掉 `api` 容器内的 `docker compose exec` 任务：
+Docker 部署时同样使用这个脚本，只是从 `api` 容器内执行：
 
 ```bash
-bash deploy/docker/ktv.sh tag-styles-job start -- --input /data/home-ktv-media/tagging/full/songs.jsonl --output /data/home-ktv-media/tagging/full/results.jsonl
-bash deploy/docker/ktv.sh tag-styles-job status
-bash deploy/docker/ktv.sh tag-styles-job logs
-bash deploy/docker/ktv.sh tag-styles-job stats
-bash deploy/docker/ktv.sh tag-styles-job import-dry-run
+docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
+  python3 /app/scripts/tools/run_style_tagging_llm_batch.py run \
+  --max-existing-tags 1 \
+  --batch-size 30 \
+  --output /data/home-ktv-media/tagging/llm-style-tags.jsonl
+
+docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
+  python3 /app/scripts/tools/run_style_tagging_llm_batch.py import \
+  --output /data/home-ktv-media/tagging/llm-style-tags.jsonl \
+  --dry-run
+
+docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
+  python3 /app/scripts/tools/run_style_tagging_llm_batch.py import \
+  --output /data/home-ktv-media/tagging/llm-style-tags.jsonl \
+  --apply
 ```
 
-独立 job 的状态和日志默认保存在 `/opt/home-ktv-jobs/style-tagging`，结果 JSONL 仍保存在媒体目录，后续可统一导入数据库。
+`--max-existing-tags` 控制候选范围，默认补齐标签数不超过 1 的歌曲。`status` 子命令可以查看当前候选数量和结果文件摘要。
 
 ## Rebuild Flow
 

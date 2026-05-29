@@ -24,20 +24,16 @@ bash deploy/docker/ktv.sh stop
 
 ```bash
 bash deploy/docker/ktv.sh probe-index -- --limit 300 --concurrency 2
-bash deploy/docker/ktv.sh tag-styles -- --limit 300 --dry-run
-bash deploy/docker/ktv.sh tag-styles-export -- --out /data/home-ktv-media/tagging/full/songs.jsonl
-bash deploy/docker/ktv.sh tag-styles-jsonl -- --input /data/home-ktv-media/tagging/full/songs.jsonl --output /data/home-ktv-media/tagging/full/results.jsonl --source netease --concurrency 5
-bash deploy/docker/ktv.sh tag-styles-job resume
-bash deploy/docker/ktv.sh tag-styles-job status
-bash deploy/docker/ktv.sh tag-styles-job logs
-bash deploy/docker/ktv.sh tag-styles-job stats
-bash deploy/docker/ktv.sh tag-styles-import -- --input /data/home-ktv-media/tagging/full/results.jsonl --dry-run
-python3 scripts/tools/run_style_tagging_llm_batch.py run-and-import --max-existing-tags 1 --batch-size 30 --apply
-bash deploy/docker/ktv.sh cover-coverage -- --limit 100
 bash deploy/docker/ktv.sh fetch-covers -- --limit 300
+bash deploy/docker/ktv.sh cover-coverage -- --limit 100
+docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
+  python3 /app/scripts/tools/run_style_tagging_llm_batch.py run --max-existing-tags 1 --batch-size 30 --output /data/home-ktv-media/tagging/llm-style-tags.jsonl
+docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
+  python3 /app/scripts/tools/run_style_tagging_llm_batch.py import --output /data/home-ktv-media/tagging/llm-style-tags.jsonl --dry-run
+docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
+  python3 /app/scripts/tools/run_style_tagging_llm_batch.py import --output /data/home-ktv-media/tagging/llm-style-tags.jsonl --apply
 ```
 
-`tag-styles-jsonl` 仍可用于短任务；全量长任务建议使用 `tag-styles-job`，它会启动独立 Docker 容器并把运行状态写到 `/opt/home-ktv-jobs/style-tagging`，主服务 `restart` 不会杀掉该任务。
-`run_style_tagging_llm_batch.py` 用于 LLM 兜底补标签，一次请求处理一批歌曲；run 阶段只追加 JSONL 和 state 文件，全部完成后才统一 import 写库。整批失败时不写入单曲失败状态，由外层脚本等待后重试。
+风格标签现在只走 `scripts/tools/run_style_tagging_llm_batch.py`，不再保留旧的 Docker 独立任务入口或 JSONL wrapper。run 阶段只追加 JSONL 和 state 文件，全部完成后才统一 import 写库；整批失败时不写入数据库，由外层脚本等待后重试。
 
 完整配置、NAS 路径映射、公网入口和验证步骤见 [../../docs/deployment-docker.md](../../docs/deployment-docker.md)。歌曲封面拉取流程见 [../../docs/runbooks/song-cover-fetching.md](../../docs/runbooks/song-cover-fetching.md)。从旧曲库桥接结构升级到 NAS/online 曲库模型时，先按 [../../docs/runbooks/nas-online-catalog-migration.md](../../docs/runbooks/nas-online-catalog-migration.md) 做备份、迁移和回滚准备。

@@ -63,19 +63,20 @@ bash deploy/docker/ktv.sh doctor
 bash deploy/docker/ktv.sh logs
 bash deploy/docker/ktv.sh logs api
 bash deploy/docker/ktv.sh probe-index -- --limit 300 --concurrency 2
-bash deploy/docker/ktv.sh tag-styles-export -- --out /data/home-ktv-media/tagging/full/songs.jsonl
-bash deploy/docker/ktv.sh tag-styles-jsonl -- --input /data/home-ktv-media/tagging/full/songs.jsonl --output /data/home-ktv-media/tagging/full/results.jsonl --source netease --concurrency 5
-bash deploy/docker/ktv.sh tag-styles-job resume
-bash deploy/docker/ktv.sh tag-styles-job status
-bash deploy/docker/ktv.sh tag-styles-job logs
-bash deploy/docker/ktv.sh tag-styles-job stats
-bash deploy/docker/ktv.sh tag-styles-import -- --input /data/home-ktv-media/tagging/full/results.jsonl --dry-run
-node scripts/tools/run-style-tagging-llm-batch.mjs --llm-max-existing-tags 0
+bash deploy/docker/ktv.sh fetch-covers -- --limit 300
+bash deploy/docker/ktv.sh cover-coverage -- --limit 100
+docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
+  python3 /app/scripts/tools/run_style_tagging_llm_batch.py status --output /data/home-ktv-media/tagging/llm-style-tags.jsonl
+docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
+  python3 /app/scripts/tools/run_style_tagging_llm_batch.py run --max-existing-tags 1 --batch-size 30 --output /data/home-ktv-media/tagging/llm-style-tags.jsonl
+docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
+  python3 /app/scripts/tools/run_style_tagging_llm_batch.py import --output /data/home-ktv-media/tagging/llm-style-tags.jsonl --dry-run
+docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
+  python3 /app/scripts/tools/run_style_tagging_llm_batch.py import --output /data/home-ktv-media/tagging/llm-style-tags.jsonl --apply
 bash deploy/docker/ktv.sh stop
 ```
 
-`tag-styles-jsonl` 适合短任务或手动批次。全量长任务建议使用 `tag-styles-job`，它会启动独立的 `home-ktv-style-tags-job` 容器，状态和日志写到 `/opt/home-ktv-jobs/style-tagging`，主服务 `restart` 不会停止该任务。
-`run-style-tagging-llm-batch.mjs` 用于 LLM 兜底补标签，一次请求处理一批歌曲；整批失败时不写入单曲失败状态，由外层脚本等待后重试。
+风格标签不再走旧的部署 wrapper。统一使用 `scripts/tools/run_style_tagging_llm_batch.py`，它会先生成 JSONL 和 state，再统一导入数据库；`--max-existing-tags` 用来筛选低覆盖歌曲，避免重复补标签。
 
 ## 服务
 

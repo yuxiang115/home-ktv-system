@@ -43,9 +43,10 @@ scripts/*             本地开发、检查和运维工具
 - `ktv_songs`: 歌曲标题、主歌手和搜索字段。
 - `ktv_song_artists`: 歌曲和歌手的多对多关系。
 - `ktv_song_assets`: 实际视频文件路径、大小、技术探测摘要和缺失标记。
-- `ktv_style_groups`、`ktv_style_tags`、`ktv_song_style_tags`: 多风格标签模型。
+- `ktv_song_style_tags`: 多风格标签关系表，每个标签一行，按 `song_id + tag_name + tag_group` 去重。
 
-`ktv_songs.category` 已不再作为长期分类字段。风格分类走独立标签表，一首歌可以属于多个风格。
+`ktv_songs.category` 已不再作为长期分类字段。风格分类走独立关系表，一首歌可以属于多个风格。
+当前不再保留标签字典表，风格标签由打标脚本直接写入关系表。
 
 ## 媒体和播放
 

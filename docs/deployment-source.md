@@ -46,9 +46,10 @@ bash deploy/source/ktv.sh smoke
 bash deploy/source/ktv.sh logs
 bash deploy/source/ktv.sh logs api
 bash deploy/source/ktv.sh probe-index -- --limit 300 --concurrency 2
-bash deploy/source/ktv.sh tag-styles-export -- --out runtime/media/tagging/full/songs.jsonl
-bash deploy/source/ktv.sh tag-styles-jsonl -- --input runtime/media/tagging/full/songs.jsonl --output runtime/media/tagging/full/results.jsonl --source netease --concurrency 5
-bash deploy/source/ktv.sh tag-styles-import -- --input runtime/media/tagging/full/results.jsonl --dry-run
+python3 scripts/tools/run_style_tagging_llm_batch.py status --env-file deploy/source/.env --output runtime/tagging/llm/llm-style-tags.jsonl
+python3 scripts/tools/run_style_tagging_llm_batch.py run --env-file deploy/source/.env --max-existing-tags 1 --batch-size 30 --output runtime/tagging/llm/llm-style-tags.jsonl
+python3 scripts/tools/run_style_tagging_llm_batch.py import --env-file deploy/source/.env --output runtime/tagging/llm/llm-style-tags.jsonl --dry-run
+python3 scripts/tools/run_style_tagging_llm_batch.py import --env-file deploy/source/.env --output runtime/tagging/llm/llm-style-tags.jsonl --apply
 bash deploy/source/ktv.sh stop
 ```
 

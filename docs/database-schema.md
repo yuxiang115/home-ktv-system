@@ -2,7 +2,7 @@
 
 最后更新：2026-05-29。
 
-本文面向项目维护和结构讨论，描述 `apps/api/src/db/schema.ts` 与迁移 `0019_runtime_db_simplification.sql` 之后的目标结构。当前业务表为 18 张；`schema_migrations` 是迁移工具表，不算业务表。
+本文面向项目维护和结构讨论，描述 `apps/api/src/db/schema.ts` 与迁移 `0020_ktv_style_tags_simplification.sql` 之后的目标结构。当前业务表为 13 张；`schema_migrations` 是迁移工具表，不算业务表。
 
 ## 总体分组
 
@@ -17,9 +17,7 @@ ktv_index_runs
   -> ktv_song_assets -> ktv_songs
 ktv_songs
   -> ktv_song_artists -> ktv_artists
-  -> ktv_song_style_tags -> ktv_style_tags -> ktv_style_groups
-  -> ktv_song_tagging_status -> ktv_song_tagging_runs
-ktv_song_tagging_cache
+  -> ktv_song_style_tags
 
 线上曲库占位
 online_songs -> online_song_assets
@@ -40,12 +38,7 @@ song_cover_cache
 | `ktv_song_assets` | NAS 上的实际媒体文件和技术探测信息。 |
 | `ktv_artists` | NAS 歌手维表。 |
 | `ktv_song_artists` | NAS 歌曲和歌手的多对多关系。 |
-| `ktv_style_groups` | 歌曲风格标签分组。 |
-| `ktv_style_tags` | 歌曲风格标签。 |
-| `ktv_song_style_tags` | 歌曲和风格标签的多对多关系。 |
-| `ktv_song_tagging_runs` | 风格打标批处理任务。 |
-| `ktv_song_tagging_status` | 每首歌在每个打标来源上的状态。 |
-| `ktv_song_tagging_cache` | 打标来源或 LLM 缓存。 |
+| `ktv_song_style_tags` | 歌曲和风格标签的多对多关系，按 `song_id + tag_name + tag_group` 去重。 |
 | `ktv_index_runs` | NAS 曲库索引任务历史。 |
 | `song_cover_cache` | 歌曲封面查询和缓存元数据。 |
 | `online_songs` | 线上歌曲占位表。 |
@@ -70,11 +63,7 @@ song_cover_cache
 - `ktv_song_assets.last_seen_run_id -> ktv_index_runs.id`，`ON DELETE SET NULL`。
 - `ktv_song_artists.song_id -> ktv_songs.id`，`ON DELETE CASCADE`。
 - `ktv_song_artists.artist_id -> ktv_artists.id`，`ON DELETE CASCADE`。
-- `ktv_style_tags.group_id -> ktv_style_groups.id`，`ON DELETE RESTRICT`。
 - `ktv_song_style_tags.song_id -> ktv_songs.id`，`ON DELETE CASCADE`。
-- `ktv_song_style_tags.tag_id -> ktv_style_tags.id`，`ON DELETE CASCADE`。
-- `ktv_song_tagging_status.song_id -> ktv_songs.id`，`ON DELETE CASCADE`。
-- `ktv_song_tagging_status.run_id -> ktv_song_tagging_runs.id`，`ON DELETE SET NULL`。
 
 ### 队列来源
 
@@ -101,6 +90,7 @@ song_cover_cache
 - 长期点歌统计改为 `ktv_songs.request_count`，不再扫描历史队列表。
 
 迁移 `0019_runtime_db_simplification.sql` 会清空当前 `queue_entries`，并清空 TV 在线状态和控制端 session。真实曲库、封面缓存、风格标签和 `ktv_songs.request_count` 会保留。
+迁移 `0020_ktv_style_tags_simplification.sql` 会把旧风格字典和运行态表收敛到单一 `ktv_song_style_tags` 关系表。
 
 ## 字段清单
 
@@ -217,51 +207,13 @@ NAS 索引任务历史。
 
 字段：`id`、`source_root`、`ssh_host`、`status`、`files_seen`、`songs_upserted`、`assets_upserted`、`error_message`、`started_at`、`finished_at`、`created_at`、`updated_at`。
 
-### `ktv_style_groups`
-
-风格标签分组。
-
-字段：`id`、`name`、`sort_order`、`enabled`、`created_at`、`updated_at`。
-
-关键约束：`UNIQUE(name)`。
-
-### `ktv_style_tags`
-
-风格标签。
-
-字段：`id`、`group_id`、`name`、`normalized_name`、`sort_order`、`enabled`、`created_at`、`updated_at`。
-
-关键约束：`UNIQUE(normalized_name)`。
-
 ### `ktv_song_style_tags`
 
 歌曲和风格标签关系表。
 
-字段：`song_id`、`tag_id`、`source`、`confidence`、`evidence`、`locked`、`created_at`、`updated_at`。
+字段：`song_id`、`tag_name`、`tag_group`、`created_at`、`updated_at`。
 
-主键：`(song_id, tag_id, source)`。
-
-### `ktv_song_tagging_runs`
-
-风格打标批处理任务。
-
-字段：`id`、`source`、`status`、`selected_count`、`processed_count`、`tagged_count`、`empty_count`、`failed_count`、`average_tags`、`options`、`summary`、`error_message`、`started_at`、`finished_at`、`created_at`、`updated_at`。
-
-### `ktv_song_tagging_status`
-
-每首歌在每个打标来源上的状态。
-
-字段：`song_id`、`source`、`status`、`tag_count`、`confidence`、`run_id`、`error_message`、`updated_at`、`created_at`。
-
-主键：`(song_id, source)`。
-
-### `ktv_song_tagging_cache`
-
-打标缓存表。
-
-字段：`source`、`cache_key`、`payload`、`created_at`、`updated_at`。
-
-主键：`(source, cache_key)`。
+关键约束：`UNIQUE(song_id, tag_name, tag_group)`；一首歌如果有多个标签，就用多行记录。
 
 ### `song_cover_cache`
 

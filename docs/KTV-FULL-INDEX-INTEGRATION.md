@@ -16,7 +16,8 @@ Core fields for the KTV system:
 - `ktv_song_assets.id`
 - `ktv_song_assets.file_path`
 - `ktv_song_assets.technical_metadata`
-- `ktv_song_style_tags.tag_id`
+- `ktv_song_style_tags.tag_name`
+- `ktv_song_style_tags.tag_group`
 
 Do not depend on folder structure for search. Use indexed database fields, then use `file_path` only when handing the selected asset to the player.
 
@@ -88,15 +89,15 @@ select
   s.id as song_id,
   s.title,
   s.primary_artist_name,
-  t.name as style_tag,
+  st.tag_name as style_tag,
+  st.tag_group as style_group,
   a.id as asset_id,
   a.file_path
-from ktv_style_tags t
-join ktv_song_style_tags st on st.tag_id = t.id
+from ktv_song_style_tags st
 join ktv_songs s on s.id = st.song_id
 join ktv_song_assets a on a.song_id = s.id
 where a.missing_at is null
-  and t.name = $1
+  and st.tag_name = $1
 order by s.primary_artist_name, s.title, a.file_path;
 ```
 
@@ -158,31 +159,30 @@ The probe stores compact `mediaInfoSummary`, `mediaInfoProvenance`, and failure 
 
 ## Style Tagging
 
-Run a bounded NetEase sample first:
+当前不再保留风格字典表或独立运行态表。风格标签只写入 `ktv_song_style_tags(song_id, tag_name, tag_group)`，一首歌多个标签就写多行。
+
+低覆盖补标签使用独立 Python runner。它会先把结果写到 JSONL 和 state 文件，再统一导入数据库：
 
 ```bash
-bash deploy/docker/ktv.sh tag-styles -- --limit 300 --dry-run
-bash deploy/docker/ktv.sh tag-styles -- --limit 300 --apply
+python3 scripts/tools/run_style_tagging_llm_batch.py run \
+  --max-existing-tags 1 \
+  --batch-size 30 \
+  --output runtime/tagging/llm/llm-style-tags.jsonl
+
+python3 scripts/tools/run_style_tagging_llm_batch.py import \
+  --output runtime/tagging/llm/llm-style-tags.jsonl \
+  --dry-run
+
+python3 scripts/tools/run_style_tagging_llm_batch.py import \
+  --output runtime/tagging/llm/llm-style-tags.jsonl \
+  --apply
 ```
 
-For full-library work, use the JSONL staging flow so tagging can continue while the database is being rebuilt:
+如果在 Docker 里跑，把命令改成：
 
 ```bash
-bash deploy/docker/ktv.sh tag-styles-export -- --out /data/home-ktv-media/tagging/full/songs.jsonl
-bash deploy/docker/ktv.sh tag-styles-jsonl -- --input /data/home-ktv-media/tagging/full/songs.jsonl --output /data/home-ktv-media/tagging/full/results.jsonl --source netease --concurrency 5
-bash deploy/docker/ktv.sh tag-styles-import -- --input /data/home-ktv-media/tagging/full/results.jsonl --dry-run
-bash deploy/docker/ktv.sh tag-styles-import -- --input /data/home-ktv-media/tagging/full/results.jsonl --apply
+docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
+  python3 /app/scripts/tools/run_style_tagging_llm_batch.py run --max-existing-tags 1 --batch-size 30
 ```
 
-`tag-styles-jsonl` has no database dependency. It skips existing `songKey + source` rows in the result file on resume. Use `--concurrency` for bounded in-process parallelism; start with 5 and check provider failure rate before increasing. Low-coverage songs can be supplemented by the LLM fallback in batches. Tagging failures do not affect search, queueing, or playback.
-
-For server-scale runs, prefer the independent job container:
-
-```bash
-bash deploy/docker/ktv.sh tag-styles-job start -- --input /data/home-ktv-media/tagging/full/songs.jsonl --output /data/home-ktv-media/tagging/full/results.jsonl
-bash deploy/docker/ktv.sh tag-styles-job status
-bash deploy/docker/ktv.sh tag-styles-job logs
-bash deploy/docker/ktv.sh tag-styles-job stats
-```
-
-The job uses `home-ktv-style-tags-job` and stores host-side state under `/opt/home-ktv-jobs/style-tagging`, so normal main-service rebuilds do not stop the tagging process.
+`status` 子命令可以查看候选数量、输出文件和 state 摘要。标签回填不影响搜索、队列或播放。
