@@ -59,10 +59,24 @@ async function main(currentCommand, currentArg, currentArgs) {
     case "setup":
       ensureEnvFile();
       ensureDirs();
+      printNextSteps();
+      return;
+    case "deploy":
+      requireEnvFile();
+      ensureDirs();
+      await runForeground("git", ["pull", "--ff-only"]);
       await installDependencies();
       await buildApps();
+      for (const service of serviceNames()) {
+        await stopService(service);
+      }
       await runMigration();
-      printNextSteps();
+      for (const service of serviceNames()) {
+        await startService(service);
+      }
+      printUrls();
+      await runDoctor();
+      await runSmoke();
       return;
     case "pull":
       await runForeground("git", ["pull", "--ff-only"]);
@@ -118,13 +132,12 @@ async function main(currentCommand, currentArg, currentArgs) {
     case "doctor":
       requireEnvFile();
       ensureDirs();
-      await runForeground("node", [
-        "scripts/tools/deploy-doctor.mjs",
-        "--mode",
-        "source",
-        "--env-file",
-        ENV_FILE
-      ]);
+      await runDoctor();
+      return;
+    case "smoke":
+      requireEnvFile();
+      ensureDirs();
+      await runSmoke();
       return;
     case "probe-index":
       requireEnvFile();
@@ -447,6 +460,7 @@ function printUrls() {
 function printNextSteps() {
   console.log("");
   console.log("Setup finished. Common commands:");
+  console.log("  bash deploy/source/ktv.sh deploy");
   console.log("  bash deploy/source/ktv.sh start");
   console.log("  bash deploy/source/ktv.sh status");
   console.log("  bash deploy/source/ktv.sh logs");
@@ -457,7 +471,8 @@ function printUsage(error = false) {
     "Usage: bash deploy/source/ktv.sh <command> [service]",
     "",
     "Commands:",
-    "  setup       Create env file, install dependencies, build apps, and run migrations",
+    "  setup       Create env file and runtime directories",
+    "  deploy      Pull, install, build, migrate, restart, doctor, and smoke test",
     "  pull        git pull --ff-only",
     "  build       Build API, Admin, Controller, and Web TV from source",
     "  migrate     Run database migrations",
@@ -466,6 +481,7 @@ function printUsage(error = false) {
     "  status      Show service status and URLs",
     "  logs [svc]  Follow logs for all services or one service",
     "  doctor      Run deployment self-checks",
+    "  smoke       Run public web deployment smoke checks",
     "  probe-index Probe indexed KTV media technical metadata",
     "  tag-styles  Tag indexed KTV songs directly against PostgreSQL",
     "  tag-styles-export Export active indexed songs to JSONL",
@@ -483,6 +499,22 @@ function printUsage(error = false) {
   ].join("\n");
 
   (error ? console.error : console.log)(output);
+}
+
+async function runDoctor() {
+  await runForeground("node", [
+    "scripts/tools/deploy-doctor.mjs",
+    "--mode",
+    "source",
+    "--env-file",
+    ENV_FILE,
+    "--service-status-cmd",
+    sourceStatusCommand()
+  ]);
+}
+
+async function runSmoke() {
+  await runForeground("node", ["scripts/tools/web-deploy-smoke.mjs"], buildRuntimeConfig().env);
 }
 
 function writeHeader(logPath, service) {
@@ -503,7 +535,7 @@ function assertBuildOutput(service) {
   }
 
   console.error(`Missing build output for ${service}: ${filePath}`);
-  console.error("Run: bash deploy/source/ktv.sh setup");
+  console.error("Run: bash deploy/source/ktv.sh deploy");
   process.exit(1);
 }
 
@@ -576,6 +608,22 @@ function replaceUrlPort(url, port) {
 
 function stripArgumentSeparator(args) {
   return args[0] === "--" ? args.slice(1) : args;
+}
+
+function sourceStatusCommand() {
+  return [
+    envAssignment("KTV_ENV_FILE", ENV_FILE),
+    envAssignment("KTV_RUNTIME_DIR", RUNTIME_DIR),
+    "bash deploy/source/ktv.sh status"
+  ].join(" ");
+}
+
+function envAssignment(name, value) {
+  return `${name}=${shellQuote(value)}`;
+}
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
 function detectLanIp() {

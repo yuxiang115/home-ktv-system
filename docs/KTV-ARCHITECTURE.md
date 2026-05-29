@@ -59,20 +59,20 @@ scripts/*             本地开发、检查和运维工具
 
 服务器侧包含 API、Admin、Controller、Web TV 和 PostgreSQL。正式 TV 客户端是单独安装到电视的 Android APK。
 
-推荐服务器部署方式是 Docker Compose：
+当前私有测试服务器推荐使用源码部署：
+
+```bash
+bash deploy/source/ktv.sh setup
+bash deploy/source/ktv.sh deploy
+bash deploy/source/ktv.sh doctor
+```
+
+Docker Compose 保留为稳定发布和备用路径：
 
 ```bash
 bash deploy/docker/ktv.sh setup
 bash deploy/docker/ktv.sh start
 bash deploy/docker/ktv.sh doctor
-```
-
-源码部署保留给不使用 Docker 的服务器：
-
-```bash
-bash deploy/source/ktv.sh setup
-bash deploy/source/ktv.sh start
-bash deploy/source/ktv.sh doctor
 ```
 
 部署细节以 [deployment.md](deployment.md) 和 [runbooks/deploy-lxc-dev.md](runbooks/deploy-lxc-dev.md) 为准。

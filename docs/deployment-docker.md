@@ -1,6 +1,6 @@
 # Docker Compose 部署
 
-Docker 部署适合服务器通过 Git 拉取代码后运行。它会启动 PostgreSQL、API、Admin、Controller 和 Web TV。
+Docker Compose 部署保留为稳定发布和备用路径。它会启动 PostgreSQL、API、Admin、Controller 和 Web TV；当前私有测试服务器的高频调试优先走 [源码部署](deployment-source.md)。
 
 ## 第一次部署
 

@@ -3,7 +3,7 @@
 ## 服务器
 
 ```text
-lxc-dev      192.168.5.102  HomeKTV Docker Compose
+lxc-dev      192.168.5.102  HomeKTV source deployment
 lxc-network  192.168.5.103  Caddy + Homepage
 ```
 
@@ -30,18 +30,21 @@ test -r /mnt/nas/KTV歌曲
 
 ## 环境变量
 
-`/opt/home-ktv-system/deploy/docker/.env` 至少应包含：
+`/opt/home-ktv-system/deploy/source/.env` 至少应包含：
 
 ```bash
+DATABASE_URL=postgres://ktv:ktv@127.0.0.1:5432/home_ktv
 PUBLIC_BASE_URL=https://ktv-api.shaolongfei.com
 ADMIN_BASE_URL=https://ktv-admin.shaolongfei.com
 CONTROLLER_BASE_URL=https://ktv-controller.shaolongfei.com
 TV_WEB_BASE_URL=https://ktv-tv.shaolongfei.com
 CORS_ALLOWED_ORIGINS=https://ktv-admin.shaolongfei.com,https://ktv-controller.shaolongfei.com,https://ktv-tv.shaolongfei.com
-KTV_NAS_HOST_PATH=/mnt/nas/KTV歌曲
-DOCKER_MEDIA_PATH_MAPPINGS=/mnt/nas/KTV歌曲=/nas/KTV歌曲
+MEDIA_ROOT=./runtime/media
+MEDIA_PATH_MAPPINGS=/mnt/nas/KTV歌曲=/mnt/nas/KTV歌曲
 TV_ROOM_SLUG=living-room
 ```
+
+如果 PostgreSQL 继续由旧 Docker Compose 提供，只保留 PostgreSQL 服务可达即可。源码部署的 API、Admin、Controller、Web TV 会占用 4000、5174、5176、5173 端口，所以旧 Docker 应用容器必须停止，避免端口冲突。
 
 ## 部署
 
@@ -56,10 +59,8 @@ git push origin main
 
 ```bash
 cd /opt/home-ktv-system
-git pull --ff-only
-bash deploy/docker/ktv.sh restart
-bash deploy/docker/ktv.sh status
-bash deploy/docker/ktv.sh doctor
+bash deploy/source/ktv.sh deploy
+bash deploy/source/ktv.sh status
 ```
 
 不要用本机 `pnpm dev:local` 或本地 Web 预览替代服务器验证；本地环境通常没有 `lxc-dev` 的 PostgreSQL、NAS bind mount 和公网 Caddy 链路。
@@ -89,11 +90,7 @@ curl -sS 'https://ktv-api.shaolongfei.com/rooms/living-room/songs/discovery?seed
 每次重新编译部署 API、Controller 或 Web TV 后，都要在通知测试前跑公开入口 smoke：
 
 ```bash
-pnpm deploy:smoke -- \
-  --api-base-url https://ktv-api.shaolongfei.com \
-  --controller-base-url https://ktv-controller.shaolongfei.com \
-  --tv-web-base-url https://ktv-tv.shaolongfei.com \
-  --room living-room
+bash deploy/source/ktv.sh smoke
 ```
 
 这个 smoke 会覆盖 CORS、Web TV bootstrap/heartbeat、控制端看到 TV 在线，以及推荐列表非空。

@@ -4,8 +4,8 @@ HomeKTV 支持三种运行方式：
 
 ```text
 本地开发      pnpm dev:local start
+源码部署      bash deploy/source/ktv.sh deploy
 Docker 部署   bash deploy/docker/ktv.sh start
-源码部署      bash deploy/source/ktv.sh start
 ```
 
 服务器部署包含后端 API、后台 Admin、手机 Controller、Web TV 调试端和 PostgreSQL。Android TV 是正式 TV 客户端，需要单独构建 APK 并安装到电视。
@@ -29,7 +29,18 @@ pnpm db:migrate
 pnpm dev:local start
 ```
 
-服务器优先使用 Docker Compose：
+服务器优先使用源码部署：
+
+```bash
+bash deploy/source/ktv.sh setup
+vim deploy/source/.env
+bash deploy/source/ktv.sh deploy
+bash deploy/source/ktv.sh status
+```
+
+当前私有测试服务器 `lxc-dev` 已有固定部署流程和公网入口，按 [lxc-dev 服务器 Runbook](runbooks/deploy-lxc-dev.md) 执行。不要用本地预览结果代替服务器部署验证。
+
+Docker Compose 保留为稳定发布和备用路径。需要完整容器化运行 PostgreSQL、API 和前端静态站时使用：
 
 ```bash
 bash deploy/docker/ktv.sh setup
@@ -38,22 +49,11 @@ bash deploy/docker/ktv.sh status
 bash deploy/docker/ktv.sh doctor
 ```
 
-当前私有测试服务器 `lxc-dev` 已有固定部署流程和公网入口，按 [lxc-dev 服务器 Runbook](runbooks/deploy-lxc-dev.md) 执行。不要用本地预览结果代替服务器部署验证。
-
-如果服务器已经有 Node.js、pnpm 和 PostgreSQL，也可以使用源码部署：
-
-```bash
-bash deploy/source/ktv.sh setup
-bash deploy/source/ktv.sh start
-bash deploy/source/ktv.sh status
-bash deploy/source/ktv.sh doctor
-```
-
 ## 核心配置
 
 `PUBLIC_BASE_URL`、`ADMIN_BASE_URL`、`CONTROLLER_BASE_URL` 和 `TV_WEB_BASE_URL` 必须是手机、Web TV 与 Android TV 都能访问的局域网 IP 或域名，不能使用 `localhost`。
 
-真实 NAS 曲库需要确保后端能读取数据库中的文件路径。路径不一致时，通过 `MEDIA_PATH_MAPPINGS` 或 `DOCKER_MEDIA_PATH_MAPPINGS` 映射。
+真实 NAS 曲库需要确保后端能读取数据库中的文件路径。源码部署使用 `MEDIA_PATH_MAPPINGS`，Docker Compose 使用 `DOCKER_MEDIA_PATH_MAPPINGS`。
 
 ## 常见验证
 

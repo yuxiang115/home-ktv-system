@@ -6,16 +6,16 @@
 
 ```bash
 cd /opt/home-ktv-system
-bash deploy/docker/ktv.sh status
-bash deploy/docker/ktv.sh doctor
+bash deploy/source/ktv.sh status
+bash deploy/source/ktv.sh doctor
 ```
 
 `doctor` 会同时输出 API、Admin、Controller、Web TV、NAS 路径和 KTV 索引诊断的原始指标。索引诊断中的 `active`、`missing`、`songs`、`latest` 只用于排查事实，不替代人工判断。
 
-本地或源码部署：
+Docker Compose 备用部署：
 
 ```bash
-bash deploy/source/ktv.sh doctor
+bash deploy/docker/ktv.sh doctor
 ```
 
 ## TV 显示离线
@@ -25,7 +25,7 @@ bash deploy/source/ktv.sh doctor
 1. API 是否健康：`curl https://ktv-api.shaolongfei.com/health`
 2. Admin Room 页面是否能看到 TV 在线。
 3. TV 端是否使用正确 API 地址，不要用 `localhost`。
-4. 查看 API 日志：`bash deploy/docker/ktv.sh logs api`
+4. 查看 API 日志：`bash deploy/source/ktv.sh logs api`
 5. 如果是 Web TV，确认 URL 中有 `apiBaseUrl=https://ktv-api.shaolongfei.com`。
 
 ## 手机控制器显示电视离线
@@ -42,9 +42,9 @@ bash deploy/source/ktv.sh doctor
 检查顺序：
 
 1. Admin Songs 诊断中查看真实索引是否有结果。
-2. 执行 `bash deploy/docker/ktv.sh doctor` 看 NAS 路径是否可读。
+2. 执行 `bash deploy/source/ktv.sh doctor` 看 NAS 路径是否可读。
 3. 访问 API 日志，查找 `KTV_INDEX_FILE_UNREADABLE` 或媒体路径映射错误。
-4. 检查 `DOCKER_MEDIA_PATH_MAPPINGS=/mnt/nas/KTV歌曲=/nas/KTV歌曲`。
+4. 检查 `MEDIA_PATH_MAPPINGS=/mnt/nas/KTV歌曲=/mnt/nas/KTV歌曲`。
 
 ## 队列为空但手机显示已点
 

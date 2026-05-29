@@ -1,6 +1,8 @@
 # Docker Compose 部署入口
 
-服务器拉取代码后：
+Docker Compose 保留为稳定发布和备用路径。当前私有测试服务器的高频调试优先使用 [源码部署入口](../source/README.md)。
+
+需要完整容器化部署时：
 
 ```bash
 bash deploy/docker/ktv.sh setup

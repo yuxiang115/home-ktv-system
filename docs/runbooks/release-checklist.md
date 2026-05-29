@@ -34,10 +34,8 @@ git push origin main
 ```bash
 ssh lxc-dev
 cd /opt/home-ktv-system
-git pull --ff-only
-bash deploy/docker/ktv.sh restart
-bash deploy/docker/ktv.sh status
-bash deploy/docker/ktv.sh doctor
+bash deploy/source/ktv.sh deploy
+bash deploy/source/ktv.sh status
 ```
 
 ## 冒烟验证
@@ -47,6 +45,7 @@ curl -I https://ktv-api.shaolongfei.com/health
 curl -I https://ktv-admin.shaolongfei.com/
 curl -I 'https://ktv-controller.shaolongfei.com/controller?room=living-room'
 curl -I 'https://ktv-tv.shaolongfei.com/?apiBaseUrl=https://ktv-api.shaolongfei.com&roomSlug=living-room&deviceName=Web%20TV'
+bash deploy/source/ktv.sh smoke
 ```
 
 人工验证：

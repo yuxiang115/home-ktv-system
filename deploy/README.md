@@ -4,21 +4,21 @@
 
 ```text
 deploy/
-├── docker/   # Docker Compose 部署脚本
-├── source/   # 源码部署脚本
+├── source/   # 源码部署脚本，当前私有测试服务器优先使用
+├── docker/   # Docker Compose 部署脚本，稳定发布和备用路径
 └── env/      # 环境变量模板
 ```
 
 常用入口：
 
 ```bash
+bash deploy/source/ktv.sh setup
+bash deploy/source/ktv.sh deploy
+bash deploy/source/ktv.sh doctor
+
 bash deploy/docker/ktv.sh setup
 bash deploy/docker/ktv.sh start
 bash deploy/docker/ktv.sh doctor
-
-bash deploy/source/ktv.sh setup
-bash deploy/source/ktv.sh start
-bash deploy/source/ktv.sh doctor
 ```
 
 文档：
