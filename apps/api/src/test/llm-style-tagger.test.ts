@@ -64,7 +64,7 @@ describe("LlmStyleTagger", () => {
 
   it("tags a batch of songs with a single client request", async () => {
     const client: LlmStyleTaggerClient = {
-      complete: vi.fn(async () => "{\"results\":[{\"id\":\"song-1\",\"tags\":[\"华语\",\"流行\"]},{\"id\":\"song-2\",\"tags\":[\"粤语\"]}]}")
+      complete: vi.fn(async () => "{\"results\":[{\"id\":\"1\",\"tags\":[\"华语\",\"流行\"]},{\"id\":\"2\",\"tags\":[\"粤语\"]}]}")
     };
     const tagger = new LlmStyleTagger({ client, model: "local-model" });
 
@@ -74,6 +74,11 @@ describe("LlmStyleTagger", () => {
     ]);
 
     expect(client.complete).toHaveBeenCalledTimes(1);
+    const prompt = vi.mocked(client.complete).mock.calls[0]![0].userPrompt;
+    expect(prompt).toContain("\"id\":\"1\"");
+    expect(prompt).toContain("\"id\":\"2\"");
+    expect(prompt).not.toContain("\"id\":\"song-1\"");
+    expect(prompt).not.toContain("\"id\":\"song-2\"");
     expect(results.get("song-1")?.tags.map((tag) => tag.tag)).toEqual(["华语", "流行"]);
     expect(results.get("song-2")?.tags.map((tag) => tag.tag)).toEqual(["粤语"]);
   });

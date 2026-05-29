@@ -49,17 +49,24 @@ export class LlmStyleTagger {
       return new Map();
     }
 
+    const promptSongs = songs.map((song, index) => ({
+      id: String(index + 1),
+      title: song.title,
+      artistName: song.artistName
+    }));
     const content = await this.options.client.complete({
       systemPrompt: buildBatchSystemPrompt(),
-      userPrompt: buildBatchUserPrompt(songs)
+      userPrompt: buildBatchUserPrompt(promptSongs)
     });
-    const parsed = parseLlmStyleTagBatchResponse(content, songs, this.options.maxTags ?? 6);
+    const parsed = parseLlmStyleTagBatchResponse(content, promptSongs, this.options.maxTags ?? 6);
     const results = new Map<string, KtvStyleTaggerResult>();
 
-    for (const song of songs) {
-      const tags = parsed.get(song.id);
+    for (let index = 0; index < songs.length; index += 1) {
+      const song = songs[index]!;
+      const promptId = promptSongs[index]!.id;
+      const tags = parsed.get(promptId);
       if (!tags) {
-        throw new Error(`missing result for song id ${song.id}`);
+        throw new Error(`missing result for batch id ${promptId}`);
       }
       results.set(song.id, {
         tags: tags.map((tag) => ({
@@ -215,8 +222,9 @@ function buildBatchSystemPrompt(): string {
     "只能从给定白名单中选择标签，不能创造新标签。",
     "根据歌名和歌手判断语种、曲风、情绪、KTV场景和年代版本。",
     "每首歌最多返回 6 个标签，优先选择对点歌筛选有用的标签。",
-    "必须为输入中的每一个 id 返回且只返回一条结果，id 必须原样保留。",
-    "只输出 JSON，格式为 {\"results\":[{\"id\":\"song-id\",\"tags\":[\"标签1\",\"标签2\"]}]}。",
+    "必须为输入中的每一个数字 id 返回且只返回一条结果，id 必须原样保留。",
+    "不要返回 UUID、歌名或解释文字作为 id。",
+    "只输出 JSON，格式为 {\"results\":[{\"id\":\"1\",\"tags\":[\"标签1\",\"标签2\"]}]}。",
     "",
     taxonomy
   ].join("\n");
