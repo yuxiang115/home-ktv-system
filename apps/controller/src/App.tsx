@@ -39,7 +39,8 @@ function ControllerApp() {
   const volumePercent = controller.volumePercent;
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchHistory, setSearchHistory] = useState(() => readSearchHistory());
-  const [browseView, setBrowseView] = useState<BrowseView>({ kind: "home" });
+  const [browseStack, setBrowseStack] = useState<BrowseView[]>([]);
+  const browseView = browseStack.at(-1) ?? { kind: "home" };
   const [activeTab, setActiveTab] = useState<ControllerTab>("home");
   const [interactionComposer, setInteractionComposer] = useState<RoomInteractionKind | null>(null);
   const [queueAddFeedback, setQueueAddFeedback] = useState<QueueAddFeedback | null>(null);
@@ -50,6 +51,12 @@ function ControllerApp() {
   const discovery = controller.songDiscovery;
   const visibleArtists = discovery?.artists.slice(0, 6) ?? [];
   const visibleGenres = discovery?.genres.slice(0, 6) ?? [];
+  const openBrowseView = useCallback((view: Exclude<BrowseView, { kind: "home" }>) => {
+    setBrowseStack((current) => [...current, view]);
+  }, []);
+  const goBackBrowseView = useCallback(() => {
+    setBrowseStack((current) => (current.length > 0 ? current.slice(0, -1) : current));
+  }, []);
   const serverQueueCount = snapshot?.queue.filter((entry) => entry.status !== "removed").length ?? 0;
   const queueCount = serverQueueCount + optimisticQueueAdds.length;
   const triggerQueueAddFeedback = useCallback((song: Pick<SongDiscoverySong, "artistName" | "title">) => {
@@ -117,7 +124,8 @@ function ControllerApp() {
           discovery={discovery}
           browseView={browseView}
           onQueueAddFeedback={triggerQueueAddFeedback}
-          setBrowseView={setBrowseView}
+          goBackBrowseView={goBackBrowseView}
+          openBrowseView={openBrowseView}
           setInteractionComposer={setInteractionComposer}
           setSearchOpen={setSearchOpen}
           t={t}
@@ -241,7 +249,8 @@ function HomeScreen({
   controller,
   discovery,
   onQueueAddFeedback,
-  setBrowseView,
+  goBackBrowseView,
+  openBrowseView,
   setInteractionComposer,
   setSearchOpen,
   t,
@@ -252,7 +261,8 @@ function HomeScreen({
   controller: RoomControllerState;
   discovery: RoomControllerState["songDiscovery"];
   onQueueAddFeedback(song: Pick<SongDiscoverySong, "artistName" | "title">): void;
-  setBrowseView(view: BrowseView): void;
+  goBackBrowseView(): void;
+  openBrowseView(view: Exclude<BrowseView, { kind: "home" }>): void;
   setInteractionComposer(kind: RoomInteractionKind): void;
   setSearchOpen(open: boolean): void;
   t: TFunction;
@@ -265,7 +275,8 @@ function HomeScreen({
         controller={controller}
         discovery={discovery}
         onQueueAddFeedback={onQueueAddFeedback}
-        setBrowseView={setBrowseView}
+        goBackBrowseView={goBackBrowseView}
+        openBrowseView={openBrowseView}
         t={t}
         view={browseView}
       />
@@ -287,14 +298,14 @@ function HomeScreen({
           className="category-card--artist"
           label={t("discovery.artists")}
           meta={t("discovery.artistCardHint", { count: discovery?.artists.length ?? 0 })}
-          onClick={() => setBrowseView({ kind: "artists" })}
+          onClick={() => openBrowseView({ kind: "artists" })}
           preview={visibleArtists.map((artist) => artist.artistName)}
         />
         <CategoryCard
           className="category-card--genre"
           label={t("discovery.genres")}
           meta={t("discovery.genreCardHint", { count: discovery?.genres.length ?? 0 })}
-          onClick={() => setBrowseView({ kind: "genres" })}
+          onClick={() => openBrowseView({ kind: "genres" })}
           preview={visibleGenres.map((genre) => genre.genre)}
         />
       </section>
@@ -1099,14 +1110,16 @@ function DiscoveryBrowseView({
   controller,
   discovery,
   onQueueAddFeedback,
-  setBrowseView,
+  goBackBrowseView,
+  openBrowseView,
   t,
   view
 }: {
   controller: RoomControllerState;
   discovery: RoomControllerState["songDiscovery"];
   onQueueAddFeedback(song: Pick<SongDiscoverySong, "artistName" | "title">): void;
-  setBrowseView(view: BrowseView): void;
+  goBackBrowseView(): void;
+  openBrowseView(view: Exclude<BrowseView, { kind: "home" }>): void;
   t: TFunction;
   view: BrowseView;
 }) {
@@ -1117,7 +1130,7 @@ function DiscoveryBrowseView({
       <section className="panel discovery-panel">
         <div className="panel-heading">
           <h2>{isArtists ? t("discovery.allArtists") : t("discovery.allGenres")}</h2>
-          <button className="secondary-button compact-button" type="button" onClick={() => setBrowseView({ kind: "home" })}>
+          <button className="secondary-button compact-button" type="button" onClick={goBackBrowseView}>
             {t("button.back")}
           </button>
         </div>
@@ -1131,7 +1144,11 @@ function DiscoveryBrowseView({
                 className="discovery-tile"
                 key={key}
                 type="button"
-                onClick={() => setBrowseView(isArtists ? { kind: "artist", item: item as SongDiscoveryArtist } : { kind: "genre", item: item as SongDiscoveryGenre })}
+                onClick={() =>
+                  openBrowseView(
+                    isArtists ? { kind: "artist", item: item as SongDiscoveryArtist } : { kind: "genre", item: item as SongDiscoveryGenre }
+                  )
+                }
               >
                 <strong>{label}</strong>
                 <span>{t("discovery.songCount", { count })}</span>
@@ -1153,7 +1170,7 @@ function DiscoveryBrowseView({
     <section className="panel recommendation-panel">
       <div className="panel-heading">
         <h2>{title}</h2>
-        <button className="secondary-button compact-button" type="button" onClick={() => setBrowseView({ kind: "home" })}>
+        <button className="secondary-button compact-button" type="button" onClick={goBackBrowseView}>
           {t("button.back")}
         </button>
       </div>

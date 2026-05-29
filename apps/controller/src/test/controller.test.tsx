@@ -269,6 +269,24 @@ describe("mobile controller runtime", () => {
     expect(refreshedDiscoveryRequests.length).toBeGreaterThan(initialDiscoveryRequests.length);
   });
 
+  it("returns from an artist detail page to the artist list instead of the home page", async () => {
+    const user = userEvent.setup();
+    installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))]
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /歌手点歌/u }));
+    await user.click(screen.getByRole("button", { name: /周杰伦 2 首歌/u }));
+    await user.click(screen.getByRole("button", { name: "返回" }));
+
+    expect(screen.getByRole("heading", { name: "全部歌手" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /周杰伦 2 首歌/u })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /歌手点歌/u })).toBeNull();
+  });
+
   it("shows the current queue count on the control tab", async () => {
     installControllerFetchMock({
       restoreResponses: [json(sessionResponse(roomSnapshot()))]
