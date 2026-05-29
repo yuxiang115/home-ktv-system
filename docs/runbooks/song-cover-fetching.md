@@ -17,7 +17,7 @@
 - 还没有把外部图片下载到本地文件缓存。
 - 目前 `image_url` 存的是外部平台图片地址。
 
-后续本地图片缓存应继续扩展 `song_cover_cache`，不要把封面字段放入 `songs`、`assets`、`ktv_songs` 或 `ktv_song_assets` 主表。
+后续本地图片缓存应继续扩展 `song_cover_cache`，不要把封面字段放入 `ktv_songs` 或 `ktv_song_assets` 主表。
 
 ## 代码位置
 
@@ -37,8 +37,8 @@ deploy/docker/ktv.sh
 `song_cover_cache` 当前字段：
 
 ```text
-source_kind            formal | ktv-index
-source_song_id         songs.id 或 ktv_songs.id
+source_kind            nas | online
+source_song_id         ktv_songs.id 或后续 online 歌曲 ID
 title
 artist_name
 normalized_title
@@ -58,14 +58,16 @@ updated_at
 当前真实曲库主要使用：
 
 ```text
-source_kind = 'ktv-index'
+source_kind = 'nas'
 source_song_id = ktv_songs.id
 ```
+
+说明：物理 NAS 索引表仍然沿用 `ktv_songs` / `ktv_song_assets` 命名；`source_kind` 是运行时和 API 层的来源语义，统一使用 `nas` / `online`。
 
 ## 拉取逻辑
 
 1. 从数据库抽取待处理歌曲。
-2. 默认优先处理 `ktv-index` 真实曲库。
+2. 默认优先处理 `nas` 真实曲库。
 3. 对每首歌按 provider 顺序查询：
 
 ```text
@@ -133,7 +135,7 @@ bash deploy/docker/ktv.sh cover-coverage -- --limit 100 --delay-ms 250
 
 ```text
 --limit <n>                 抽样数量，默认 100
---source <formal|ktv-index> 默认 ktv-index
+--source <nas|online>        默认 nas
 --delay-ms <n>              每首歌之间的延迟，默认 250
 --providers <list>          默认 tencent,kugou,netease,kuwo
 --progress-every <n>        进度输出间隔，默认 20
@@ -172,10 +174,10 @@ Docker 部署环境：
 bash deploy/docker/ktv.sh fetch-covers -- --limit 300 --delay-ms 300
 ```
 
-只处理真实曲库：
+只处理 NAS 真实曲库：
 
 ```bash
-bash deploy/docker/ktv.sh fetch-covers -- --source ktv-index --limit 300 --delay-ms 300
+bash deploy/docker/ktv.sh fetch-covers -- --source nas --limit 300 --delay-ms 300
 ```
 
 重试网络失败：
@@ -196,7 +198,7 @@ bash deploy/docker/ktv.sh fetch-covers -- \
 首次测试建议先跑 300 首。确认没有明显限流或异常后，再分批跑 1000 首：
 
 ```bash
-bash deploy/docker/ktv.sh fetch-covers -- --source ktv-index --limit 1000 --delay-ms 300
+bash deploy/docker/ktv.sh fetch-covers -- --source nas --limit 1000 --delay-ms 300
 ```
 
 不要在首页接口里实时调用外部音乐源。
@@ -229,13 +231,13 @@ curl -sS 'https://ktv-api.shaolongfei.com/rooms/living-room/songs/discovery?seed
 下一步应把外部图片下载到持久化目录，例如：
 
 ```text
-/data/home-ktv-media/covers/ktv-index/<song-id>.jpg
+/data/home-ktv-media/covers/nas/<song-id>.jpg
 ```
 
 API 对外暴露：
 
 ```text
-https://ktv-api.shaolongfei.com/covers/ktv-index/<song-id>.jpg
+https://ktv-api.shaolongfei.com/covers/nas/<song-id>.jpg
 ```
 
 建议给 `song_cover_cache` 增加字段：

@@ -1,4 +1,4 @@
-import type { RoomSnapshot } from "@home-ktv/player-contracts";
+import type { PlaybackTarget, RoomSnapshot } from "@home-ktv/player-contracts";
 import { AUDIO_TRACK_SWITCH_UNSUPPORTED_MESSAGE } from "./playback-capability.js";
 import type { DualVideoPool } from "./video-pool.js";
 
@@ -31,7 +31,7 @@ export class ActivePlaybackController {
 
     this.videoPool.applyVolume(snapshot.volumePercent);
 
-    const targetChanged = this.videoPool.activeTarget?.assetId !== snapshot.currentTarget.assetId;
+    const targetChanged = !isSamePlaybackTarget(this.videoPool.activeTarget, snapshot.currentTarget);
     if (targetChanged) {
       this.videoPool.primeActive(snapshot.currentTarget);
     }
@@ -81,4 +81,17 @@ export class ActivePlaybackController {
       };
     }
   }
+}
+
+export function isSamePlaybackTarget(
+  current: PlaybackTarget | null | undefined,
+  next: PlaybackTarget | null | undefined
+): boolean {
+  return Boolean(
+    current &&
+      next &&
+      current.queueEntryId === next.queueEntryId &&
+      current.sourceType === next.sourceType &&
+      current.assetId === next.assetId
+  );
 }

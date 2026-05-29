@@ -121,6 +121,7 @@ describe("room control session schema contracts", () => {
       queue: [
         {
           queueEntryId: "queue-1",
+          sourceType: "nas",
           songId: "song-1",
           assetId: "asset-1",
           songTitle: "Song",

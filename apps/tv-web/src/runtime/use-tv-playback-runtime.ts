@@ -2,7 +2,7 @@ import type { PlaybackNotice, RoomSnapshot } from "@home-ktv/player-contracts";
 import type { RoomInteractionEvent } from "@home-ktv/player-contracts";
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction, SyntheticEvent } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivePlaybackController } from "./active-playback-controller.js";
+import { ActivePlaybackController, isSamePlaybackTarget } from "./active-playback-controller.js";
 import { HeartbeatController } from "./heartbeat-controller.js";
 import { createBrowserPlayerClient } from "./player-client.js";
 import { RecoveryController } from "./recovery-controller.js";
@@ -11,6 +11,7 @@ import { useRoomSnapshot, type RoomSnapshotState } from "./use-room-snapshot.js"
 import { createBrowserVideoPool, type DualVideoPool, type KtvVideoElement } from "./video-pool.js";
 
 const HEARTBEAT_INTERVAL_MS = 10_000;
+const TRANSIENT_NOTICE_TTL_MS = 5_000;
 
 export interface UseTvPlaybackRuntimeInput {
   activeVideoRef: RefObject<HTMLVideoElement | null>;
@@ -73,6 +74,18 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
       setFirstPlayBlocked(false);
     }
   }, [roomState.status, roomState.snapshot?.currentTarget?.queueEntryId, roomState.snapshot?.conflict]);
+
+  useEffect(() => {
+    if (!isTransientLocalNotice(localNotice)) {
+      return;
+    }
+
+    const timeoutId = globalThis.setTimeout(() => {
+      setLocalNotice((current) => (current === localNotice ? null : current));
+    }, TRANSIENT_NOTICE_TTL_MS);
+
+    return () => globalThis.clearTimeout(timeoutId);
+  }, [localNotice]);
 
   useEffect(() => {
     if (!roomState.snapshot?.currentTarget) {
@@ -179,6 +192,7 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
         eventType: "ended",
         sessionVersion: target.sessionVersion,
         queueEntryId: target.queueEntryId,
+        sourceType: target.sourceType,
         assetId: target.assetId,
         playbackPositionMs: endedPlaybackPositionMs(event.currentTarget),
         vocalMode: target.vocalMode,
@@ -220,6 +234,14 @@ function mergeLocalNotice(snapshot: RoomSnapshot | null, localNotice: PlaybackNo
   };
 }
 
+function isTransientLocalNotice(notice: PlaybackNotice | null): boolean {
+  return (
+    notice?.kind === "switch_failed_reverted" ||
+    notice?.kind === "playback_failed_skipped" ||
+    notice?.kind === "recovery_fallback_start_over"
+  );
+}
+
 async function ensureCurrentPlayback(
   client: ReturnType<typeof createBrowserPlayerClient>,
   pool: DualVideoPool,
@@ -248,6 +270,7 @@ async function ensureCurrentPlayback(
         eventType: "failed",
         sessionVersion: target.sessionVersion,
         queueEntryId: target.queueEntryId,
+        sourceType: target.sourceType,
         assetId: target.assetId,
         playbackPositionMs: target.resumePositionMs,
         vocalMode: target.vocalMode,
@@ -351,7 +374,7 @@ async function synchronizePlayback(input: {
 }
 
 function isCurrentPlaybackReadyForSwitch(pool: DualVideoPool, snapshot: RoomSnapshot): boolean {
-  return Boolean(snapshot.currentTarget) && pool.activeTarget?.assetId === snapshot.currentTarget?.assetId && pool.activeVideo.paused === false;
+  return Boolean(snapshot.currentTarget) && isSamePlaybackTarget(pool.activeTarget, snapshot.currentTarget) && pool.activeVideo.paused === false;
 }
 
 async function sendPlaybackTelemetryOnce(input: {
@@ -372,6 +395,7 @@ async function sendPlaybackTelemetryOnce(input: {
     input.eventType,
     input.snapshot.roomSlug,
     target.queueEntryId,
+    target.sourceType,
     target.assetId,
     target.vocalMode,
     input.stage
@@ -388,6 +412,7 @@ async function sendPlaybackTelemetryOnce(input: {
       eventType: input.eventType,
       sessionVersion: target.sessionVersion,
       queueEntryId: target.queueEntryId,
+      sourceType: target.sourceType,
       assetId: target.assetId,
       playbackPositionMs: input.playbackPositionMs,
       vocalMode: target.vocalMode,

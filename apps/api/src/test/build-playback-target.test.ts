@@ -1,63 +1,46 @@
-import type { Asset, PlaybackSession, QueueEntry, Room, Song } from "@home-ktv/domain";
+import type { PlaybackSession, QueueEntry, Room } from "@home-ktv/domain";
 import { describe, expect, it } from "vitest";
-import { AssetGateway } from "../modules/assets/asset-gateway.js";
-import { MediaPathResolver } from "../modules/assets/media-path-resolver.js";
-import type { AssetRepository } from "../modules/catalog/repositories/asset-repository.js";
-import { buildPlaybackTarget } from "../modules/playback/build-playback-target.js";
-import type { BuildPlaybackTargetRepositories } from "../modules/playback/build-playback-target.js";
-import type { AppendQueueEntryInput } from "../modules/playback/repositories/queue-entry-repository.js";
+import type { MediaGateway } from "../modules/media/media-gateway.js";
+import type { PlayableMediaAsset, PlayableMediaLookup, PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
+import { buildPlaybackTarget, type BuildPlaybackTargetRepositories } from "../modules/playback/build-playback-target.js";
 
 const now = "2026-04-28T00:00:00.000Z";
 
 describe("buildPlaybackTarget", () => {
-  it("builds a living-room playback target with the current asset URL and next queue preview", async () => {
+  it("builds a NAS playback target from queue source identity without activeAssetId", async () => {
     const room = createRoom("living-room");
-    const currentAsset = createAsset("asset-current", "instrumental", "family-main");
-    const nextAsset = createAsset("asset-next", "instrumental", "next-family");
-    const currentSong = createSong("song-current", "七里香", "周杰伦", currentAsset.id);
-    const nextSong = createSong("song-next", "后来", "刘若英", nextAsset.id);
-    const songs = [currentSong, nextSong];
-    const queueEntries = [
-      createQueueEntry("queue-current", room.id, currentSong.id, currentAsset.id, "playing"),
-      createQueueEntry("queue-next", room.id, nextSong.id, nextAsset.id, "queued")
-    ];
-    const session = createPlaybackSession(room.id, currentAsset.id);
+    const current = createPlayableMediaAsset("ktv-song-current", "ktv-asset-current", "七里香", "周杰伦");
+    const next = createPlayableMediaAsset("ktv-song-next", "ktv-asset-next", "后来", "刘若英");
     const repositories = createRepositories({
       room,
-      session,
-      assets: [currentAsset, nextAsset],
-      queueEntries,
-      songs
+      session: createPlaybackSession(room.id),
+      queueEntries: [
+        createQueueEntry("queue-current", room.id, current.songId, current.assetId, "playing"),
+        createQueueEntry("queue-next", room.id, next.songId, next.assetId, "queued")
+      ],
+      playableMedia: [current, next]
     });
 
     const target = await buildPlaybackTarget({
       roomSlug: "living-room",
       repositories,
-      assetGateway: createAssetGateway(repositories.assets)
+      mediaGateway: createMediaGateway()
     });
 
-    expect(target).toEqual({
+    expect(target).toMatchObject({
       roomId: "living-room",
       sessionVersion: 11,
       queueEntryId: "queue-current",
-      assetId: "asset-current",
+      sourceType: "nas",
+      songId: current.songId,
+      assetId: current.assetId,
+      playbackUrl: `http://ktv.local/media/nas/${current.assetId}`,
+      vocalMode: "instrumental",
       currentQueueEntryPreview: {
         queueEntryId: "queue-current",
         songTitle: "七里香",
         artistName: "周杰伦"
       },
-      playbackUrl: "http://ktv.local/media/asset-current",
-      resumePositionMs: 45678,
-      vocalMode: "instrumental",
-      switchFamily: "family-main",
-      playbackProfile: {
-        kind: "separate_asset_pair",
-        container: null,
-        videoCodec: null,
-        audioCodecs: [],
-        requiresAudioTrackSelection: false
-      },
-      selectedTrackRef: null,
       nextQueueEntryPreview: {
         queueEntryId: "queue-next",
         songTitle: "后来",
@@ -66,99 +49,31 @@ describe("buildPlaybackTarget", () => {
     });
   });
 
-  it("uses queue playbackOptions to select instrumental track for formal real MV", async () => {
+  it("uses queue playbackOptions to select the original NAS audio track", async () => {
     const room = createRoom("living-room");
-    const currentAsset = {
-      ...createAsset("asset-real-mv", "instrumental", "real-mv-family"),
-      songId: "song-current",
-      vocalMode: "dual" as const,
-      assetKind: "dual-track-video" as const,
-      playbackProfile: {
-        kind: "single_file_audio_tracks" as const,
-        container: "matroska,webm",
-        videoCodec: "h264",
-        audioCodecs: ["aac"],
-        requiresAudioTrackSelection: true
-      },
-      trackRoles: {
-        original: { index: 0, id: "0x1100", label: "Original vocal" },
-        instrumental: { index: 1, id: "0x1101", label: "Instrumental" }
-      }
-    };
-    const currentSong = createSong("song-current", "七里香", "周杰伦", currentAsset.id);
-    const queueEntries = [
-      createQueueEntry("queue-current", room.id, currentSong.id, currentAsset.id, "playing", {
-        preferredVocalMode: "instrumental"
-      })
-    ];
+    const current = createPlayableMediaAsset("ktv-song-current", "ktv-asset-current", "七里香", "周杰伦");
     const repositories = createRepositories({
       room,
-      session: { ...createPlaybackSession(room.id, currentAsset.id), nextQueueEntryId: null },
-      assets: [currentAsset],
-      queueEntries,
-      songs: [currentSong]
+      session: { ...createPlaybackSession(room.id), nextQueueEntryId: null },
+      queueEntries: [
+        createQueueEntry("queue-current", room.id, current.songId, current.assetId, "playing", {
+          preferredVocalMode: "original"
+        })
+      ],
+      playableMedia: [current]
     });
 
     const target = await buildPlaybackTarget({
       roomSlug: "living-room",
       repositories,
-      assetGateway: createAssetGateway(repositories.assets)
+      mediaGateway: createMediaGateway()
     });
 
     expect(target).toMatchObject({
-      assetId: "asset-real-mv",
-      vocalMode: "instrumental",
-      playbackProfile: {
-        kind: "single_file_audio_tracks",
-        requiresAudioTrackSelection: true
-      },
-      selectedTrackRef: { index: 1, id: "0x1101", label: "Instrumental" }
-    });
-  });
-
-  it("uses queue playbackOptions to select original track for formal real MV", async () => {
-    const room = createRoom("living-room");
-    const currentAsset = {
-      ...createAsset("asset-real-mv", "instrumental", "real-mv-family"),
-      songId: "song-current",
-      vocalMode: "dual" as const,
-      assetKind: "dual-track-video" as const,
-      playbackProfile: {
-        kind: "single_file_audio_tracks" as const,
-        container: "matroska,webm",
-        videoCodec: "h264",
-        audioCodecs: ["aac"],
-        requiresAudioTrackSelection: true
-      },
-      trackRoles: {
-        original: { index: 0, id: "0x1100", label: "Original vocal" },
-        instrumental: { index: 1, id: "0x1101", label: "Instrumental" }
-      }
-    };
-    const currentSong = createSong("song-current", "七里香", "周杰伦", currentAsset.id);
-    const queueEntries = [
-      createQueueEntry("queue-current", room.id, currentSong.id, currentAsset.id, "playing", {
-        preferredVocalMode: "original"
-      })
-    ];
-    const repositories = createRepositories({
-      room,
-      session: { ...createPlaybackSession(room.id, currentAsset.id), nextQueueEntryId: null },
-      assets: [currentAsset],
-      queueEntries,
-      songs: [currentSong]
-    });
-
-    const target = await buildPlaybackTarget({
-      roomSlug: "living-room",
-      repositories,
-      assetGateway: createAssetGateway(repositories.assets)
-    });
-
-    expect(target).toMatchObject({
-      assetId: "asset-real-mv",
+      assetId: current.assetId,
       vocalMode: "original",
-      selectedTrackRef: { index: 0, id: "0x1100", label: "Original vocal" }
+      selectedTrackRef: { index: 0, id: "0x1100", label: "Original" },
+      playbackProfile: { kind: "single_file_audio_tracks", requiresAudioTrackSelection: true }
     });
   });
 });
@@ -166,108 +81,51 @@ describe("buildPlaybackTarget", () => {
 interface RepositoryState {
   room: Room;
   session: PlaybackSession;
-  assets: Asset[];
   queueEntries: QueueEntry[];
-  songs: Song[];
+  playableMedia: PlayableMediaAsset[];
 }
 
 function createRepositories(state: RepositoryState): BuildPlaybackTargetRepositories {
-  const assetRepository: AssetRepository = {
-    async findById(assetId) {
-      return state.assets.find((asset) => asset.id === assetId) ?? null;
-    },
-    async findVerifiedSwitchCounterparts(currentAsset) {
-      return state.assets.filter((asset) => asset.id !== currentAsset.id);
-    }
-  };
-
   return {
     rooms: {
-      async findById(roomId) {
-        return roomId === state.room.id ? state.room : null;
-      },
-      async findBySlug(slug) {
-        return slug === state.room.slug ? state.room : null;
-      }
+      findById: async (roomId) => (roomId === state.room.id ? state.room : null),
+      findBySlug: async (slug) => (slug === state.room.slug ? state.room : null)
     },
     playbackSessions: {
-      async findByRoomId(roomId) {
-        return roomId === state.room.id ? state.session : null;
-      },
-      async startQueueEntry() {
-        return state.session;
-      },
-      async setIdle() {
-        return state.session;
-      },
-      async requestSwitchTarget() {
-        return state.session;
-      }
+      findByRoomId: async (roomId) => (roomId === state.room.id ? state.session : null),
+      startQueueEntry: async () => state.session,
+      setIdle: async () => state.session,
+      requestSwitchTarget: async () => state.session
     },
     queueEntries: {
-      async findById(queueEntryId) {
-        return state.queueEntries.find((queueEntry) => queueEntry.id === queueEntryId) ?? null;
-      },
-      async listEffectiveQueue() {
-        return [];
-      },
-      async listUndoableRemoved() {
-        return [];
-      },
-      async findCurrentForRoom() {
-        return null;
-      },
-      async append(input: AppendQueueEntryInput) {
-        return {
-          id: "queue-new",
-          roomId: input.roomId,
-          songId: input.songId,
-          assetId: input.assetId,
-          requestedBy: input.requestedBy,
-          queuePosition: input.queuePosition,
-          status: input.status ?? "queued",
-          priority: input.priority ?? 0,
-          playbackOptions: {
-            preferredVocalMode: null,
-            pitchSemitones: 0,
-            requireReadyAsset: true
-          },
-          requestedAt: (input.requestedAt ?? new Date()).toISOString(),
-          startedAt: input.startedAt ? input.startedAt.toISOString() : null,
-          endedAt: input.endedAt ? input.endedAt.toISOString() : null,
-          removedAt: input.removedAt ? input.removedAt.toISOString() : null,
-          removedByControlSessionId: input.removedByControlSessionId ?? null,
-          undoExpiresAt: input.undoExpiresAt ? input.undoExpiresAt.toISOString() : null
-        };
-      },
-      async markRemoved() {
-        return null;
-      },
-      async undoRemoved() {
-        return null;
-      },
-      async renumberQueue() {
-        return [];
-      },
-      async markCompleted() {
-        return null;
-      }
+      findById: async (queueEntryId) => state.queueEntries.find((entry) => entry.id === queueEntryId) ?? null,
+      listEffectiveQueue: async () => state.queueEntries,
+      listUndoableRemoved: async () => [],
+      findCurrentForRoom: async () => null,
+      append: async () => state.queueEntries[0]!,
+      markRemoved: async () => null,
+      undoRemoved: async () => null,
+      renumberQueue: async () => [],
+      markCompleted: async () => null
     },
-    assets: assetRepository,
-    songs: {
-      async findById(songId) {
-        return state.songs.find((song) => song.id === songId) ?? null;
-      }
+    playableMedia: new FakePlayableMediaRepository(state.playableMedia)
+  };
+}
+
+function createMediaGateway(): Pick<MediaGateway, "createPlaybackUrl"> {
+  return {
+    createPlaybackUrl(source: PlayableMediaLookup) {
+      return `http://ktv.local/media/${source.sourceType}/${source.assetId}`;
     }
   };
 }
 
-function createAssetGateway(assetRepository: AssetRepository): AssetGateway {
-  return new AssetGateway({
-    assetRepository,
-    mediaPathResolver: new MediaPathResolver({ mediaRoot: "/media-root" }),
-    publicBaseUrl: "http://ktv.local"
-  });
+class FakePlayableMediaRepository implements PlayableMediaRepository {
+  constructor(private readonly assets: readonly PlayableMediaAsset[]) {}
+
+  async findPlayableBySource(source: PlayableMediaLookup): Promise<PlayableMediaAsset | null> {
+    return this.assets.find((asset) => asset.sourceType === source.sourceType && asset.assetId === source.assetId) ?? null;
+  }
 }
 
 function createRoom(slug: string): Room {
@@ -282,12 +140,12 @@ function createRoom(slug: string): Room {
   };
 }
 
-function createPlaybackSession(roomId: string, activeAssetId: string): PlaybackSession {
+function createPlaybackSession(roomId: string): PlaybackSession {
   return {
     roomId,
     currentQueueEntryId: "queue-current",
     nextQueueEntryId: "queue-next",
-    activeAssetId,
+    activeAssetId: null,
     targetVocalMode: "instrumental",
     playerState: "playing",
     playerPositionMs: 45678,
@@ -305,11 +163,12 @@ function createQueueEntry(
   status: QueueEntry["status"],
   playbackOptions: Partial<QueueEntry["playbackOptions"]> = {}
 ): QueueEntry {
-    return {
-      id,
-      roomId,
-      songId,
-      assetId,
+  return {
+    id,
+    roomId,
+    source: { sourceType: "nas", songId, assetId },
+    songId,
+    assetId,
     requestedBy: "mobile",
     queuePosition: id === "queue-current" ? 1 : 2,
     status,
@@ -320,57 +179,55 @@ function createQueueEntry(
       requireReadyAsset: true,
       ...playbackOptions
     },
-      requestedAt: now,
-      startedAt: status === "playing" ? now : null,
-      endedAt: null,
-      removedAt: null,
-      removedByControlSessionId: null,
-      undoExpiresAt: null
-    };
-  }
-
-function createSong(id: string, title: string, artistName: string, defaultAssetId: string): Song {
-  return {
-    id,
-    title,
-    normalizedTitle: title,
-    titlePinyin: "",
-    titleInitials: "",
-    artistId: `artist-${id}`,
-    artistName,
-    language: "mandarin",
-    status: "ready",
-    genre: [],
-    tags: [],
-    aliases: [],
-    searchHints: [],
-    releaseYear: null,
-    canonicalDurationMs: 180000,
-    searchWeight: 0,
-    defaultAssetId,
-    capabilities: {
-      canSwitchVocalMode: true
-    },
-    createdAt: now,
-    updatedAt: now
+    requestedAt: now,
+    startedAt: status === "playing" ? now : null,
+    endedAt: null,
+    removedAt: null,
+    removedByControlSessionId: null,
+    undoExpiresAt: null
   };
 }
 
-function createAsset(id: string, vocalMode: Asset["vocalMode"], switchFamily: string): Asset {
+function createPlayableMediaAsset(
+  songId: string,
+  assetId: string,
+  title: string,
+  artistName: string
+): PlayableMediaAsset {
   return {
-    id,
-    songId: id === "asset-current" ? "song-current" : "song-next",
-    sourceType: "local",
-    assetKind: "video",
-    displayName: id,
-    filePath: `${id}.mp4`,
-    durationMs: 180000,
-    lyricMode: "hard_sub",
-    vocalMode,
+    sourceType: "nas",
+    songId,
+    assetId,
+    title,
+    artistName,
+    displayName: title,
+    filePath: `/nas/${assetId}.mp4`,
     status: "ready",
-    switchFamily,
-    switchQualityStatus: "verified",
-    createdAt: now,
-    updatedAt: now
+    durationMs: 180000,
+    compatibilityStatus: "playable",
+    compatibilityReasons: [],
+    mediaInfoSummary: {
+      container: "mp4",
+      durationMs: 180000,
+      videoCodec: "h264",
+      resolution: { width: 1920, height: 1080 },
+      fileSizeBytes: 1000,
+      audioTracks: [
+        { index: 0, id: "0x1100", label: "Original", language: "zh", codec: "aac", channels: 2 },
+        { index: 1, id: "0x1101", label: "Instrumental", language: "zh", codec: "aac", channels: 2 }
+      ]
+    },
+    mediaInfoProvenance: { source: "ffprobe", sourceVersion: null, probedAt: now, importedFrom: `/nas/${assetId}.mp4` },
+    trackRoles: {
+      original: { index: 0, id: "0x1100", label: "Original" },
+      instrumental: { index: 1, id: "0x1101", label: "Instrumental" }
+    },
+    playbackProfile: {
+      kind: "single_file_audio_tracks",
+      container: "mp4",
+      videoCodec: "h264",
+      audioCodecs: ["aac"],
+      requiresAudioTrackSelection: true
+    }
   };
 }

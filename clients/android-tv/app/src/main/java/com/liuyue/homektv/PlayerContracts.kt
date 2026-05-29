@@ -26,6 +26,8 @@ data class PlaybackTarget(
     val roomId: String,
     val sessionVersion: Int,
     val queueEntryId: String,
+    val sourceType: String = "nas",
+    val songId: String = "",
     val assetId: String,
     val currentQueueEntryPreview: QueueEntryPreview,
     val playbackUrl: String,
@@ -50,6 +52,7 @@ data class SwitchTarget(
     val sessionVersion: Int,
     val queueEntryId: String,
     val switchKind: String,
+    val sourceType: String = "nas",
     val fromAssetId: String,
     val toAssetId: String,
     val playbackUrl: String,
@@ -73,6 +76,18 @@ data class RoomSnapshot(
     val conflict: Boolean,
     val noticeMessage: String?,
     val generatedAt: String?,
+)
+
+data class RoomInteractionEvent(
+    val id: String,
+    val roomId: String,
+    val roomSlug: String,
+    val kind: String,
+    val message: String,
+    val senderDeviceId: String,
+    val senderName: String,
+    val createdAt: String,
+    val expiresAt: String,
 )
 
 data class BootstrapResult(

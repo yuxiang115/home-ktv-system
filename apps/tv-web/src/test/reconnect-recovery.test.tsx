@@ -96,6 +96,8 @@ function playbackTarget(input: { resumePositionMs: number }): PlaybackTarget {
     roomId: "living-room",
     sessionVersion: 4,
     queueEntryId: "queue-current",
+    sourceType: "nas",
+    songId: "song-current",
     assetId: "asset-original",
     currentQueueEntryPreview: {
       queueEntryId: "queue-current",

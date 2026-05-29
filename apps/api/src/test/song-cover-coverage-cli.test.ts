@@ -13,7 +13,7 @@ describe("song cover coverage CLI", () => {
         "--delay-ms",
         "300",
         "--source",
-        "ktv-index",
+        "nas",
         "--providers",
         "tencent,kugou,netease",
         "--progress-every",
@@ -33,7 +33,7 @@ describe("song cover coverage CLI", () => {
       providers: ["tencent", "kugou", "netease"],
       requestTimeoutMs: 6000,
       searchLimit: 8,
-      source: "ktv-index"
+      source: "nas"
     });
   });
 
@@ -88,9 +88,9 @@ describe("song cover coverage CLI", () => {
     expect(closed).toEqual(["postgres://env"]);
     expect(queried).toHaveLength(1);
     expect(requestedSongs).toEqual([
-      { source: "ktv-index", sourceSongId: "song-1", title: "晴天", artistName: "周杰伦" },
-      { source: "ktv-index", sourceSongId: "song-2", title: "十年", artistName: "陈奕迅" },
-      { source: "ktv-index", sourceSongId: "song-3", title: "冷门歌", artistName: "佚名" }
+      { source: "nas", sourceSongId: "song-1", title: "晴天", artistName: "周杰伦" },
+      { source: "nas", sourceSongId: "song-2", title: "十年", artistName: "陈奕迅" },
+      { source: "nas", sourceSongId: "song-3", title: "冷门歌", artistName: "佚名" }
     ]);
     expect(output).toContain("[coverage] progress=2/3 found=2 not_found=0 failed=0 hitRate=100.0%");
     expect(output.at(-1)).toContain('"hitRate": "66.7%"');

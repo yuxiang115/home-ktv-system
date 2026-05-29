@@ -9,19 +9,17 @@ import {
 import type { ControlSessionRepository } from "../modules/controller/repositories/control-session-repository.js";
 import type { RoomPairingTokenRepository } from "../modules/rooms/repositories/pairing-token-repository.js";
 import type { RoomRepository } from "../modules/rooms/repositories/room-repository.js";
-import type { AssetGateway } from "../modules/assets/asset-gateway.js";
-import type { AssetRepository } from "../modules/catalog/repositories/asset-repository.js";
-import type { SongRepository } from "../modules/catalog/repositories/song-repository.js";
+import type { MediaGateway } from "../modules/media/media-gateway.js";
 import type { PlaybackSessionRepository } from "../modules/playback/repositories/playback-session-repository.js";
 import type { QueueEntryRepository } from "../modules/playback/repositories/queue-entry-repository.js";
 import type { PlayerDeviceSessionRepository } from "../modules/player/register-player.js";
+import type { PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
 
 export interface ControlSessionRouteRepositories {
   rooms: RoomRepository;
   playbackSessions: PlaybackSessionRepository;
   queueEntries: QueueEntryRepository;
-  assets: AssetRepository;
-  songs: SongRepository;
+  playableMedia?: PlayableMediaRepository;
   pairingTokens: RoomPairingTokenRepository;
   controlSessions: ControlSessionRepository;
   deviceSessions: PlayerDeviceSessionRepository;
@@ -30,7 +28,7 @@ export interface ControlSessionRouteRepositories {
 export interface ControlSessionRouteDependencies {
   config: ApiConfig;
   repositories: ControlSessionRouteRepositories;
-  assetGateway: AssetGateway;
+  mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
 }
 
 interface ControlSessionsBody {
@@ -66,7 +64,7 @@ export async function registerControlSessionRoutes(
           roomSlug: room.slug,
           config: dependencies.config,
           repositories: dependencies.repositories,
-          assetGateway: dependencies.assetGateway
+          ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
         });
 
         reply.header("Set-Cookie", serializeControlSessionCookie({ session: { id: controlSession.id } }));
@@ -106,7 +104,7 @@ export async function registerControlSessionRoutes(
         roomSlug: room.slug,
         config: dependencies.config,
         repositories: dependencies.repositories,
-        assetGateway: dependencies.assetGateway
+        ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
       });
 
       reply.header("Set-Cookie", serializeControlSessionCookie({ session: { id: controlSession.id } }));

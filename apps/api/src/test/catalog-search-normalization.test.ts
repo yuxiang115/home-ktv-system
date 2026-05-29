@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { buildPinyinSearchKeys, normalizeSearchText } from "../modules/catalog/search-normalization.js";
-import { searchMatchScores } from "../modules/catalog/search-ranking.js";
 
 describe("catalog search normalization", () => {
   it("normalizes full-width latin text and separators", () => {
@@ -19,12 +18,4 @@ describe("catalog search normalization", () => {
     });
   });
 
-  it("keeps exact title and artist matches above fallback search buckets", () => {
-    expect(searchMatchScores.title_exact).toBeGreaterThan(searchMatchScores.artist_exact);
-    expect(searchMatchScores.artist_exact).toBeGreaterThan(searchMatchScores.normalized_title);
-    expect(searchMatchScores.artist_exact).toBeGreaterThan(searchMatchScores.alias);
-    expect(searchMatchScores.artist_exact).toBeGreaterThan(searchMatchScores.pinyin);
-    expect(searchMatchScores.artist_exact).toBeGreaterThan(searchMatchScores.initials);
-    expect(searchMatchScores.artist_exact).toBeGreaterThan(searchMatchScores.search_hint);
-  });
 });

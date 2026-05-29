@@ -1,4 +1,4 @@
-import type { SongDiscoveryArtist, SongDiscoveryGenre, SongDiscoverySong, SongSearchLocalResult } from "@home-ktv/domain";
+import type { SongDiscoveryArtist, SongDiscoveryGenre, SongDiscoverySong, SongSearchNasResult } from "@home-ktv/domain";
 import type { RoomInteractionKind } from "@home-ktv/player-contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -27,7 +27,6 @@ function ControllerApp() {
   const controller = useRoomController();
   const snapshot = controller.snapshot;
   const current = snapshot?.currentTarget;
-  const indexedSourceFallbackLabel = "KTV索引";
   const switchTarget = snapshot?.switchTarget;
   const targetVocalMode =
     switchTarget?.vocalMode ??
@@ -143,7 +142,6 @@ function ControllerApp() {
         <SearchOverlay
           controller={controller}
           history={searchHistory}
-          indexedSourceFallbackLabel={indexedSourceFallbackLabel}
           onClose={() => setSearchOpen(false)}
           onClearHistory={() => {
             writeSearchHistory([]);
@@ -856,7 +854,6 @@ type BrowseView =
 function SearchOverlay({
   controller,
   history,
-  indexedSourceFallbackLabel,
   onClearHistory,
   onClose,
   onCommitHistory,
@@ -864,7 +861,6 @@ function SearchOverlay({
 }: {
   controller: RoomControllerState;
   history: readonly string[];
-  indexedSourceFallbackLabel: string;
   onClearHistory(): void;
   onClose(): void;
   onCommitHistory(query: string): void;
@@ -910,7 +906,6 @@ function SearchOverlay({
         {hasQuery ? (
           <SearchResults
             controller={controller}
-            indexedSourceFallbackLabel={indexedSourceFallbackLabel}
             t={t}
           />
         ) : (
@@ -949,94 +944,37 @@ function SearchOverlay({
 
 function SearchResults({
   controller,
-  indexedSourceFallbackLabel,
   t
 }: {
   controller: RoomControllerState;
-  indexedSourceFallbackLabel: string;
   t: TFunction;
 }) {
   const online = controller.songSearch?.online;
-  const indexed = controller.songSearch?.indexed ?? null;
+  const nas = controller.songSearch?.nas ?? null;
 
   return (
     <div className="song-list search-overlay-results">
-      {controller.songSearch?.local.map((result) => (
-        <SearchLocalSongRow controller={controller} key={result.songId} result={result} t={t} />
-      ))}
-
-      {controller.songSearch && controller.songSearch.local.length === 0 ? (
-        <p className="empty-state local-empty">{t("search.localEmpty")}</p>
-      ) : null}
-
-      {indexed ? (
+      {nas ? (
         <section className="indexed-panel" aria-label={t("search.indexedTitle")}>
           <div className="panel-heading">
             <h3>{t("search.indexedTitle")}</h3>
-            <span className={`search-status ${indexed.status}`}>{indexed.message}</span>
+            <span className={`search-status ${nas.status}`}>{nas.message}</span>
           </div>
 
-          {indexed.results.length > 0 ? (
+          {nas.results.length > 0 ? (
             <div className="indexed-result-list">
-              {indexed.results.map((result) => (
-                <article className="song-row indexed-result-row" key={result.indexedSongId}>
-                  <div className="result-main">
-                    <strong>{result.title}</strong>
-                    <p>{result.artistName}</p>
-                    <div className="result-meta">
-                      <span className="indexed-source">{result.sourceLabel || indexedSourceFallbackLabel}</span>
-                      <span>{result.category}</span>
-                      <span>{t("search.indexedVersionCount", { count: result.versions.length })}</span>
-                    </div>
-                  </div>
-
-                  <div className="version-list indexed-version-list">
-                    {result.versions.map((version) => {
-                      const isPending = controller.pendingIndexedAssetId === version.indexedAssetId;
-                      const buttonLabel = indexedVersionButtonLabel(version, isPending, t);
-                      const canClick = version.canQueue && !isPending;
-
-                      return (
-                        <div className="indexed-version-row" key={version.indexedAssetId}>
-                          <div>
-                            <strong>{version.displayName}</strong>
-                            <div className="result-meta">
-                              <span>{version.sourceLabel || indexedSourceFallbackLabel}</span>
-                              <span>{version.extension}</span>
-                              <span>{version.category}</span>
-                              <span>{version.sizeBytes == null ? t("search.unknownSize") : formatFileSize(version.sizeBytes)}</span>
-                              {version.audioTrackCount === 1 ? (
-                                <span className="single-track-badge">{t("search.singleAudioTrackSource")}</span>
-                              ) : null}
-                            </div>
-                          </div>
-                          <button
-                            className="primary-button"
-                            type="button"
-                            disabled={!canClick}
-                            onClick={() =>
-                              canClick
-                                ? controller.requestAddIndexedAsset(
-                                    version.indexedAssetId,
-                                    result.title,
-                                    version.queueState
-                                  )
-                                : undefined
-                            }
-                          >
-                            {buttonLabel}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </article>
+              {nas.results.map((result) => (
+                <SearchNasSongRow controller={controller} key={result.songId} result={result} t={t} />
               ))}
             </div>
           ) : (
             <p className="empty-state indexed-empty">{t("search.indexedEmpty")}</p>
           )}
         </section>
+      ) : null}
+
+      {controller.songSearch && controller.songSearch.nas.results.length === 0 ? (
+        <p className="empty-state local-empty">{t("search.localEmpty")}</p>
       ) : null}
 
       {online ? (
@@ -1092,90 +1030,59 @@ function SearchResults({
   );
 }
 
-function SearchLocalSongRow({
+function SearchNasSongRow({
   controller,
   result,
   t
 }: {
   controller: RoomControllerState;
-  result: SongSearchLocalResult;
+  result: SongSearchNasResult;
   t: TFunction;
 }) {
-  const isQueued = result.queueState === "queued";
-  const statusLabel = isQueued ? t("search.queued") : t("search.localPlayable");
-  const primaryVersion = result.versions[0] ?? null;
-  const primaryCanQueue = primaryVersion ? primaryVersion.canQueue !== false : false;
-  const primaryDisabledLabel = primaryVersion ? disabledVersionLabel(primaryVersion) : "暂不可播放";
-
   return (
-    <article className="song-row search-result-row">
+    <article className="song-row indexed-result-row">
       <div className="result-main">
         <strong>{result.title}</strong>
         <p>{result.artistName}</p>
         <div className="result-meta">
-          <span className={isQueued ? "queued-badge" : "local-badge"}>{statusLabel}</span>
-          <span>{t("search.versionCount", { count: result.versions.length })}</span>
-          {primaryVersion && !primaryCanQueue ? (
-            <span className="version-option__status">{primaryDisabledLabel}</span>
-          ) : null}
+          <span className="indexed-source">{result.sourceLabel || t("search.indexedTitle")}</span>
+          <span>{result.category}</span>
+          <span>{t("search.indexedVersionCount", { count: result.versions.length })}</span>
         </div>
       </div>
 
-      {result.versions.length === 1 && primaryVersion ? (
-        <button
-          className="primary-button"
-          type="button"
-          disabled={!primaryCanQueue}
-          onClick={() =>
-            primaryCanQueue
-              ? controller.requestAddSongVersion(
-                  result.songId,
-                  primaryVersion.assetId,
-                  result.title,
-                  result.queueState
-                )
-              : undefined
-          }
-        >
-          {primaryCanQueue ? (isQueued ? t("button.addAgain") : t("button.add")) : primaryDisabledLabel}
-        </button>
-      ) : null}
+      <div className="version-list indexed-version-list">
+        {result.versions.map((version) => {
+          const isPending = controller.pendingNasAssetId === version.assetId;
+          const buttonLabel = indexedVersionButtonLabel(version, isPending, t);
+          const canClick = version.canQueue && !isPending;
 
-      {result.versions.length > 1 ? (
-        <div className="version-list">
-          {result.versions.map((version) => {
-            const canQueue = version.canQueue !== false;
-            const disabledLabel = disabledVersionLabel(version);
-
-            return (
-              <div className="version-row" key={version.assetId}>
-                <div>
-                  <strong>{version.displayName}</strong>
-                  <div className="result-meta">
-                    <span>{version.sourceLabel}</span>
-                    <span>{formatDuration(version.durationMs)}</span>
-                    <span>{version.qualityLabel}</span>
-                    {version.isRecommended ? <span className="recommended-mark">{t("search.recommended")}</span> : null}
-                    {!canQueue ? <span className="version-option__status">{disabledLabel}</span> : null}
-                  </div>
+          return (
+            <div className="indexed-version-row" key={version.assetId}>
+              <div>
+                <strong>{version.displayName}</strong>
+                <div className="result-meta">
+                  <span>{version.sourceLabel || t("search.indexedTitle")}</span>
+                  <span>{version.extension}</span>
+                  <span>{version.category}</span>
+                  <span>{version.sizeBytes == null ? t("search.unknownSize") : formatFileSize(version.sizeBytes)}</span>
+                  {version.audioTrackCount === 1 ? (
+                    <span className="single-track-badge">{t("search.singleAudioTrackSource")}</span>
+                  ) : null}
                 </div>
-                <button
-                  className="primary-button"
-                  type="button"
-                  disabled={!canQueue}
-                  onClick={() =>
-                    canQueue
-                      ? controller.requestAddSongVersion(result.songId, version.assetId, result.title, result.queueState)
-                      : undefined
-                  }
-                >
-                  {canQueue ? t("button.addVersion") : disabledLabel}
-                </button>
               </div>
-            );
-          })}
-        </div>
-      ) : null}
+              <button
+                className="primary-button"
+                type="button"
+                disabled={!canClick}
+                onClick={() => (canClick ? controller.requestAddNasAsset(version.assetId, result.title, version.queueState) : undefined)}
+              >
+                {buttonLabel}
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </article>
   );
 }
@@ -1310,14 +1217,7 @@ function DiscoverySongRow({
             return;
           }
 
-          if (isIndexedDiscoveryVersion(primaryVersion)) {
-            if (controller.requestAddIndexedAsset(primaryVersion.indexedAssetId, song.title, primaryVersion.queueState)) {
-              onQueueAddFeedback(song);
-            }
-            return;
-          }
-
-          if (controller.requestAddSongVersion(song.songId, primaryVersion.assetId, song.title, song.queueState)) {
+          if (controller.requestAddNasAsset(primaryVersion.assetId, song.title, primaryVersion.queueState)) {
             onQueueAddFeedback(song);
           }
         }}
@@ -1326,12 +1226,6 @@ function DiscoverySongRow({
       </button>
     </article>
   );
-}
-
-function isIndexedDiscoveryVersion(
-  version: SongDiscoverySong["versions"][number]
-): version is Extract<SongDiscoverySong["versions"][number], { indexedAssetId: string }> {
-  return "indexedAssetId" in version;
 }
 
 const searchHistoryStorageKey = "home_ktv_search_history_v1";

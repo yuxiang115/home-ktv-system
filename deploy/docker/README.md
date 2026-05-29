@@ -36,4 +36,4 @@ bash deploy/docker/ktv.sh fetch-covers -- --limit 300
 
 `tag-styles-jsonl` 仍可用于短任务；全量长任务建议使用 `tag-styles-job`，它会启动独立 Docker 容器并把运行状态写到 `/opt/home-ktv-jobs/style-tagging`，主服务 `restart` 不会杀掉该任务。
 
-完整配置、NAS 路径映射、公网入口和验证步骤见 [../../docs/deployment-docker.md](../../docs/deployment-docker.md)。歌曲封面拉取流程见 [../../docs/runbooks/song-cover-fetching.md](../../docs/runbooks/song-cover-fetching.md)。
+完整配置、NAS 路径映射、公网入口和验证步骤见 [../../docs/deployment-docker.md](../../docs/deployment-docker.md)。歌曲封面拉取流程见 [../../docs/runbooks/song-cover-fetching.md](../../docs/runbooks/song-cover-fetching.md)。从旧曲库桥接结构升级到 NAS/online 曲库模型时，先按 [../../docs/runbooks/nas-online-catalog-migration.md](../../docs/runbooks/nas-online-catalog-migration.md) 做备份、迁移和回滚准备。

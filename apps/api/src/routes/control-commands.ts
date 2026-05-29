@@ -1,13 +1,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { ApiConfig } from "../config.js";
-import type { AssetGateway } from "../modules/assets/asset-gateway.js";
+import type { MediaGateway } from "../modules/media/media-gateway.js";
 import type { ControlSessionRepository } from "../modules/controller/repositories/control-session-repository.js";
 import { restoreControlSession, serializeControlSessionCookie } from "../modules/controller/control-session-service.js";
 import type { CandidateTaskService } from "../modules/online/candidate-task-service.js";
 import { buildRoomControlSnapshot, type ControlSnapshotRepositories } from "../modules/rooms/build-control-snapshot.js";
 import { executeRoomCommand } from "../modules/playback/session-command-service.js";
 import type { CommandExecutionResult } from "../modules/playback/session-command-service.js";
-import type { PgIndexedQueueCommandService } from "../modules/playback/indexed-queue-command-service.js";
 import type { RoomSessionCommandRepository } from "../modules/playback/repositories/room-session-command-repository.js";
 import type { RoomSnapshotBroadcaster } from "../modules/realtime/room-snapshot-broadcaster.js";
 
@@ -19,10 +18,9 @@ export interface ControlCommandsRouteRepositories extends ControlSnapshotReposit
 export interface ControlCommandsRouteDependencies {
   config: ApiConfig;
   repositories: ControlCommandsRouteRepositories;
-  assetGateway: AssetGateway;
+  mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   broadcaster?: RoomSnapshotBroadcaster;
   online?: Pick<CandidateTaskService, "listActiveForRoom" | "requestSupplement">;
-  indexedQueueCommands?: Pick<PgIndexedQueueCommandService, "executeIndexedAddQueueEntry">;
 }
 
 interface BaseCommandBody {
@@ -32,9 +30,9 @@ interface BaseCommandBody {
 }
 
 interface AddQueueEntryBody extends BaseCommandBody {
+  sourceType?: "nas" | "online";
   songId?: string;
   assetId?: string;
-  indexedAssetId?: string;
 }
 
 interface QueueEntryBody extends BaseCommandBody {
@@ -67,19 +65,14 @@ export async function registerControlCommandRoutes(
   server.post<{ Params: { roomSlug: string }; Body: AddQueueEntryBody }>(
     "/rooms/:roomSlug/commands/add-queue-entry",
     async (request, reply) => {
-      const hasIndexed = hasText(request.body.indexedAssetId);
-      const hasCanonical = hasText(request.body.songId) || hasText(request.body.assetId);
-      if (hasIndexed && hasCanonical) {
+      const indexedAssetId = (request.body as Record<string, unknown>).indexedAssetId;
+      if (hasText(indexedAssetId)) {
         await reply.code(400).send({ code: "INVALID_QUEUE_SOURCE", message: "点歌来源无效" });
         return;
       }
 
-      if (hasIndexed) {
-        await handleIndexedAddQueueEntry(request, reply, dependencies);
-        return;
-      }
-
       await handleCommand(request, reply, dependencies, "add-queue-entry", {
+        sourceType: request.body.sourceType,
         songId: request.body.songId,
         assetId: request.body.assetId
       });
@@ -188,7 +181,7 @@ async function handleRequestSupplement(
         ...dependencies.repositories,
         ...(dependencies.online ? { onlineTasks: dependencies.online } : {})
       },
-      assetGateway: dependencies.assetGateway
+      ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
     });
     if (snapshot) {
       dependencies.broadcaster.broadcastRoomSnapshot(room.slug, snapshot);
@@ -202,28 +195,6 @@ async function handleRequestSupplement(
     sessionVersion: requiredNumber(request.body.sessionVersion, "sessionVersion"),
     task
   });
-}
-
-async function handleIndexedAddQueueEntry(
-  request: FastifyRequest<{ Params: { roomSlug: string }; Body: AddQueueEntryBody }>,
-  reply: FastifyReply,
-  dependencies: ControlCommandsRouteDependencies
-): Promise<void> {
-  if (!dependencies.indexedQueueCommands) {
-    await reply.code(503).send({ code: "KTV_INDEX_SYNC_UNAVAILABLE", message: "KTV 索引点歌暂不可用" });
-    return;
-  }
-
-  const result = await dependencies.indexedQueueCommands.executeIndexedAddQueueEntry({
-    commandId: requiredString(request.body.commandId, "commandId"),
-    roomSlug: request.params.roomSlug,
-    sessionVersion: requiredNumber(request.body.sessionVersion, "sessionVersion"),
-    deviceId: requiredString(request.body.deviceId, "deviceId"),
-    indexedAssetId: requiredString(request.body.indexedAssetId, "indexedAssetId"),
-    cookieHeader: request.headers.cookie
-  });
-
-  await sendCommandResult(request.params.roomSlug, reply, dependencies, result);
 }
 
 async function handleCommand(
@@ -258,7 +229,7 @@ async function handleCommand(
     payload,
     controlSession,
     repositories: dependencies.repositories,
-    assetGateway: dependencies.assetGateway,
+    ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {}),
     config: dependencies.config
   });
 

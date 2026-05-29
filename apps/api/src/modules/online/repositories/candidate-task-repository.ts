@@ -11,7 +11,7 @@ import type { CandidateTaskRow } from "../../../db/schema.js";
 
 const candidateTaskColumns = `id, room_id, provider, provider_candidate_id, title, artist_name,
        source_label, duration_ms, candidate_type, reliability_label, risk_label,
-       status, failure_reason, recent_event, provider_payload, ready_asset_id,
+       status, failure_reason, recent_event, provider_payload, ready_source_type, ready_online_asset_id,
        created_at, updated_at, selected_at, review_required_at, fetching_at,
        fetched_at, ready_at, failed_at, stale_at, promoted_at, purged_at`;
 
@@ -75,7 +75,7 @@ export function mapCandidateTaskRow(row: CandidateTaskRow): OnlineCandidateTask 
     failureReason: row.failure_reason,
     recentEvent: row.recent_event,
     providerPayload: row.provider_payload,
-    readyAssetId: row.ready_asset_id,
+    readyAssetId: row.ready_online_asset_id,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     selectedAt: toIsoString(row.selected_at),
@@ -190,7 +190,8 @@ export class PgCandidateTaskRepository implements CandidateTaskRepository {
        SET status = $2,
            failure_reason = $3,
            recent_event = COALESCE($4::jsonb, recent_event),
-           ready_asset_id = COALESCE($5, ready_asset_id),
+           ready_source_type = CASE WHEN $5::text IS NULL THEN ready_source_type ELSE 'online' END,
+           ready_online_asset_id = COALESCE($5, ready_online_asset_id),
            updated_at = now()
            ${statusTimestampAssignment}
        WHERE id = $1

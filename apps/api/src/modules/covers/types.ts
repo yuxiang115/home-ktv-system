@@ -1,6 +1,6 @@
-import type { SongDiscoverySource } from "@home-ktv/domain";
+import type { SongSourceType } from "@home-ktv/domain";
 
-export type SongCoverSource = SongDiscoverySource;
+export type SongCoverSource = SongSourceType;
 export type SongCoverStatus = "pending" | "found" | "not_found" | "failed";
 
 export interface SongCoverLookupKey {

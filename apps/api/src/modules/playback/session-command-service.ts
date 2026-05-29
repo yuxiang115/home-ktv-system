@@ -1,8 +1,9 @@
-import type { AssetGateway } from "../assets/asset-gateway.js";
+import type { MediaGateway } from "../media/media-gateway.js";
+import type { PlayableMediaAsset } from "../media/playable-media-repository.js";
 import type { ApiConfig } from "../../config.js";
 import type {
-  Asset,
   ControlCommandType,
+  MediaSourceRef,
   ControlSession,
   PlaybackSession,
   QueueEntry,
@@ -29,7 +30,7 @@ export interface ExecuteRoomCommandInput {
   payload: Record<string, unknown>;
   controlSession: ControlSessionInfo;
   repositories: CommandRepositories;
-  assetGateway: AssetGateway;
+  mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   config: ApiConfig;
   now?: Date;
 }
@@ -50,7 +51,7 @@ export interface HandlePlayerEndedInput {
     }): Promise<unknown>;
   };
   repositories: CommandRepositories;
-  assetGateway: AssetGateway;
+  mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   config: ApiConfig;
   now?: Date;
 }
@@ -65,7 +66,7 @@ export interface HandlePlayerFailedInput extends HandlePlayerEndedInput {
 export interface AdvanceToNextInput {
   room: Room;
   repositories: CommandRepositories;
-  assetGateway: AssetGateway;
+  mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   config: ApiConfig;
   completionStatus: "played" | "skipped" | "failed";
   notice?: PlaybackNotice | null;
@@ -158,7 +159,7 @@ export async function executeRoomCommand(input: ExecuteRoomCommandInput): Promis
       roomSlug: room.slug,
       config: input.config,
       repositories: input.repositories,
-      assetGateway: input.assetGateway,
+      ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {}),
       now
     });
     if (!snapshot) {
@@ -252,7 +253,7 @@ export async function handlePlayerEnded(input: HandlePlayerEndedInput): Promise<
   const result = await advanceToNext({
     room,
     repositories: input.repositories,
-    assetGateway: input.assetGateway,
+    ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {}),
     config: input.config,
     completionStatus: "played",
     now
@@ -312,7 +313,7 @@ export async function handlePlayerFailed(input: HandlePlayerFailedInput): Promis
   const result = await advanceToNext({
     room,
     repositories: input.repositories,
-    assetGateway: input.assetGateway,
+    ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {}),
     config: input.config,
     completionStatus: "failed",
     notice,
@@ -346,7 +347,7 @@ export async function advanceToNext(input: AdvanceToNextInput): Promise<{
       roomSlug: input.room.slug,
       config: input.config,
       repositories: input.repositories,
-      assetGateway: input.assetGateway,
+      ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {}),
       ...(input.notice !== undefined ? { notice: input.notice } : {}),
       now
     });
@@ -373,15 +374,28 @@ export async function advanceToNext(input: AdvanceToNextInput): Promise<{
       roomSlug: input.room.slug,
       config: input.config,
       repositories: input.repositories,
-      assetGateway: input.assetGateway,
+      ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {}),
       ...(input.notice !== undefined ? { notice: input.notice } : {}),
       now
     });
     return { snapshot, sessionVersion: idleSession?.version ?? snapshot?.sessionVersion ?? session.version };
   }
 
-  const nextAsset = await input.repositories.assets.findById(nextEntry.assetId);
-  const nextTargetVocalMode = nextAsset ? targetVocalModeForQueueEntry(nextAsset, nextEntry) : null;
+  const nextPlayableMedia = await resolvePlayableMediaForQueueEntry(input.repositories, nextEntry);
+  if (!nextPlayableMedia) {
+    const idleSession = await input.repositories.playbackSessions.setIdle(input.room.id);
+    const snapshot = await buildRoomControlSnapshot({
+      roomSlug: input.room.slug,
+      config: input.config,
+      repositories: input.repositories,
+      ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {}),
+      ...(input.notice !== undefined ? { notice: input.notice } : {}),
+      now
+    });
+    return { snapshot, sessionVersion: idleSession?.version ?? snapshot?.sessionVersion ?? session.version };
+  }
+
+  const nextTargetVocalMode = targetVocalModeForPlayableMedia(nextPlayableMedia, nextEntry);
   await markQueueEntryPlaybackState(input.repositories, {
     roomId: input.room.id,
     queueEntryId: nextEntry.id,
@@ -391,19 +405,19 @@ export async function advanceToNext(input: AdvanceToNextInput): Promise<{
   const updatedSession = await input.repositories.playbackSessions.startQueueEntry({
     roomId: input.room.id,
     queueEntryId: nextEntry.id,
-    activeAssetId: nextEntry.assetId,
+    activeAssetId: null,
     playerState: "loading",
     playerPositionMs: 0,
     nextQueueEntryId: currentIndex >= 0 ? effectiveQueue[currentIndex + 2]?.id ?? null : null,
     mediaStartedAt: null,
-    ...(nextTargetVocalMode ? { targetVocalMode: nextTargetVocalMode } : {})
+    targetVocalMode: nextTargetVocalMode
   });
 
   const snapshot = await buildRoomControlSnapshot({
     roomSlug: input.room.slug,
     config: input.config,
     repositories: input.repositories,
-    assetGateway: input.assetGateway,
+    ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {}),
     ...(input.notice !== undefined ? { notice: input.notice } : {}),
     now
   });
@@ -456,60 +470,54 @@ async function addQueueEntry(
   input: ExecuteRoomCommandInput,
   context: QueueMutationContext
 ): Promise<CommandExecutionResult> {
-  const songId = typeof input.payload.songId === "string" ? input.payload.songId : "";
-  if (!songId) {
+  const sourceType = typeof input.payload.sourceType === "string" ? input.payload.sourceType : "";
+  return addSourceQueueEntry(input, context, sourceType);
+}
+
+async function addSourceQueueEntry(
+  input: ExecuteRoomCommandInput,
+  context: QueueMutationContext,
+  sourceType: string
+): Promise<CommandExecutionResult> {
+  if (sourceType === "online") {
+    return rejected(input.commandId, input.sessionVersion, "ONLINE_PLAYBACK_NOT_IMPLEMENTED");
+  }
+
+  if (sourceType !== "nas") {
+    return rejected(input.commandId, input.sessionVersion, "INVALID_QUEUE_SOURCE");
+  }
+
+  const assetId = typeof input.payload.assetId === "string" ? input.payload.assetId : "";
+  if (!assetId) {
+    return rejected(input.commandId, input.sessionVersion, "INVALID_QUEUE_SOURCE");
+  }
+
+  const playableMedia = await input.repositories.playableMedia?.findPlayableBySource({ sourceType: "nas", assetId });
+  if (!playableMedia || !isQueueablePlayableMedia(playableMedia)) {
     return rejected(input.commandId, input.sessionVersion, "SONG_NOT_QUEUEABLE");
   }
 
-  const song = await input.repositories.songs.findById(songId);
-  if (!song || song.status !== "ready" || !song.defaultAssetId) {
+  const preferredVocalMode = preferredVocalModeForPlayableMedia(playableMedia, context.session.targetVocalMode);
+  if (!preferredVocalMode) {
     return rejected(input.commandId, input.sessionVersion, "SONG_NOT_QUEUEABLE");
-  }
-
-  const requestedAssetId = typeof input.payload.assetId === "string" ? input.payload.assetId : song.defaultAssetId;
-  if (!requestedAssetId) {
-    return rejected(input.commandId, input.sessionVersion, "SONG_NOT_QUEUEABLE");
-  }
-
-  const selectedAsset = await input.repositories.assets.findById(requestedAssetId);
-  if (!selectedAsset || selectedAsset.songId !== song.id || selectedAsset.status !== "ready") {
-    return rejected(input.commandId, input.sessionVersion, "SONG_NOT_QUEUEABLE");
-  }
-
-  const ktvIndexAdmission = isKtvIndexQueueAdmission(input.payload);
-  const resolvedMode = isSingleFileRealMvAsset(selectedAsset)
-    ? resolveRealMvQueueVocalMode({ asset: selectedAsset, sessionTargetVocalMode: context.session.targetVocalMode })
-    : null;
-
-  if (isSingleFileRealMvAsset(selectedAsset)) {
-    if (ktvIndexAdmission) {
-      if (!isQueueableKtvIndexRealMvAsset(selectedAsset, song.id)) {
-        return rejected(input.commandId, input.sessionVersion, "SONG_NOT_QUEUEABLE");
-      }
-    } else if (!resolvedMode || !isQueueableRealMvAsset(selectedAsset, resolvedMode)) {
-      return rejected(input.commandId, input.sessionVersion, "SONG_NOT_QUEUEABLE");
-    }
-  } else {
-    const selectedAssetSourceIsQueueable = selectedAsset.sourceType !== "online_ephemeral";
-    if (!selectedAssetSourceIsQueueable || selectedAsset.switchQualityStatus !== "verified") {
-      return rejected(input.commandId, input.sessionVersion, "SONG_NOT_QUEUEABLE");
-    }
-
-    const counterparts = await input.repositories.assets.findVerifiedSwitchCounterparts(selectedAsset);
-    if (counterparts.length === 0) {
-      return rejected(input.commandId, input.sessionVersion, "SONG_NOT_QUEUEABLE");
-    }
   }
 
   const effectiveQueue = await input.repositories.queueEntries.listEffectiveQueue(context.room.id);
   const queuePosition = effectiveQueue.at(-1)?.queuePosition ?? 0;
+  const source: MediaSourceRef = {
+    sourceType: "nas",
+    songId: playableMedia.songId,
+    assetId: playableMedia.assetId
+  };
+
   await input.repositories.queueEntries.append({
     roomId: context.room.id,
-    songId: song.id,
-    assetId: selectedAsset.id,
+    source,
+    songId: playableMedia.songId,
+    assetId: playableMedia.assetId,
     requestedBy: input.controlSession.deviceId,
     queuePosition: queuePosition + 1,
-    ...(resolvedMode ? { playbackOptions: { preferredVocalMode: resolvedMode } } : {})
+    playbackOptions: { preferredVocalMode }
   });
 
   const snapshot = await finishAcceptedCommand(input, context);
@@ -630,7 +638,7 @@ async function switchVocalMode(
   const switchTarget = await buildSwitchTarget({
     roomSlug: context.room.slug,
     repositories: input.repositories,
-    assetGateway: input.assetGateway
+    ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {})
   });
 
   if (!switchTarget) {
@@ -695,7 +703,7 @@ async function runAdvanceCommand(
   const result = await advanceToNext({
     room: context.room,
     repositories: input.repositories,
-    assetGateway: input.assetGateway,
+    ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {}),
     config: input.config,
     completionStatus,
     now: context.now
@@ -724,7 +732,7 @@ async function finishAcceptedSnapshotCommand(
     roomSlug: context.room.slug,
     config: input.config,
     repositories: input.repositories,
-    assetGateway: input.assetGateway,
+    ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {}),
     now: context.now
   });
   if (!snapshot) {
@@ -749,7 +757,7 @@ async function finishAcceptedCommand(
     roomSlug: context.room.slug,
     config: input.config,
     repositories: input.repositories,
-    assetGateway: input.assetGateway,
+    ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {}),
     now: context.now
   });
   if (!snapshot) {
@@ -781,15 +789,15 @@ async function syncPlaybackSessionAfterQueueMutation(
     return input.repositories.playbackSessions.bumpVersion?.(context.room.id) ?? session;
   }
 
-  const targetAsset = await input.repositories.assets.findById(targetQueueEntry.assetId);
-  if (!targetAsset) {
+  const targetPlayableMedia = await resolvePlayableMediaForQueueEntry(input.repositories, targetQueueEntry);
+  if (!targetPlayableMedia) {
     return input.repositories.playbackSessions.bumpVersion?.(context.room.id) ?? session;
   }
 
   const effectiveQueue = await input.repositories.queueEntries.listEffectiveQueue(context.room.id);
   const currentIndex = effectiveQueue.findIndex((entry) => entry.id === targetQueueEntry.id);
   const nextQueueEntryId = currentIndex >= 0 ? effectiveQueue[currentIndex + 1]?.id ?? null : null;
-  const shouldPreservePlaybackState = Boolean(session.currentQueueEntryId && session.activeAssetId);
+  const shouldPreservePlaybackState = Boolean(session.currentQueueEntryId);
   if (!shouldPreservePlaybackState) {
     await markQueueEntryPlaybackState(input.repositories, {
       roomId: context.room.id,
@@ -802,8 +810,10 @@ async function syncPlaybackSessionAfterQueueMutation(
   return input.repositories.playbackSessions.startQueueEntry({
     roomId: context.room.id,
     queueEntryId: targetQueueEntry.id,
-    activeAssetId: targetAsset.id,
-    targetVocalMode: shouldPreservePlaybackState ? session.targetVocalMode : targetVocalModeForQueueEntry(targetAsset, targetQueueEntry),
+    activeAssetId: null,
+    targetVocalMode: shouldPreservePlaybackState
+      ? session.targetVocalMode
+      : targetVocalModeForPlayableMedia(targetPlayableMedia, targetQueueEntry),
     playerState: shouldPreservePlaybackState ? session.playerState : "loading",
     playerPositionMs: shouldPreservePlaybackState ? session.playerPositionMs : 0,
     nextQueueEntryId,
@@ -811,46 +821,63 @@ async function syncPlaybackSessionAfterQueueMutation(
   });
 }
 
-function isSingleFileRealMvAsset(asset: Asset): boolean {
-  return asset.playbackProfile?.kind === "single_file_audio_tracks" || asset.assetKind === "dual-track-video";
+async function resolvePlayableMediaForQueueEntry(
+  repositories: CommandRepositories,
+  queueEntry: QueueEntry
+): Promise<PlayableMediaAsset | null> {
+  if (!repositories.playableMedia) {
+    return null;
+  }
+
+  const source = sourceRefFromQueueEntry(queueEntry);
+  if (source.sourceType !== "nas") {
+    return null;
+  }
+
+  return repositories.playableMedia.findPlayableBySource(source);
 }
 
-function isKtvIndexQueueAdmission(payload: Record<string, unknown>): boolean {
-  return payload.queueAdmissionSource === "ktv-index";
-}
-
-function resolveRealMvQueueVocalMode(input: {
-  asset: Asset;
-  sessionTargetVocalMode: VocalMode | string | null;
-}): "original" | "instrumental" | null {
-  const selectedMode = input.sessionTargetVocalMode === "original" ? "original" : "instrumental";
-  return hasTrackForVocalMode(input.asset, selectedMode) ? selectedMode : null;
-}
-
-function hasTrackForVocalMode(asset: Asset, vocalMode: "original" | "instrumental"): boolean {
-  return vocalMode === "original" ? Boolean(asset.trackRoles?.original) : Boolean(asset.trackRoles?.instrumental);
-}
-
-function isQueueableRealMvAsset(asset: Asset, vocalMode: "original" | "instrumental"): boolean {
+function sourceRefFromQueueEntry(queueEntry: QueueEntry): MediaSourceRef {
   return (
-    asset.status === "ready" &&
-    asset.sourceType !== "online_ephemeral" &&
-    asset.compatibilityStatus === "playable" &&
-    hasTrackForVocalMode(asset, vocalMode)
+    queueEntry.source ?? {
+      sourceType: "nas",
+      songId: queueEntry.songId,
+      assetId: queueEntry.assetId
+    }
   );
 }
 
-function isQueueableKtvIndexRealMvAsset(asset: Asset, songId: string): boolean {
-  return asset.status === "ready" && asset.sourceType !== "online_ephemeral" && asset.songId === songId;
+function isQueueablePlayableMedia(asset: PlayableMediaAsset): boolean {
+  return asset.status === "ready" && asset.compatibilityStatus === "playable";
 }
 
-function targetVocalModeForQueueEntry(asset: Asset, queueEntry: QueueEntry): VocalMode {
-  if (!isSingleFileRealMvAsset(asset)) {
-    return asset.vocalMode;
+function preferredVocalModeForPlayableMedia(
+  asset: PlayableMediaAsset,
+  sessionTargetVocalMode: VocalMode | string | null
+): "original" | "instrumental" | null {
+  const preferred = sessionTargetVocalMode === "original" ? "original" : "instrumental";
+  return hasPlayableMediaTrackForVocalMode(asset, preferred) ? preferred : null;
+}
+
+function targetVocalModeForPlayableMedia(asset: PlayableMediaAsset, queueEntry: QueueEntry): VocalMode {
+  const preferred = queueEntry.playbackOptions.preferredVocalMode;
+  if ((preferred === "original" || preferred === "instrumental") && hasPlayableMediaTrackForVocalMode(asset, preferred)) {
+    return preferred;
   }
 
-  const preferredVocalMode = queueEntry.playbackOptions.preferredVocalMode;
-  return preferredVocalMode === "original" || preferredVocalMode === "instrumental" ? preferredVocalMode : "instrumental";
+  if (hasPlayableMediaTrackForVocalMode(asset, "instrumental")) {
+    return "instrumental";
+  }
+
+  if (hasPlayableMediaTrackForVocalMode(asset, "original")) {
+    return "original";
+  }
+
+  return "instrumental";
+}
+
+function hasPlayableMediaTrackForVocalMode(asset: PlayableMediaAsset, vocalMode: "original" | "instrumental"): boolean {
+  return vocalMode === "original" ? Boolean(asset.trackRoles.original) : Boolean(asset.trackRoles.instrumental);
 }
 
 async function markQueueEntryPlaybackState(

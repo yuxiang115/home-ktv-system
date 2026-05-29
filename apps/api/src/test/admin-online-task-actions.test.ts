@@ -136,7 +136,6 @@ function createHarness(
       assets: {} as never,
       songs: {} as never,
       controlSessions: {} as never,
-      assetGateway: {} as never,
       deviceSessions: {} as never
     }
   };

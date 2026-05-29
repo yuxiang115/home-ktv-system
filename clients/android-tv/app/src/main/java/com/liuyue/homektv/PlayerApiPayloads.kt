@@ -43,6 +43,7 @@ object PlayerApiPayloads {
         eventType: String,
         sessionVersion: Int,
         queueEntryId: String,
+        sourceType: String,
         assetId: String,
         playbackPositionMs: Long,
         vocalMode: String,
@@ -58,6 +59,7 @@ object PlayerApiPayloads {
             .put("eventType", eventType)
             .put("sessionVersion", sessionVersion)
             .put("queueEntryId", queueEntryId)
+            .put("sourceType", sourceType)
             .put("assetId", assetId)
             .put("playbackPositionMs", playbackPositionMs.coerceAtLeast(0L))
             .put("vocalMode", vocalMode)

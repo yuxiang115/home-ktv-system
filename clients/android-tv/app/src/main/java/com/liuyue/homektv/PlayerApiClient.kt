@@ -67,6 +67,7 @@ class PlayerApiClient(
         eventType: String,
         sessionVersion: Int,
         queueEntryId: String,
+        sourceType: String,
         assetId: String,
         playbackPositionMs: Long,
         vocalMode: String,
@@ -85,6 +86,7 @@ class PlayerApiClient(
                 eventType = eventType,
                 sessionVersion = sessionVersion,
                 queueEntryId = queueEntryId,
+                sourceType = sourceType,
                 assetId = assetId,
                 playbackPositionMs = playbackPositionMs,
                 vocalMode = vocalMode,
@@ -144,6 +146,10 @@ class PlayerApiClient(
                     val snapshot = PlayerContractsJson.roomSnapshotFromRealtimeMessage(text)
                     if (snapshot != null) {
                         listener.onSnapshot(snapshot)
+                    }
+                    val interaction = PlayerContractsJson.roomInteractionFromRealtimeMessage(text)
+                    if (interaction != null) {
+                        listener.onInteraction(interaction)
                     }
                 }
 
@@ -224,6 +230,7 @@ fun interface ResultCallback<T> {
 interface RoomRealtimeListener {
     fun onOpen()
     fun onSnapshot(snapshot: RoomSnapshot)
+    fun onInteraction(interaction: RoomInteractionEvent) = Unit
     fun onClosed(reason: String)
     fun onError(error: Throwable)
 }

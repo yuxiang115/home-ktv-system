@@ -34,7 +34,7 @@ describe("room status view", () => {
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "导入审核工作台" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "NAS 曲库" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "中文" })).toBeTruthy();
   });
 
@@ -43,35 +43,36 @@ describe("room status view", () => {
     installFetchMock();
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "导入审核工作台" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "NAS 曲库" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "English" }));
 
-    expect(await screen.findByRole("heading", { name: "Import review workbench" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Imports" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Songs" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "NAS library" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Imports" })).toBeNull();
+    expect(screen.getByRole("button", { name: "NAS library" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Rooms" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "中文" }));
 
-    expect(screen.getByRole("heading", { name: "导入审核工作台" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "NAS 曲库" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "房间" }));
 
     expect(await screen.findByRole("heading", { name: "房间状态" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "刷新房间状态" })).toBeTruthy();
   });
 
-  it("defaults to Imports and switches to Rooms without reloading", async () => {
+  it("defaults to NAS library and switches to Rooms without reloading", async () => {
     const user = userEvent.setup();
     installFetchMock();
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "导入审核工作台" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "NAS 曲库" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "房间" }));
 
     expect(await screen.findByRole("heading", { name: "房间状态" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "导入" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "NAS 曲库" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "导入" })).toBeNull();
   });
 
   it("renders room status fields and refreshes the pairing token", async () => {
@@ -216,6 +217,37 @@ function installFetchMock(options: { taskActionResponse?: Response | Promise<Res
       const method = init?.method ?? "GET";
       const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
       requests.push({ url: `${requestUrl.pathname}${requestUrl.search}`, method, body });
+
+      if (method === "GET" && requestUrl.pathname === "/admin/ktv-index/diagnostics") {
+        return json({
+          tables: [],
+          latestRun: null,
+          sourceRoot: null,
+          activeAssetCount: 0,
+          missingAssetCount: 0,
+          songCount: 0,
+          artistCount: 0,
+          parseStrategies: [],
+          technicalStatusCounts: [],
+          audioTrackDistribution: [],
+          probePendingCount: 0,
+          probeFailedCount: 0,
+          probeCoveragePercent: 0,
+          lowConfidenceCount: 0,
+          minParseConfidence: null,
+          nasSample: {
+            requested: 0,
+            checked: 0,
+            readable: 0,
+            missing: 0,
+            unreadable: 0,
+            timeout: 0,
+            unmapped: 0,
+            results: []
+          },
+          preview: []
+        });
+      }
 
       if (method === "GET" && requestUrl.pathname === "/admin/rooms/living-room") {
         return json(roomStatus(refreshed ? "2026-05-04T10:30:00.000Z" : "2026-05-04T10:15:00.000Z", promoted));

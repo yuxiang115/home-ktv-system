@@ -123,7 +123,6 @@ describe("online candidate discovery", () => {
 
     await registerControlCommandRoutes(server, {
       config: createConfig(),
-      assetGateway: {} as never,
       repositories: {
         rooms: {
           findBySlug: async (slug: string) => (slug === "living-room" ? createRoom() : null),
@@ -133,8 +132,6 @@ describe("online candidate discovery", () => {
         controlCommands: {} as never,
         playbackSessions: {} as never,
         queueEntries: queueEntries as never,
-        assets: {} as never,
-        songs: {} as never,
         pairingTokens: {} as never,
         deviceSessions: {} as never
       },

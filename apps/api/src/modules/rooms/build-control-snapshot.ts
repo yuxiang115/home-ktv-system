@@ -1,16 +1,15 @@
-import type { AssetGateway } from "../assets/asset-gateway.js";
 import type { ApiConfig } from "../../config.js";
 import type { RoomRepository } from "./repositories/room-repository.js";
 import type { PlaybackSessionRepository } from "../playback/repositories/playback-session-repository.js";
 import type { QueueEntryRepository } from "../playback/repositories/queue-entry-repository.js";
-import type { AssetRepository } from "../catalog/repositories/asset-repository.js";
-import type { SongRepository } from "../catalog/repositories/song-repository.js";
+import type { MediaGateway } from "../media/media-gateway.js";
+import type { PlayableMediaRepository } from "../media/playable-media-repository.js";
 import type { RoomPairingTokenRepository } from "./repositories/pairing-token-repository.js";
 import type { ControlSessionRepository } from "../controller/repositories/control-session-repository.js";
 import type { PlayerDeviceSessionRepository } from "../player/register-player.js";
 import { ACTIVE_TV_PLAYER_WINDOW_MS } from "../player/conflict-service.js";
 import { buildRoomSnapshot } from "../../routes/room-snapshots.js";
-import type { OnlineCandidateTask, OnlineCandidateTaskState, PlaybackEvent, QueueEntry, RoomId, Song } from "@home-ktv/domain";
+import type { OnlineCandidateTask, OnlineCandidateTaskState, PlaybackEvent, QueueEntry, RoomId } from "@home-ktv/domain";
 import {
   DEFAULT_ROOM_VOLUME_PERCENT,
   type PlaybackNotice,
@@ -68,8 +67,7 @@ export interface ControlSnapshotRepositories {
   rooms: RoomRepository;
   playbackSessions: PlaybackSessionRepository;
   queueEntries: QueueEntryRepository;
-  assets: AssetRepository;
-  songs: SongRepository;
+  playableMedia?: PlayableMediaRepository;
   pairingTokens: RoomPairingTokenRepository;
   controlSessions: ControlSessionRepository;
   deviceSessions: PlayerDeviceSessionRepository;
@@ -81,7 +79,7 @@ export interface BuildRoomControlSnapshotInput {
   roomSlug: string;
   config: ApiConfig;
   repositories: ControlSnapshotRepositories;
-  assetGateway: AssetGateway;
+  mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   notice?: PlaybackNotice | null;
   now?: Date;
 }
@@ -92,7 +90,7 @@ export async function buildRoomControlSnapshot(input: BuildRoomControlSnapshotIn
     roomSlug: input.roomSlug,
     config: input.config,
     repositories: input.repositories,
-    assetGateway: input.assetGateway,
+    ...(input.mediaGateway ? { mediaGateway: input.mediaGateway } : {}),
     now
   };
   const baseSnapshot = await buildRoomSnapshot({
@@ -171,20 +169,30 @@ async function buildQueuePreview(input: {
   const previews: RoomQueueEntryPreview[] = [];
 
   for (const queueEntry of input.queue) {
-    const song = await input.repositories.songs.findById(queueEntry.songId);
-    if (!song) {
+    const playableMedia = await input.repositories.playableMedia?.findPlayableBySource({
+      sourceType: queueEntry.source?.sourceType ?? "nas",
+      assetId: queueEntry.source?.assetId ?? queueEntry.assetId
+    });
+    if (playableMedia) {
+      previews.push(
+        queueEntryPreviewFromPlayableMedia(
+          queueEntry,
+          playableMedia,
+          input.currentQueueEntryId,
+          input.removedQueueIds.has(queueEntry.id)
+        )
+      );
       continue;
     }
 
-    previews.push(queueEntryPreview(queueEntry, song, input.currentQueueEntryId, input.removedQueueIds.has(queueEntry.id)));
   }
 
   return previews;
 }
 
-function queueEntryPreview(
+function queueEntryPreviewFromPlayableMedia(
   queueEntry: QueueEntry,
-  song: Song,
+  playableMedia: { title: string; artistName: string },
   currentQueueEntryId: string | null,
   removed: boolean
 ): RoomQueueEntryPreview {
@@ -194,10 +202,11 @@ function queueEntryPreview(
 
   return {
     queueEntryId: queueEntry.id,
-    songId: queueEntry.songId,
-    assetId: queueEntry.assetId,
-    songTitle: song.title,
-    artistName: song.artistName,
+    sourceType: queueEntry.source?.sourceType ?? "nas",
+    songId: queueEntry.source?.songId ?? queueEntry.songId,
+    assetId: queueEntry.source?.assetId ?? queueEntry.assetId,
+    songTitle: playableMedia.title,
+    artistName: playableMedia.artistName,
     requestedBy: queueEntry.requestedBy,
     queuePosition: queueEntry.queuePosition,
     status: removed ? "removed" : queueEntry.status,

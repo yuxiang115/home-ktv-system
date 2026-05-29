@@ -18,7 +18,12 @@ object RoomPlaybackDecision {
             return PlaybackAction.StopPlayback
         }
 
-        if (activeTarget == null || activeTarget.queueEntryId != currentTarget.queueEntryId || activeTarget.assetId != currentTarget.assetId) {
+        if (
+            activeTarget == null ||
+            activeTarget.queueEntryId != currentTarget.queueEntryId ||
+            activeTarget.sourceType != currentTarget.sourceType ||
+            activeTarget.assetId != currentTarget.assetId
+        ) {
             return PlaybackAction.PlayNewTarget(currentTarget)
         }
 

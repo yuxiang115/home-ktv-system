@@ -1,15 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { RoomSnapshot, SwitchTarget } from "@home-ktv/player-contracts";
 
 type MockActivePlaybackResult = { status: "playing"; warning?: string } | { status: "blocked"; message: string };
+type MockSwitchRuntimeResult =
+  | { status: "committed"; switchTarget: SwitchTarget }
+  | { status: "reverted"; switchTarget: SwitchTarget; message: string };
 
 const mocks = vi.hoisted(() => {
   const createBrowserPlayerClient = vi.fn();
   const createBrowserVideoPool = vi.fn();
   const activePlaybackEnsurePlaying = vi.fn(async (): Promise<MockActivePlaybackResult> => ({ status: "playing" }));
   const roomSnapshot = vi.fn();
-  const switchVocalMode = vi.fn(async (_snapshot: RoomSnapshot) => ({
+  const switchVocalMode = vi.fn(async (_snapshot: RoomSnapshot): Promise<MockSwitchRuntimeResult> => ({
     status: "committed" as const,
     switchTarget: switchTarget("instrumental")
   }));
@@ -40,7 +43,15 @@ vi.mock("../runtime/active-playback-controller.js", () => ({
     async ensurePlaying() {
       return mocks.activePlaybackEnsurePlaying();
     }
-  }
+  },
+  isSamePlaybackTarget: (current: RoomSnapshot["currentTarget"], next: RoomSnapshot["currentTarget"]) =>
+    Boolean(
+      current &&
+        next &&
+        current.queueEntryId === next.queueEntryId &&
+        current.sourceType === next.sourceType &&
+        current.assetId === next.assetId
+    )
 }));
 
 vi.mock("../runtime/switch-controller.js", () => ({
@@ -121,6 +132,36 @@ describe("tv app runtime", () => {
     });
   });
 
+  it("auto-dismisses a reverted vocal switch notice after a short timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const pool = createPool({
+        activeTarget: snapshot().currentTarget,
+        activePaused: false
+      });
+      mocks.switchVocalMode.mockResolvedValueOnce({
+        status: "reverted" as const,
+        switchTarget: switchTarget("instrumental"),
+        message: "当前电视浏览器不支持切换原唱/伴唱，已保持当前播放。"
+      });
+      mocks.createBrowserPlayerClient.mockReturnValue(createClient());
+      mocks.createBrowserVideoPool.mockReturnValue(pool);
+
+      render(<App />);
+
+      await act(async () => {});
+      expect(screen.getByText("原唱/伴唱切换失败，已保持当前播放。")).toBeTruthy();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+
+      expect(screen.queryByText("原唱/伴唱切换失败，已保持当前播放。")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("reports ended telemetry when the active video ends", async () => {
     const endedSnapshot = snapshot({ targetVocalMode: "original" });
     mocks.roomSnapshot.mockImplementation(() => endedSnapshot);
@@ -152,6 +193,7 @@ describe("tv app runtime", () => {
         eventType: "ended",
         sessionVersion: 5,
         queueEntryId: "queue-current",
+        sourceType: "nas",
         assetId: "asset-original",
         playbackPositionMs: 60_000,
         vocalMode: "original",
@@ -178,6 +220,7 @@ describe("tv app runtime", () => {
         eventType: "playing",
         sessionVersion: 5,
         queueEntryId: "queue-current",
+        sourceType: "nas",
         assetId: "asset-original",
         playbackPositionMs: 0,
         vocalMode: "original",
@@ -210,6 +253,7 @@ describe("tv app runtime", () => {
         eventType: "loading",
         sessionVersion: 5,
         queueEntryId: "queue-current",
+        sourceType: "nas",
         assetId: "asset-original",
         playbackPositionMs: 1234,
         vocalMode: "original",
@@ -245,6 +289,7 @@ describe("tv app runtime", () => {
         eventType: "playing",
         sessionVersion: 5,
         queueEntryId: "queue-current",
+        sourceType: "nas",
         assetId: "asset-original",
         playbackPositionMs: 0,
         vocalMode: "original",
@@ -327,6 +372,8 @@ function snapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot {
       roomId: "living-room",
       sessionVersion: 5,
       queueEntryId: "queue-current",
+      sourceType: "nas",
+      songId: "song-current",
       assetId: "asset-original",
       currentQueueEntryPreview: {
         queueEntryId: "queue-current",
@@ -354,6 +401,7 @@ function switchTarget(vocalMode: "original" | "instrumental"): SwitchTarget {
     sessionVersion: 5,
     queueEntryId: "queue-current",
     switchKind: "asset",
+    sourceType: "nas",
     fromAssetId: vocalMode === "instrumental" ? "asset-original" : "asset-instrumental",
     toAssetId: vocalMode === "instrumental" ? "asset-instrumental" : "asset-original",
     playbackUrl: `http://ktv.local/media/${vocalMode === "instrumental" ? "asset-instrumental" : "asset-original"}`,

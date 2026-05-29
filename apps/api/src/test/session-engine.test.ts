@@ -19,8 +19,11 @@ describe("session engine contracts", () => {
     const row: QueueEntryRow = {
       id: "queue-entry-1",
       room_id: "living-room",
-      song_id: "song-1",
-      asset_id: "asset-1",
+      source_type: "nas",
+      nas_song_id: "song-1",
+      nas_asset_id: "asset-1",
+      online_song_id: null,
+      online_asset_id: null,
       requested_by: "phone-a",
       queue_position: 1,
       status: "removed",

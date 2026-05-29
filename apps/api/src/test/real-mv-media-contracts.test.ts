@@ -1,5 +1,5 @@
 import type { MediaInfoSummary, TrackRoles } from "@home-ktv/domain";
-import { inferVideoContentType } from "../modules/assets/asset-gateway.js";
+import { inferVideoContentType } from "../modules/media/content-type.js";
 import { buildMediaInfoSummaryFromFfprobe } from "../modules/ingest/media-probe.js";
 import {
   buildSingleFileAudioTrackPlaybackProfile,

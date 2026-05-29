@@ -3,16 +3,21 @@ package com.liuyue.homektv
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.TextUtils
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
+import android.view.animation.BounceInterpolator
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.LinearInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -27,20 +32,30 @@ import org.videolan.libvlc.util.VLCVideoLayout
 class MainActivity : Activity() {
     private lateinit var videoLayout: VLCVideoLayout
     private lateinit var idleBackgroundImage: ImageView
+    private lateinit var interactionLayer: FrameLayout
     private lateinit var bottomPanel: LinearLayout
     private lateinit var idlePairingOverlay: LinearLayout
     private lateinit var idleQrImage: ImageView
     private lateinit var idlePromptText: TextView
+    private lateinit var idleStatusDot: View
+    private lateinit var idleStatusText: TextView
     private lateinit var playingQrPanel: LinearLayout
     private lateinit var playingQrImage: ImageView
+    private lateinit var statusBanner: LinearLayout
+    private lateinit var statusPillText: TextView
+    private lateinit var statusMessageText: TextView
     private lateinit var progressText: TextView
+    private lateinit var vocalModeText: TextView
     private lateinit var audioTrackText: TextView
+    private lateinit var playbackStateText: TextView
     private lateinit var nextSampleButton: Button
     private lateinit var libVlc: LibVLC
     private lateinit var mediaPlayer: MediaPlayer
 
     private val progressHandler = Handler(Looper.getMainLooper())
     private val roomHandler = Handler(Looper.getMainLooper())
+    private val statusHandler = Handler(Looper.getMainLooper())
+    private val interactionHandler = Handler(Looper.getMainLooper())
     private val progressTicker = object : Runnable {
         override fun run() {
             updateProgress()
@@ -59,6 +74,7 @@ class MainActivity : Activity() {
             roomHandler.postDelayed(this, SNAPSHOT_POLL_INTERVAL_MS)
         }
     }
+    private val hideStatusNoticeRunnable = Runnable { hideStatusNotice() }
 
     private var config: LaunchConfig = LaunchConfig.from(null, null, null)
     private var currentMediaUrl: String? = null
@@ -75,7 +91,9 @@ class MainActivity : Activity() {
     private var selectedTrackKey: String? = null
     private var desiredVolumePercent = DEFAULT_ROOM_VOLUME_PERCENT
     private var renderedQrPayload: String? = null
+    private var renderedNoticeMessage: String? = null
     private val sentTelemetryKeys = mutableSetOf<String>()
+    private val blessingInteractions = linkedMapOf<String, Pair<RoomInteractionEvent, View>>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -114,6 +132,8 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         stopRoomRuntime()
         progressHandler.removeCallbacks(progressTicker)
+        statusHandler.removeCallbacksAndMessages(null)
+        interactionHandler.removeCallbacksAndMessages(null)
         if (::mediaPlayer.isInitialized) {
             mediaPlayer.setEventListener(null)
             mediaPlayer.stop()
@@ -182,7 +202,10 @@ class MainActivity : Activity() {
 
     private fun buildLayout() {
         val root = FrameLayout(this).apply {
-            setBackgroundColor(Color.BLACK)
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(5, 7, 13), Color.rgb(11, 16, 32), Color.BLACK),
+            )
             keepScreenOn = true
         }
 
@@ -210,12 +233,29 @@ class MainActivity : Activity() {
             ),
         )
 
+        interactionLayer = FrameLayout(this).apply {
+            isClickable = false
+            isFocusable = false
+        }
+        root.addView(
+            interactionLayer,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+
         buildPairingOverlays(root)
+        buildStatusBanner(root)
 
         bottomPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(14), dp(24), dp(16))
-            background = roundedBackground(Color.argb(130, 0, 0, 0), dp(8).toFloat())
+            setPadding(dp(20), dp(14), dp(20), dp(15))
+            background = panelBackground(
+                color = Color.argb(150, 0, 0, 0),
+                radius = dp(8).toFloat(),
+                strokeColor = Color.argb(58, 148, 163, 184),
+            )
         }
         root.addView(
             bottomPanel,
@@ -230,18 +270,56 @@ class MainActivity : Activity() {
         )
 
         progressText = TextView(this).apply {
-            textSize = 26f
-            setTextColor(Color.WHITE)
+            textSize = 32f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(248, 250, 252))
             includeFontPadding = false
         }
         bottomPanel.addView(progressText)
 
-        audioTrackText = TextView(this).apply {
-            textSize = 18f
-            setTextColor(Color.rgb(210, 214, 220))
+        val metaRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(8), 0, 0)
         }
-        bottomPanel.addView(audioTrackText)
+        bottomPanel.addView(metaRow)
+
+        vocalModeText = TextView(this).apply {
+            textSize = 18f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(34, 211, 238))
+            includeFontPadding = false
+        }
+        metaRow.addView(vocalModeText)
+
+        audioTrackText = TextView(this).apply {
+            textSize = 18f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(203, 213, 225))
+            includeFontPadding = false
+            maxWidth = dp(420)
+            ellipsize = TextUtils.TruncateAt.END
+            setSingleLine(true)
+        }
+        metaRow.addView(
+            audioTrackText,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                leftMargin = dp(10)
+            },
+        )
+
+        playbackStateText = TextView(this).apply {
+            textSize = 18f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(52, 211, 153))
+            includeFontPadding = false
+        }
+        metaRow.addView(
+            playbackStateText,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                leftMargin = dp(10)
+            },
+        )
 
         nextSampleButton = Button(this).apply {
             text = "下一首样本"
@@ -294,17 +372,25 @@ class MainActivity : Activity() {
         leftPanel.addView(TextView(this).apply {
             text = "HomeKTV"
             textSize = 54f
+            typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE)
             includeFontPadding = false
         })
         leftPanel.addView(TextView(this).apply {
             text = "今晚开唱"
             textSize = 24f
+            typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.rgb(222, 226, 235))
             setPadding(0, dp(14), 0, dp(34))
             includeFontPadding = false
         })
         leftPanel.addView(buildDecorativeBars())
+        leftPanel.addView(
+            buildIdleStatusPill(),
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(36)
+            },
+        )
 
         val qrPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -355,6 +441,86 @@ class MainActivity : Activity() {
             scaleType = ImageView.ScaleType.FIT_CENTER
         }
         playingQrPanel.addView(playingQrImage, LinearLayout.LayoutParams(dp(96), dp(96)))
+    }
+
+    private fun buildIdleStatusPill(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(13), dp(18), dp(13))
+            background = panelBackground(
+                color = Color.argb(142, 15, 23, 42),
+                radius = dp(999).toFloat(),
+                strokeColor = Color.argb(62, 148, 163, 184),
+            )
+
+            idleStatusDot = View(this@MainActivity).apply {
+                background = roundedBackground(Color.rgb(52, 211, 153), dp(999).toFloat())
+            }
+            addView(idleStatusDot, LinearLayout.LayoutParams(dp(10), dp(10)))
+
+            idleStatusText = TextView(this@MainActivity).apply {
+                text = "电视已连接"
+                textSize = 20f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.rgb(248, 250, 252))
+                includeFontPadding = false
+            }
+            addView(
+                idleStatusText,
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    leftMargin = dp(10)
+                },
+            )
+        }
+    }
+
+    private fun buildStatusBanner(root: FrameLayout) {
+        statusBanner = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(12), dp(20), dp(12))
+            background = panelBackground(
+                color = Color.argb(210, 15, 23, 42),
+                radius = dp(999).toFloat(),
+                strokeColor = Color.argb(62, 148, 163, 184),
+            )
+            alpha = 0f
+            visibility = View.GONE
+        }
+        root.addView(
+            statusBanner,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START).apply {
+                topMargin = dp(24)
+                leftMargin = dp(24)
+            },
+        )
+
+        statusPillText = TextView(this).apply {
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(251, 191, 36))
+            includeFontPadding = false
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            background = statusPillBackground(TvStatusTone.WARNING)
+        }
+        statusBanner.addView(statusPillText)
+
+        statusMessageText = TextView(this).apply {
+            textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(248, 250, 252))
+            includeFontPadding = false
+            maxWidth = dp(620)
+            ellipsize = TextUtils.TruncateAt.END
+            setSingleLine(true)
+        }
+        statusBanner.addView(
+            statusMessageText,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                leftMargin = dp(18)
+            },
+        )
     }
 
     private fun buildDecorativeBars(): LinearLayout {
@@ -422,9 +588,11 @@ class MainActivity : Activity() {
     private fun startRoomMode(config: LaunchConfig) {
         stopRoomRuntime(closeSocketOnly = true)
         roomModeActive = true
+        clearRoomInteractions()
         activeTarget = null
         latestSnapshot = null
         selectedTrackKey = null
+        renderedNoticeMessage = null
         sentTelemetryKeys.clear()
         currentMediaUrl = null
         if (::mediaPlayer.isInitialized && mediaPlayer.hasMedia()) {
@@ -438,7 +606,7 @@ class MainActivity : Activity() {
         playerClient = PlayerApiClient(config.apiBaseUrl)
         setStatus("正在注册电视")
         progressText.text = "00:00 / --:--"
-        audioTrackText.text = "音轨未加载"
+        refreshAudioTrackText()
 
         playerClient?.bootstrap(
             roomSlug = config.roomSlug,
@@ -494,6 +662,10 @@ class MainActivity : Activity() {
                     runOnUiThread { applyRoomSnapshot(snapshot) }
                 }
 
+                override fun onInteraction(interaction: RoomInteractionEvent) {
+                    runOnUiThread { renderRoomInteraction(interaction) }
+                }
+
                 override fun onClosed(reason: String) {
                     runOnUiThread {
                         if (roomModeActive) {
@@ -534,6 +706,7 @@ class MainActivity : Activity() {
         latestSnapshot = snapshot
         logRoomSnapshot(snapshot)
         applyPlayerVolume(snapshot.volumePercent)
+        renderSnapshotNotice(snapshot.noticeMessage)
         renderPairingOverlay(TvPairingOverlayState.from(roomModeActive = true, snapshot = snapshot))
 
         if (snapshot.state == "recovering" && lastRecoveryVersion != snapshot.sessionVersion) {
@@ -562,8 +735,20 @@ class MainActivity : Activity() {
             "Room snapshot ${snapshot.sessionVersion}: " +
                 "${target.currentQueueEntryPreview.songTitle} - ${target.currentQueueEntryPreview.artistName}; " +
                 "mode=${target.vocalMode}; volume=${snapshot.volumePercent}; " +
-                "queue=${target.queueEntryId}; next=${target.nextQueueEntryPreview?.songTitle.orEmpty()}",
+                "queue=${target.queueEntryId}; source=${target.sourceType}; next=${target.nextQueueEntryPreview?.songTitle.orEmpty()}",
         )
+    }
+
+    private fun renderSnapshotNotice(message: String?) {
+        if (message.isNullOrBlank()) {
+            renderedNoticeMessage = null
+            return
+        }
+        if (renderedNoticeMessage == message) {
+            return
+        }
+        renderedNoticeMessage = message
+        setStatus(message)
     }
 
     private fun playTarget(target: PlaybackTarget) {
@@ -586,6 +771,7 @@ class MainActivity : Activity() {
         setStatus("正在打开媒体")
         progressText.text = "00:00 / --:--"
         audioTrackText.text = "正在读取音轨"
+        refreshAudioTrackText()
         logCurrentPlaybackUrl(url, sample, target)
 
         if (mediaPlayer.hasMedia()) {
@@ -610,6 +796,7 @@ class MainActivity : Activity() {
     private fun playDemoSample(index: Int) {
         stopRoomRuntime(closeSocketOnly = true)
         roomModeActive = false
+        clearRoomInteractions()
         currentSampleIndex = Math.floorMod(index, DemoSamplePlaylist.samples.size)
         val sample = DemoSamplePlaylist.samples[currentSampleIndex]
         val url = sample.rawUrl(currentApiBaseUrl)
@@ -624,12 +811,13 @@ class MainActivity : Activity() {
     private fun stopActiveRoomPlayback(snapshot: RoomSnapshot? = latestSnapshot) {
         activeTarget = null
         selectedTrackKey = null
+        renderedNoticeMessage = null
         if (::mediaPlayer.isInitialized && mediaPlayer.hasMedia()) {
             mediaPlayer.stop()
         }
         currentMediaUrl = null
         progressText.text = "00:00 / --:--"
-        audioTrackText.text = "音轨未加载"
+        refreshAudioTrackText()
         if (roomModeActive) {
             renderPairingOverlay(TvPairingOverlayState.from(roomModeActive = true, snapshot = latestSnapshot))
         }
@@ -876,12 +1064,13 @@ class MainActivity : Activity() {
         message: String? = null,
         errorCode: String? = null,
     ) {
-        val key = listOf(eventType, target.queueEntryId, target.assetId, target.vocalMode, stage).joinToString(":")
+        val key = listOf(eventType, target.queueEntryId, target.sourceType, target.assetId, target.vocalMode, stage).joinToString(":")
         if (!sentTelemetryKeys.add(key)) return
         sendTelemetry(
             eventType = eventType,
             sessionVersion = target.sessionVersion,
             queueEntryId = target.queueEntryId,
+            sourceType = target.sourceType,
             assetId = target.assetId,
             playbackPositionMs = playbackPositionMs,
             vocalMode = target.vocalMode,
@@ -898,6 +1087,7 @@ class MainActivity : Activity() {
             eventType = "playing",
             sessionVersion = switchTarget.sessionVersion,
             queueEntryId = switchTarget.queueEntryId,
+            sourceType = switchTarget.sourceType,
             assetId = switchTarget.toAssetId,
             playbackPositionMs = currentPlaybackPositionMs(),
             vocalMode = switchTarget.vocalMode,
@@ -912,6 +1102,7 @@ class MainActivity : Activity() {
             eventType = "switch_failed",
             sessionVersion = switchTarget.sessionVersion,
             queueEntryId = switchTarget.queueEntryId,
+            sourceType = switchTarget.sourceType,
             assetId = switchTarget.toAssetId,
             playbackPositionMs = currentPlaybackPositionMs(),
             vocalMode = activeTarget?.vocalMode ?: switchTarget.vocalMode,
@@ -926,6 +1117,7 @@ class MainActivity : Activity() {
         eventType: String,
         sessionVersion: Int,
         queueEntryId: String,
+        sourceType: String,
         assetId: String,
         playbackPositionMs: Long,
         vocalMode: String,
@@ -943,6 +1135,7 @@ class MainActivity : Activity() {
             eventType = eventType,
             sessionVersion = sessionVersion,
             queueEntryId = queueEntryId,
+            sourceType = sourceType,
             assetId = assetId,
             playbackPositionMs = playbackPositionMs,
             vocalMode = vocalMode,
@@ -959,6 +1152,8 @@ class MainActivity : Activity() {
             roomId = target.roomId,
             sessionVersion = target.sessionVersion,
             queueEntryId = target.queueEntryId,
+            sourceType = target.sourceType,
+            songId = previousTarget.songId,
             assetId = target.toAssetId,
             currentQueueEntryPreview = previousTarget.currentQueueEntryPreview,
             playbackUrl = target.playbackUrl,
@@ -976,7 +1171,7 @@ class MainActivity : Activity() {
             target != null -> Log.i(
                 TAG,
                 "Playing room target: ${target.currentQueueEntryPreview.songTitle} - " +
-                    "${target.currentQueueEntryPreview.artistName}; queue=${target.queueEntryId}; asset=${target.assetId}; url=$url",
+                    "${target.currentQueueEntryPreview.artistName}; queue=${target.queueEntryId}; source=${target.sourceType}; asset=${target.assetId}; url=$url",
             )
 
             sample != null -> Log.i(
@@ -1016,16 +1211,32 @@ class MainActivity : Activity() {
     }
 
     private fun refreshAudioTrackText() {
+        if (::vocalModeText.isInitialized) {
+            val vocalMode = activeTarget?.vocalMode
+            vocalModeText.text = vocalMode?.displayVocalMode() ?: if (roomModeActive) "待点歌" else "本地播放"
+            vocalModeText.setTextColor(vocalModeColor(vocalMode))
+        }
+
+        if (::playbackStateText.isInitialized) {
+            playbackStateText.text = playbackStateLabel()
+            playbackStateText.setTextColor(playbackStateColor(playbackStateText.text.toString()))
+        }
+
         if (!::mediaPlayer.isInitialized) {
             audioTrackText.text = "音轨未加载"
             return
         }
 
-        audioTrackText.text = describeAudioTrackState(
+        val audioTrackLabel = describeAudioTrackState(
             rawTracks = currentAudioTrackOptions(),
             currentTrackId = mediaPlayer.audioTrack,
-            vocalMode = activeTarget?.vocalMode,
+            vocalMode = null,
         )
+        audioTrackText.text = if (audioTrackLabel == "音轨未加载" && currentMediaUrl != null) {
+            "正在读取音轨"
+        } else {
+            audioTrackLabel
+        }
     }
 
     private fun updateProgress() {
@@ -1049,6 +1260,319 @@ class MainActivity : Activity() {
 
     private fun setStatus(value: String) {
         Log.i(TAG, value)
+        updateIdleStatus(value)
+        updatePlaybackState(value)
+
+        val notice = tvStatusNoticeFor(value)
+        if (notice == null) {
+            if (shouldClearStatusNotice(value)) {
+                hideStatusNotice()
+            }
+            return
+        }
+
+        showStatusNotice(notice)
+    }
+
+    private fun updateIdleStatus(value: String) {
+        if (!::idleStatusText.isInitialized) return
+        val label = idleStatusLabelFor(value) ?: return
+        idleStatusText.text = label
+        idleStatusDot.background = roundedBackground(idleStatusDotColor(label), dp(999).toFloat())
+    }
+
+    private fun updatePlaybackState(value: String) {
+        if (!::playbackStateText.isInitialized) return
+        val label = playbackStateLabelForStatus(value) ?: playbackStateLabel()
+        playbackStateText.text = label
+        playbackStateText.setTextColor(playbackStateColor(label))
+    }
+
+    private fun showStatusNotice(notice: TvStatusNotice) {
+        if (!::statusBanner.isInitialized) return
+        statusHandler.removeCallbacks(hideStatusNoticeRunnable)
+        statusPillText.text = notice.label
+        statusPillText.setTextColor(toneColor(notice.tone))
+        statusPillText.background = statusPillBackground(notice.tone)
+        statusMessageText.text = notice.message
+        statusBanner.visibility = View.VISIBLE
+        statusBanner.animate().cancel()
+        statusBanner.alpha = 0f
+        statusBanner.animate().alpha(1f).setDuration(160L).start()
+        statusHandler.postDelayed(hideStatusNoticeRunnable, notice.durationMs)
+    }
+
+    private fun hideStatusNotice() {
+        if (!::statusBanner.isInitialized || statusBanner.visibility != View.VISIBLE) return
+        statusHandler.removeCallbacks(hideStatusNoticeRunnable)
+        statusBanner.animate().cancel()
+        statusBanner.animate().alpha(0f).setDuration(160L).withEndAction {
+            statusBanner.visibility = View.GONE
+        }.start()
+    }
+
+    private fun renderRoomInteraction(interaction: RoomInteractionEvent) {
+        if (!roomModeActive || !::interactionLayer.isInitialized) return
+        when (interaction.kind) {
+            "emoji" -> renderEmojiInteraction(interaction)
+            "bullet" -> renderBulletInteraction(interaction)
+            "blessing" -> renderBlessingInteraction(interaction)
+        }
+    }
+
+    private fun renderEmojiInteraction(interaction: RoomInteractionEvent) {
+        interactionLayer.post {
+            val layerWidth = interactionLayer.width.coerceAtLeast(dp(720))
+            val layerHeight = interactionLayer.height.coerceAtLeast(dp(420))
+            val size = dp(86)
+            val margin = dp(96)
+            val startX = horizontalInteractionPosition(interaction.id, layerWidth, margin) - size / 2
+            val startY = layerHeight + dp(24)
+            val seed = stableHash(interaction.id)
+            val travelX = ((seed % dp(360)) - dp(180)).toFloat()
+            val launchY = -(layerHeight * 0.72f)
+            val driftDownY = layerHeight * 0.32f
+            val ttl = interactionTtlFor(interaction, fallbackMs = 12_000L)
+
+            val emojiView = TextView(this).apply {
+                text = interaction.message
+                textSize = 54f
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                background = roundedBackground(Color.argb(78, 15, 23, 42), dp(999).toFloat())
+                elevation = dp(10).toFloat()
+                rotation = ((seed % 36) - 18).toFloat()
+            }
+            interactionLayer.addView(
+                emojiView,
+                FrameLayout.LayoutParams(size, size).apply {
+                    leftMargin = startX.coerceIn(0, (layerWidth - size).coerceAtLeast(0))
+                    topMargin = startY
+                },
+            )
+
+            renderEmojiConfetti(startX + size / 2, layerHeight - dp(10), seed)
+            emojiView.animate()
+                .translationX(travelX)
+                .translationY(launchY)
+                .rotationBy(if (seed % 2 == 0) 540f else -540f)
+                .setDuration(1_450L)
+                .setInterpolator(DecelerateInterpolator())
+                .withEndAction {
+                    emojiView.animate()
+                        .translationY(launchY + driftDownY)
+                        .alpha(0f)
+                        .setDuration((ttl - 1_450L).coerceAtLeast(1_000L))
+                        .setInterpolator(BounceInterpolator())
+                        .start()
+                }
+                .start()
+            removeViewLater(emojiView, ttl)
+        }
+    }
+
+    private fun renderEmojiConfetti(originX: Int, originY: Int, seed: Int) {
+        val colors = intArrayOf(
+            Color.rgb(34, 211, 238),
+            Color.rgb(52, 211, 153),
+            Color.rgb(251, 191, 36),
+            Color.rgb(244, 114, 182),
+            Color.rgb(248, 250, 252),
+        )
+        repeat(12) { index ->
+            val particle = View(this).apply {
+                background = roundedBackground(colors[index % colors.size], dp(2).toFloat())
+                rotation = ((seed + index * 31) % 180).toFloat()
+            }
+            interactionLayer.addView(
+                particle,
+                FrameLayout.LayoutParams(dp(8 + index % 3 * 3), dp(16 + index % 4 * 3)).apply {
+                    leftMargin = originX
+                    topMargin = originY
+                },
+            )
+            val direction = if (index % 2 == 0) 1 else -1
+            val travelX = direction * dp(42 + (seed + index * 19) % 130).toFloat()
+            val travelY = -dp(72 + (seed + index * 23) % 150).toFloat()
+            particle.animate()
+                .translationX(travelX)
+                .translationY(travelY)
+                .rotationBy(direction * 210f)
+                .alpha(0f)
+                .setDuration((820 + index * 28).toLong())
+                .setInterpolator(DecelerateInterpolator())
+                .withEndAction { interactionLayer.removeView(particle) }
+                .start()
+        }
+    }
+
+    private fun renderBulletInteraction(interaction: RoomInteractionEvent) {
+        interactionLayer.post {
+            val layerWidth = interactionLayer.width.coerceAtLeast(dp(720))
+            val layerHeight = interactionLayer.height.coerceAtLeast(dp(420))
+            val top = ((bulletLaneTopPercent(interaction.id) / 100f) * layerHeight).toInt()
+            val ttl = interactionTtlFor(interaction, fallbackMs = 7_000L)
+            val banner = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(22), dp(14), dp(28), dp(14))
+                background = panelBackground(
+                    color = Color.argb(190, 15, 23, 42),
+                    radius = dp(999).toFloat(),
+                    strokeColor = Color.argb(76, 34, 211, 238),
+                )
+                elevation = dp(12).toFloat()
+            }
+            banner.addView(
+                View(this).apply {
+                    background = roundedBackground(Color.rgb(34, 211, 238), dp(999).toFloat())
+                },
+                LinearLayout.LayoutParams(dp(7), dp(34)),
+            )
+            banner.addView(
+                TextView(this).apply {
+                    text = interaction.message
+                    textSize = 32f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(Color.rgb(248, 250, 252))
+                    includeFontPadding = false
+                    maxWidth = dp(860)
+                    ellipsize = TextUtils.TruncateAt.END
+                    setSingleLine(true)
+                },
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    leftMargin = dp(18)
+                },
+            )
+            interactionLayer.addView(
+                banner,
+                FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+                    leftMargin = layerWidth + dp(32)
+                    topMargin = top.coerceIn(dp(70), layerHeight - dp(120))
+                },
+            )
+            banner.post {
+                banner.animate()
+                    .translationX(-(layerWidth + banner.width + dp(96)).toFloat())
+                    .alpha(0.94f)
+                    .setDuration(ttl)
+                    .setInterpolator(LinearInterpolator())
+                    .withEndAction { interactionLayer.removeView(banner) }
+                    .start()
+            }
+        }
+    }
+
+    private fun renderBlessingInteraction(interaction: RoomInteractionEvent) {
+        interactionLayer.post {
+            blessingInteractions.remove(interaction.id)?.second?.let { interactionLayer.removeView(it) }
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(28), dp(12), dp(28), dp(14))
+                background = panelBackground(
+                    color = Color.argb(224, 15, 23, 42),
+                    radius = dp(18).toFloat(),
+                    strokeColor = Color.argb(138, 244, 114, 182),
+                )
+                alpha = 0f
+                translationY = -dp(18).toFloat()
+                elevation = dp(16).toFloat()
+            }
+            card.addView(TextView(this).apply {
+                text = "祝福"
+                textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.rgb(251, 191, 36))
+                includeFontPadding = false
+            })
+            card.addView(TextView(this).apply {
+                text = interaction.message
+                textSize = 32f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.rgb(248, 250, 252))
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                maxLines = 2
+                ellipsize = TextUtils.TruncateAt.END
+            })
+
+            interactionLayer.addView(
+                card,
+                FrameLayout.LayoutParams(dp(620), FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL),
+            )
+            blessingInteractions[interaction.id] = interaction to card
+            layoutBlessingStack()
+            card.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(220L)
+                .setInterpolator(DecelerateInterpolator())
+                .start()
+            val scheduledView = card
+            interactionHandler.postDelayed({
+                if (blessingInteractions[interaction.id]?.second === scheduledView) {
+                    removeBlessingInteraction(interaction.id)
+                }
+            }, interactionTtlFor(interaction, fallbackMs = 7_000L))
+        }
+    }
+
+    private fun layoutBlessingStack() {
+        val sorted = sortBlessingsNewestFirst(blessingInteractions.values.map { it.first })
+        sorted.forEachIndexed { index, interaction ->
+            val view = blessingInteractions[interaction.id]?.second ?: return@forEachIndexed
+            val params = view.layoutParams as? FrameLayout.LayoutParams ?: return@forEachIndexed
+            params.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            params.topMargin = dp(52 + index * 72)
+            view.layoutParams = params
+        }
+    }
+
+    private fun removeBlessingInteraction(id: String) {
+        val view = blessingInteractions.remove(id)?.second ?: return
+        view.animate()
+            .alpha(0f)
+            .translationYBy(-dp(10).toFloat())
+            .setDuration(180L)
+            .withEndAction {
+                interactionLayer.removeView(view)
+                layoutBlessingStack()
+            }
+            .start()
+    }
+
+    private fun removeViewLater(view: View, delayMs: Long) {
+        interactionHandler.postDelayed({
+            (view.parent as? FrameLayout)?.removeView(view)
+        }, delayMs)
+    }
+
+    private fun clearRoomInteractions() {
+        blessingInteractions.clear()
+        interactionHandler.removeCallbacksAndMessages(null)
+        if (::interactionLayer.isInitialized) {
+            interactionLayer.removeAllViews()
+        }
+    }
+
+    private fun interactionTtlFor(interaction: RoomInteractionEvent, fallbackMs: Long): Long {
+        return interactionTtlMs(interaction, fallbackMs)
+            .coerceAtLeast(1_000L)
+            .coerceAtMost(15_000L)
+    }
+
+    private fun horizontalInteractionPosition(seed: String, width: Int, margin: Int): Int {
+        val available = (width - margin * 2).coerceAtLeast(1)
+        return margin + stableHash(seed) % available
+    }
+
+    private fun shouldClearStatusNotice(value: String): Boolean {
+        return value == "电视在线，等待点歌" ||
+            value == "已停止" ||
+            value == "已暂停" ||
+            value == "正在播放" ||
+            value.startsWith("正在播放 ·")
     }
 
     private fun renderPairingOverlay(state: TvPairingOverlayState) {
@@ -1142,7 +1666,7 @@ class MainActivity : Activity() {
     }
 
     private fun TrackRef.stableKey(target: PlaybackTarget): String {
-        return "${target.assetId}:${target.queueEntryId}:${target.vocalMode}:$index:$id"
+        return "${target.sourceType}:${target.assetId}:${target.queueEntryId}:${target.vocalMode}:$index:$id"
     }
 
     private fun String.displayVocalMode(): String {
@@ -1168,6 +1692,85 @@ class MainActivity : Activity() {
 
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
+    }
+
+    private fun playbackStateLabel(): String {
+        return when {
+            activeTarget == null && roomModeActive -> "待点歌"
+            ::mediaPlayer.isInitialized && mediaPlayer.isPlaying -> "播放中"
+            currentMediaUrl != null -> "准备中"
+            else -> "待播放"
+        }
+    }
+
+    private fun vocalModeColor(vocalMode: String?): Int {
+        return when (vocalMode) {
+            "original" -> Color.rgb(52, 211, 153)
+            "instrumental" -> Color.rgb(34, 211, 238)
+            else -> Color.rgb(248, 250, 252)
+        }
+    }
+
+    private fun playbackStateColor(label: String): Int {
+        return when (label) {
+            "播放中" -> Color.rgb(52, 211, 153)
+            "准备中" -> Color.rgb(251, 191, 36)
+            "异常" -> Color.rgb(248, 113, 113)
+            else -> Color.rgb(203, 213, 225)
+        }
+    }
+
+    private fun playbackStateLabelForStatus(value: String): String? {
+        return when {
+            value.startsWith("正在播放") -> "播放中"
+            value == "已暂停" -> "已暂停"
+            value == "已停止" || value == "播放结束" -> if (roomModeActive) "待点歌" else "待播放"
+            value.contains("播放失败") -> "异常"
+            value.contains("正在打开") || value.contains("缓冲") || value.contains("正在切换") -> "准备中"
+            else -> null
+        }
+    }
+
+    private fun toneColor(tone: TvStatusTone): Int {
+        return when (tone) {
+            TvStatusTone.READY -> Color.rgb(52, 211, 153)
+            TvStatusTone.WARNING -> Color.rgb(251, 191, 36)
+            TvStatusTone.DANGER -> Color.rgb(248, 113, 113)
+            TvStatusTone.NEUTRAL -> Color.rgb(203, 213, 225)
+        }
+    }
+
+    private fun toneSurfaceColor(tone: TvStatusTone): Int {
+        return when (tone) {
+            TvStatusTone.READY -> Color.argb(42, 52, 211, 153)
+            TvStatusTone.WARNING -> Color.argb(42, 251, 191, 36)
+            TvStatusTone.DANGER -> Color.argb(46, 248, 113, 113)
+            TvStatusTone.NEUTRAL -> Color.argb(42, 148, 163, 184)
+        }
+    }
+
+    private fun idleStatusDotColor(label: String): Int {
+        return when {
+            label.contains("冲突") || label.contains("异常") -> Color.rgb(248, 113, 113)
+            label.contains("注册") || label.contains("同步") -> Color.rgb(251, 191, 36)
+            else -> Color.rgb(52, 211, 153)
+        }
+    }
+
+    private fun statusPillBackground(tone: TvStatusTone): GradientDrawable {
+        return panelBackground(
+            color = toneSurfaceColor(tone),
+            radius = dp(999).toFloat(),
+            strokeColor = toneColor(tone),
+        )
+    }
+
+    private fun panelBackground(color: Int, radius: Float, strokeColor: Int): GradientDrawable {
+        return GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = radius
+            setStroke(dp(1), strokeColor)
+        }
     }
 
     private fun roundedBackground(color: Int, radius: Float): GradientDrawable {

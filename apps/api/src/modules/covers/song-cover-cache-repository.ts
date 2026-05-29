@@ -90,14 +90,10 @@ export class PgSongCoverCacheRepository implements SongCoverCacheRepository {
     const limit = Math.min(2000, Math.max(1, Math.trunc(input.limit)));
     const candidates: SongCoverBackfillCandidate[] = [];
 
-    if (!input.source || input.source === "ktv-index") {
+    if (!input.source || input.source === "nas") {
       if (await this.hasKtvIndexTables()) {
-        candidates.push(...(await this.listKtvIndexCandidates({ ...input, limit })));
+        candidates.push(...(await this.listNasCandidates({ ...input, limit })));
       }
-    }
-
-    if (candidates.length < limit && (!input.source || input.source === "formal")) {
-      candidates.push(...(await this.listFormalCandidates({ ...input, limit: limit - candidates.length })));
     }
 
     return candidates.slice(0, limit);
@@ -153,43 +149,16 @@ export class PgSongCoverCacheRepository implements SongCoverCacheRepository {
     );
   }
 
-  private async listFormalCandidates(input: Required<Pick<ListCoverCandidatesInput, "limit">> & ListCoverCandidatesInput) {
+  private async listNasCandidates(input: Required<Pick<ListCoverCandidatesInput, "limit">> & ListCoverCandidatesInput) {
     const result = await this.db.query<CoverCandidateRow>(
-      `SELECT 'formal'::text AS source_kind,
-              s.id AS source_song_id,
-              s.title,
-              s.artist_name
-       FROM songs s
-       JOIN assets a ON a.song_id = s.id
-       LEFT JOIN song_cover_cache c
-         ON c.source_kind = 'formal'
-        AND c.source_song_id = s.id
-       WHERE s.status = 'ready'
-         AND a.status = 'ready'
-         AND a.switch_quality_status = 'verified'
-         AND (
-           c.source_song_id IS NULL
-           OR c.status = 'pending'
-           OR ($2::boolean = true AND c.status = 'failed')
-         )
-       GROUP BY s.id, s.title, s.artist_name, c.updated_at
-       ORDER BY max(s.search_weight) DESC, c.updated_at ASC NULLS FIRST, s.title ASC, s.artist_name ASC
-       LIMIT $1`,
-      [input.limit, input.retryFailed === true]
-    );
-    return result.rows.map(mapCandidateRow);
-  }
-
-  private async listKtvIndexCandidates(input: Required<Pick<ListCoverCandidatesInput, "limit">> & ListCoverCandidatesInput) {
-    const result = await this.db.query<CoverCandidateRow>(
-      `SELECT 'ktv-index'::text AS source_kind,
+      `SELECT 'nas'::text AS source_kind,
               s.id AS source_song_id,
               s.title,
               s.primary_artist_name AS artist_name
        FROM ktv_songs s
        JOIN ktv_song_assets a ON a.song_id = s.id AND a.missing_at IS NULL
        LEFT JOIN song_cover_cache c
-         ON c.source_kind = 'ktv-index'
+         ON c.source_kind = 'nas'
         AND c.source_song_id = s.id
        WHERE (
            c.source_song_id IS NULL

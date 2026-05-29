@@ -84,6 +84,13 @@ export type OnlineCandidateTaskState = (typeof onlineCandidateTaskStates)[number
 export type OnlineCandidateType = "mv" | "karaoke" | "audio" | "unknown";
 export type OnlineCandidateRiskLabel = "normal" | "risky" | "blocked";
 export type OnlineCandidateReliabilityLabel = "high" | "medium" | "low" | "unknown";
+export type SongSourceType = "nas" | "online";
+
+export interface MediaSourceRef {
+  sourceType: SongSourceType;
+  songId: SongId;
+  assetId: AssetId;
+}
 
 export interface SongCapabilities {
   canSwitchVocalMode: boolean;
@@ -286,12 +293,50 @@ export interface SongSearchIndexedSection {
   results: SongSearchIndexedResult[];
 }
 
-export type SongDiscoverySource = "formal" | "ktv-index";
-export type SongDiscoveryVersionOption = SongSearchVersionOption | SongSearchIndexedVersionOption;
+export type SongSearchNasQueueState = SongSearchIndexedQueueState;
 
-export interface SongDiscoverySong extends Omit<SongSearchLocalResult, "versions"> {
+export interface SongSearchNasVersionOption {
+  assetId: AssetId;
+  displayName: string;
+  sourceLabel: string;
+  extension: string;
+  sizeBytes: number | null;
+  audioTrackCount: number | null;
+  styleTags?: readonly string[];
+  category: string;
+  queueState: SongSearchNasQueueState;
+  canQueue: boolean;
+  disabledLabel: string | null;
+}
+
+export interface SongSearchNasResult {
+  songId: SongId;
+  title: string;
+  artistName: string;
+  styleTags?: readonly string[];
+  category: string;
+  sourceLabel: string;
+  matchReason: SongSearchMatchReason | "style";
+  versions: SongSearchNasVersionOption[];
+}
+
+export interface SongSearchNasSection {
+  status: "available" | "unavailable";
+  message: string;
+  results: SongSearchNasResult[];
+}
+
+export type SongDiscoverySource = SongSourceType;
+export type SongDiscoveryVersionOption = SongSearchNasVersionOption;
+
+export interface SongDiscoverySong {
   source: SongDiscoverySource;
-  indexedSongId?: string;
+  songId: SongId;
+  title: string;
+  artistName: string;
+  language: Language;
+  matchReason: SongSearchMatchReason;
+  queueState: SongSearchQueueState;
   coverImageUrl?: string;
   artistId: EntityId;
   genre: readonly string[];
@@ -429,8 +474,7 @@ export interface KtvIndexSyncedSourceRecord {
 
 export interface SongSearchResponse {
   query: string;
-  local: SongSearchLocalResult[];
-  indexed: SongSearchIndexedSection;
+  nas: SongSearchNasSection;
   online: SongSearchOnlineResult;
 }
 
@@ -483,6 +527,7 @@ export interface PlaybackOptions {
 export interface QueueEntry {
   id: QueueEntryId;
   roomId: RoomId;
+  source?: MediaSourceRef;
   songId: SongId;
   assetId: AssetId;
   requestedBy: string;

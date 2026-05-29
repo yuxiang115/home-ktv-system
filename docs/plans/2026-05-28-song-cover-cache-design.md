@@ -6,7 +6,7 @@ Batch-fetch album cover metadata for the controller home recommendation list wit
 
 ## Architecture
 
-- Store cover lookup results in `song_cover_cache`, keyed by `source_kind` and `source_song_id`.
+- Store cover lookup results in `song_cover_cache`, keyed by `source_kind` and `source_song_id`. Runtime source kinds are `nas` and `online`; the physical NAS index tables still use the `ktv_*` names.
 - Keep external provider calls out of `GET /rooms/:roomSlug/songs/discovery`; that route only reads cached `coverImageUrl`.
 - Use a separate batch command, `covers:songs`, with domestic providers ordered as Tencent, Kugou, NetEase, Kuwo.
 - Match provider results by normalized title and artist, reject weak matches, and penalize live/DJ/remix variants.
@@ -26,6 +26,6 @@ Detailed commands and the verified coverage result are documented in `docs/runbo
 
 ## Verification
 
-- API tests cover discovery response cover injection and KTV-index source ids.
+- API tests cover discovery response cover injection and NAS source ids.
 - Matcher tests cover exact matches, weak-match rejection, and original-version preference.
 - Controller tests cover image rendering and fallback art.

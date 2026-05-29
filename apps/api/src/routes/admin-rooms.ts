@@ -1,10 +1,10 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
+import type { MediaSourceRef } from "@home-ktv/domain";
 import type { ApiConfig } from "../config.js";
 import { buildEmptyOnlineTaskSummary, buildRoomControlSnapshot } from "../modules/rooms/build-control-snapshot.js";
 import { getOrCreatePairingInfo, refreshPairingToken } from "../modules/rooms/pairing-token-service.js";
-import type { AssetGateway } from "../modules/assets/asset-gateway.js";
-import type { AssetRepository } from "../modules/catalog/repositories/asset-repository.js";
-import type { SongRepository } from "../modules/catalog/repositories/song-repository.js";
+import type { MediaGateway } from "../modules/media/media-gateway.js";
+import type { PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
 import type { ControlSessionRepository } from "../modules/controller/repositories/control-session-repository.js";
 import type { PlaybackSessionRepository } from "../modules/playback/repositories/playback-session-repository.js";
 import type { QueueEntryRepository } from "../modules/playback/repositories/queue-entry-repository.js";
@@ -22,10 +22,9 @@ export interface AdminRoomsRouteDependencies {
   pairingTokens: RoomPairingTokenRepository;
   playbackSessions: PlaybackSessionRepository;
   queueEntries: QueueEntryRepository;
-  assets: AssetRepository;
-  songs: SongRepository;
+  playableMedia?: PlayableMediaRepository;
   controlSessions: ControlSessionRepository;
-  assetGateway: AssetGateway;
+  mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   deviceSessions: PlayerDeviceSessionRepository;
   playbackEvents?: Pick<PlaybackEventRepository, "listRecentByRoom"> | undefined;
   online?: Pick<CandidateTaskService, "listActiveForRoom" | "retryTask" | "purgeTask" | "promoteTask"> | undefined;
@@ -52,15 +51,14 @@ export async function registerAdminRoomsRoutes(
         rooms: dependencies.rooms,
         playbackSessions: dependencies.playbackSessions,
         queueEntries: dependencies.queueEntries,
-        assets: dependencies.assets,
-        songs: dependencies.songs,
+        ...(dependencies.playableMedia ? { playableMedia: dependencies.playableMedia } : {}),
         pairingTokens: dependencies.pairingTokens,
         controlSessions: dependencies.controlSessions,
         deviceSessions: dependencies.deviceSessions,
         playbackEvents: dependencies.playbackEvents,
         onlineTasks
       },
-      assetGateway: dependencies.assetGateway
+      ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
     });
 
     if (snapshot) {
@@ -140,15 +138,14 @@ async function handleOnlineTaskAction(
         rooms: dependencies.rooms,
         playbackSessions: dependencies.playbackSessions,
         queueEntries: dependencies.queueEntries,
-        assets: dependencies.assets,
-        songs: dependencies.songs,
+        ...(dependencies.playableMedia ? { playableMedia: dependencies.playableMedia } : {}),
         pairingTokens: dependencies.pairingTokens,
         controlSessions: dependencies.controlSessions,
         deviceSessions: dependencies.deviceSessions,
         playbackEvents: dependencies.playbackEvents,
         onlineTasks
       },
-      assetGateway: dependencies.assetGateway
+      ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
     });
     if (snapshot) {
       dependencies.broadcaster.broadcastRoomSnapshot(room.slug, snapshot);
@@ -185,12 +182,13 @@ async function buildFallbackRoomStatus(
   ]);
 
   const currentQueueEntry = session?.currentQueueEntryId ? await dependencies.queueEntries.findById(session.currentQueueEntryId) : null;
-  const currentAsset = session?.activeAssetId ? await dependencies.assets.findById(session.activeAssetId) : null;
-  const currentSong = currentQueueEntry ? await dependencies.songs.findById(currentQueueEntry.songId) : null;
+  const currentMedia = currentQueueEntry
+    ? await dependencies.playableMedia?.findPlayableBySource(sourceRefFromQueueEntry(currentQueueEntry))
+    : null;
   const queue = await buildQueuePreview({
     currentQueueEntryId: currentQueueEntry?.id ?? null,
     queue: [...effectiveQueue, ...removedQueue],
-    songs: dependencies.songs
+    ...(dependencies.playableMedia ? { playableMedia: dependencies.playableMedia } : {})
   });
 
   return {
@@ -198,31 +196,35 @@ async function buildFallbackRoomStatus(
     roomId: room.id,
     roomSlug,
     sessionVersion: session?.version ?? 0,
-    state: currentQueueEntry && currentAsset?.status === "ready" ? "playing" : room.status === "active" ? "idle" : "error",
+    state: currentQueueEntry && currentMedia?.status === "ready" ? "playing" : room.status === "active" ? "idle" : "error",
     pairing,
     tvPresence: {
-      online: Boolean(currentQueueEntry && currentAsset?.status === "ready"),
+      online: Boolean(currentQueueEntry && currentMedia?.status === "ready"),
       deviceName: null,
-      lastSeenAt: currentQueueEntry && currentAsset?.status === "ready" ? now.toISOString() : null,
+      lastSeenAt: currentQueueEntry && currentMedia?.status === "ready" ? now.toISOString() : null,
       conflict: null
     },
     controllers: { onlineCount },
     currentTarget:
-      currentQueueEntry && currentAsset?.status === "ready" && currentSong
+      currentQueueEntry && currentMedia?.status === "ready" && dependencies.mediaGateway
         ? {
             roomId: room.id,
             sessionVersion: session?.version ?? 0,
             queueEntryId: currentQueueEntry.id,
-            assetId: currentAsset.id,
+            sourceType: currentMedia.sourceType,
+            songId: currentMedia.songId,
+            assetId: currentMedia.assetId,
             currentQueueEntryPreview: {
               queueEntryId: currentQueueEntry.id,
-              songTitle: currentSong.title,
-              artistName: currentSong.artistName
+              songTitle: currentMedia.title,
+              artistName: currentMedia.artistName
             },
-            playbackUrl: dependencies.assetGateway.createPlaybackUrl(currentAsset.id),
+            playbackUrl: dependencies.mediaGateway.createPlaybackUrl(sourceRefFromQueueEntry(currentQueueEntry)),
             resumePositionMs: session?.playerPositionMs ?? 0,
-            vocalMode: currentAsset.vocalMode,
-            switchFamily: currentAsset.switchFamily,
+            vocalMode: session?.targetVocalMode ?? "instrumental",
+            switchFamily: null,
+            playbackProfile: currentMedia.playbackProfile,
+            selectedTrackRef: null,
             nextQueueEntryPreview: null
           }
         : null,
@@ -294,11 +296,12 @@ function toRoomStatusResponse(
 
 async function buildQueuePreview(input: {
   currentQueueEntryId: string | null;
-  queue: readonly { id: string; songId: string; assetId: string; requestedBy: string; queuePosition: number; status: string; undoExpiresAt: string | null; removedAt: string | null; }[];
-  songs: SongRepository;
+  queue: readonly { id: string; songId: string; assetId: string; source?: MediaSourceRef; requestedBy: string; queuePosition: number; status: string; undoExpiresAt: string | null; removedAt: string | null; }[];
+  playableMedia?: PlayableMediaRepository;
 }) {
   const previews: Array<{
     queueEntryId: string;
+    sourceType: string;
     songId: string;
     assetId: string;
     songTitle: string;
@@ -311,17 +314,18 @@ async function buildQueuePreview(input: {
     undoExpiresAt: string | null;
   }> = [];
   for (const entry of input.queue) {
-    const song = await input.songs.findById(entry.songId);
-    if (!song) {
+    const media = await input.playableMedia?.findPlayableBySource(sourceRefFromQueueEntry(entry));
+    if (!media) {
       continue;
     }
 
     previews.push({
       queueEntryId: entry.id,
-      songId: entry.songId,
-      assetId: entry.assetId,
-      songTitle: song.title,
-      artistName: song.artistName,
+      sourceType: media.sourceType,
+      songId: media.songId,
+      assetId: media.assetId,
+      songTitle: media.title,
+      artistName: media.artistName,
       requestedBy: entry.requestedBy,
       queuePosition: entry.queuePosition,
       status: entry.status as QueueEntryStatus,
@@ -332,4 +336,12 @@ async function buildQueuePreview(input: {
   }
 
   return previews;
+}
+
+function sourceRefFromQueueEntry(entry: { songId: string; assetId: string; source?: MediaSourceRef }): MediaSourceRef {
+  return entry.source ?? {
+    sourceType: "nas",
+    songId: entry.songId,
+    assetId: entry.assetId
+  };
 }

@@ -5,6 +5,7 @@ import type {
   SwitchTransitionResult
 } from "@home-ktv/player-contracts";
 import type { AudioTrackSelectionResult, DualVideoPool } from "./video-pool.js";
+import { isSamePlaybackTarget } from "./active-playback-controller.js";
 import { selectAudioTrack } from "./video-pool.js";
 
 type VocalMode = NonNullable<RoomSnapshot["currentTarget"]>["vocalMode"];
@@ -17,6 +18,7 @@ export interface SwitchRuntimeClient {
     eventType: PlayerTelemetryKind;
     sessionVersion: number;
     queueEntryId: string;
+    sourceType: NonNullable<RoomSnapshot["currentTarget"]>["sourceType"];
     assetId: string;
     playbackPositionMs: number;
     vocalMode: VocalMode;
@@ -59,7 +61,7 @@ export class SwitchController {
       };
     }
 
-    if (snapshot.currentTarget && this.videoPool.activeTarget?.assetId !== snapshot.currentTarget.assetId) {
+    if (snapshot.currentTarget && !isSamePlaybackTarget(this.videoPool.activeTarget, snapshot.currentTarget)) {
       this.videoPool.primeActive(snapshot.currentTarget);
     }
 
@@ -133,6 +135,7 @@ export class SwitchController {
       eventType: "switch_failed",
       sessionVersion: switchTarget.sessionVersion,
       queueEntryId: switchTarget.queueEntryId,
+      sourceType: switchTarget.sourceType,
       assetId: switchTarget.toAssetId,
       playbackPositionMs,
       vocalMode: snapshot.currentTarget?.vocalMode ?? switchTarget.vocalMode,
@@ -150,6 +153,7 @@ export class SwitchController {
       eventType: "playing",
       sessionVersion: switchTarget.sessionVersion,
       queueEntryId: switchTarget.queueEntryId,
+      sourceType: switchTarget.sourceType,
       assetId: switchTarget.toAssetId,
       playbackPositionMs: Math.max(0, Math.trunc(this.videoPool.activeVideo.currentTime * 1000)),
       vocalMode: switchTarget.vocalMode,

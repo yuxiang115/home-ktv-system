@@ -35,16 +35,13 @@ describe("real MV schema contracts", () => {
     expect(migrationSql).toContain("AND compatibility_status = 'unknown'");
   });
 
-  it("mirrors real-MV enum values and asset schemaSql columns", () => {
+  it("keeps real-MV playback metadata on NAS asset technical metadata in final schema", () => {
     expect(enumValues.compatibilityStatus).toEqual(["unknown", "review_required", "playable", "unsupported"]);
-    expect(schemaSql).toContain(
-      "compatibility_status text NOT NULL DEFAULT 'unknown' CHECK (compatibility_status IN ('unknown', 'review_required', 'playable', 'unsupported'))"
-    );
-    expect(schemaSql).toContain("media_info_summary jsonb NOT NULL DEFAULT");
-    expect(schemaSql).toContain("media_info_provenance jsonb NOT NULL DEFAULT");
-    expect(schemaSql).toContain("track_roles jsonb NOT NULL DEFAULT");
-    expect(schemaSql).toContain("playback_profile jsonb NOT NULL DEFAULT");
-    expect(schemaSql).toContain("assets_compatibility_status_idx");
+    expect(schemaSql).toContain("CREATE TABLE IF NOT EXISTS ktv_song_assets");
+    expect(schemaSql).toContain("technical_status text NOT NULL DEFAULT 'pending' CHECK (technical_status IN ('pending', 'probed', 'failed'))");
+    expect(schemaSql).toContain("technical_metadata jsonb NOT NULL DEFAULT '{}'::jsonb");
+    expect(schemaSql).toContain("ktv_song_assets_technical_status_idx");
+    expect(schemaSql).not.toContain("CREATE TABLE IF NOT EXISTS assets");
   });
 
   it("does not add Android-specific storage contracts", () => {

@@ -1,11 +1,12 @@
 import { createReadStream } from "node:fs";
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { inferVideoContentType, type AssetGateway, type AssetGatewayResolution } from "../modules/assets/asset-gateway.js";
+import { inferVideoContentType } from "../modules/media/content-type.js";
 import type { MediaPathResolver, MediaPathResolution } from "../modules/assets/media-path-resolver.js";
 import type { QueryExecutor } from "../db/query-executor.js";
+import type { MediaGateway, MediaGatewayResolution } from "../modules/media/media-gateway.js";
 
 export interface MediaRouteContext {
-  assetGateway: Pick<AssetGateway, "resolveForStreaming">;
+  mediaGateway?: Pick<MediaGateway, "resolveForStreaming">;
   ktvIndexRawAssets?: KtvIndexRawAssetRepository;
   mediaPathResolver?: MediaPathResolver;
 }
@@ -37,10 +38,17 @@ export async function registerMediaRoutes(fastify: FastifyInstance, context: Med
     }
   );
 
-  fastify.get<{ Params: { assetId: string } }>("/media/:assetId", async (request, reply) => {
-    const resolution = await context.assetGateway.resolveForStreaming(request.params.assetId);
+  fastify.get<{ Params: { assetId: string } }>("/media/nas/:assetId", async (request, reply) => {
+    if (!context.mediaGateway) {
+      return reply.status(503).send({ error: "MEDIA_GATEWAY_UNAVAILABLE" });
+    }
+
+    const resolution = await context.mediaGateway.resolveForStreaming({
+      sourceType: "nas",
+      assetId: request.params.assetId
+    });
     if (!resolution.ok) {
-      return sendMediaError(reply, resolution);
+      return sendSourceMediaError(reply, resolution);
     }
 
     return sendResolvedMedia(reply, {
@@ -50,6 +58,28 @@ export async function registerMediaRoutes(fastify: FastifyInstance, context: Med
       rangeHeader: request.headers.range
     });
   });
+
+  fastify.get<{ Params: { assetId: string } }>("/media/online/:assetId", async (request, reply) => {
+    if (!context.mediaGateway) {
+      return reply.status(503).send({ error: "MEDIA_GATEWAY_UNAVAILABLE" });
+    }
+
+    const resolution = await context.mediaGateway.resolveForStreaming({
+      sourceType: "online",
+      assetId: request.params.assetId
+    });
+    if (!resolution.ok) {
+      return sendSourceMediaError(reply, resolution);
+    }
+
+    return sendResolvedMedia(reply, {
+      filePath: resolution.filePath,
+      contentLength: resolution.contentLength,
+      contentType: resolution.contentType,
+      rangeHeader: request.headers.range
+    });
+  });
+
 }
 
 export interface KtvIndexRawAssetRow {
@@ -76,9 +106,9 @@ export class PgKtvIndexRawAssetRepository implements KtvIndexRawAssetRepository 
   }
 }
 
-function sendMediaError(
+function sendSourceMediaError(
   reply: FastifyReply,
-  resolution: Extract<AssetGatewayResolution, { ok: false }>
+  resolution: Extract<MediaGatewayResolution, { ok: false }>
 ): FastifyReply {
   return reply.status(resolution.statusCode).send({
     error: resolution.code

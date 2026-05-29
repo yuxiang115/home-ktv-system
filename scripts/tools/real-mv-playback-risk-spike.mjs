@@ -103,7 +103,7 @@ Options:
   --media-root <path>    Root that contains the default songs-sample files
   --sample-mkv <path>    Local MKV representative sample path
   --sample-mpg <path>    Local MPG/MPEG representative sample path
-  --database-url <url>   Optional Postgres URL for read-only catalog index cross-check
+  --database-url <url>   Optional Postgres URL for read-only NAS index cross-check
   --mkv <path>           Backward-compatible alias for --sample-mkv
   --mpeg <path>          Backward-compatible alias for --sample-mpg
   --output <path>        Markdown report path`;
@@ -339,12 +339,11 @@ async function buildIndexCrossCheck(databaseUrl, sampleResolution) {
     client = new Client({ connectionString: databaseUrl });
     await client.connect();
 
-    const songs = await countTable(client, "songs");
-    const assets = await countTable(client, "assets");
-    const sourceRecords = await countTable(client, "source_records");
+    const ktvSongs = await countTable(client, "ktv_songs");
+    const ktvSongAssets = await countTable(client, "ktv_song_assets");
     const matches = await findAssetMatches(client, sampleResolution);
 
-    return { status: "ok", songs, assets, sourceRecords, matches };
+    return { status: "ok", ktvSongs, ktvSongAssets, matches };
   } catch (error) {
     return { status: "unavailable", reason: error instanceof Error ? error.message : String(error) };
   } finally {
@@ -376,8 +375,8 @@ async function findAssetMatches(client, sampleResolution) {
       `%${path.basename(sampleResolution.mpgPath)}`
     ];
     const result = await client.query(
-      `SELECT file_path, display_name, compatibility_status
-       FROM assets
+      `SELECT file_path, file_name, technical_status
+       FROM ktv_song_assets
        WHERE file_path = ANY($1::text[]) OR file_path LIKE ANY($2::text[])
        ORDER BY updated_at DESC
        LIMIT 10`,
@@ -385,8 +384,8 @@ async function findAssetMatches(client, sampleResolution) {
     );
     return result.rows.map((row) => ({
       filePath: row.file_path,
-      displayName: row.display_name,
-      compatibilityStatus: row.compatibility_status
+      fileName: row.file_name,
+      technicalStatus: row.technical_status
     }));
   } catch (error) {
     return { unavailable: error instanceof Error ? error.message : String(error) };
@@ -408,15 +407,14 @@ function buildIndexCrossCheckSection(indexCrossCheck) {
   }
 
   const matchLines = Array.isArray(indexCrossCheck.matches) && indexCrossCheck.matches.length > 0
-    ? indexCrossCheck.matches.map((match) => `- match: ${match.filePath} (${match.compatibilityStatus})`)
+    ? indexCrossCheck.matches.map((match) => `- match: ${match.filePath} (${match.technicalStatus})`)
     : ["- matches: none"];
   return [
     "## Index cross-check",
     "",
     "- status: ok",
-    `- songs: ${formatCount(indexCrossCheck.songs)}`,
-    `- assets: ${formatCount(indexCrossCheck.assets)}`,
-    `- sourceRecords: ${formatCount(indexCrossCheck.sourceRecords)}`,
+    `- ktvSongs: ${formatCount(indexCrossCheck.ktvSongs)}`,
+    `- ktvSongAssets: ${formatCount(indexCrossCheck.ktvSongAssets)}`,
     ...matchLines,
     ""
   ];

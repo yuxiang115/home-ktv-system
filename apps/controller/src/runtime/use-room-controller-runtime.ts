@@ -1,7 +1,7 @@
 import type {
   OnlineCandidateTask,
   SongDiscoveryResponse,
-  SongSearchIndexedQueueState,
+  SongSearchNasQueueState,
   SongSearchQueueState,
   SongSearchResponse
 } from "@home-ktv/domain";
@@ -47,10 +47,10 @@ export interface RoomControllerState {
   deviceId: string;
   duplicateConfirm:
     | { kind: "canonical"; songId: string; assetId: string; title: string }
-    | { kind: "indexed"; indexedAssetId: string; title: string }
+    | { kind: "nas"; assetId: string; title: string }
     | null;
   errorMessage: string | null;
-  pendingIndexedAssetId: string | null;
+  pendingNasAssetId: string | null;
   pendingInteractionKind: RoomInteractionKind | null;
   pendingUndo: { queueEntryId: string; undoExpiresAt: string } | null;
   pendingSupplementKeys: readonly string[];
@@ -64,13 +64,14 @@ export interface RoomControllerState {
   snapshot: RoomControlSnapshot | null;
   volumePercent: number;
   addSongVersion(songId: string, assetId: string): Promise<void>;
+  addNasAsset(assetId: string): Promise<void>;
   cancelDuplicateAdd(): void;
   confirmSkip(): Promise<void>;
   confirmDuplicateAdd(): Promise<void>;
   deleteQueueEntry(queueEntryId: string): Promise<void>;
   promoteQueueEntry(queueEntryId: string): Promise<void>;
   requestAddSongVersion(songId: string, assetId: string, title: string, queueState: SongSearchQueueState): boolean;
-  requestAddIndexedAsset(indexedAssetId: string, title: string, queueState: SongSearchIndexedQueueState): boolean;
+  requestAddNasAsset(assetId: string, title: string, queueState: SongSearchNasQueueState): boolean;
   sendInteraction(kind: RoomInteractionKind, message: string): Promise<void>;
   requestSupplement(provider: string, providerCandidateId: string): Promise<void>;
   requestSkip(): void;
@@ -96,7 +97,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
   const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
   const [songDiscovery, setSongDiscovery] = useState<SongDiscoveryResponse | null>(null);
   const [songDiscoveryStatus, setSongDiscoveryStatus] = useState<RoomControllerState["songDiscoveryStatus"]>("idle");
-  const [pendingIndexedAssetId, setPendingIndexedAssetId] = useState<string | null>(null);
+  const [pendingNasAssetId, setPendingNasAssetId] = useState<string | null>(null);
   const [pendingInteractionKind, setPendingInteractionKind] = useState<RoomInteractionKind | null>(null);
   const [pendingUndo, setPendingUndo] = useState<{ queueEntryId: string; undoExpiresAt: string } | null>(null);
   const [pendingSupplementKeys, setPendingSupplementKeys] = useState<readonly string[]>([]);
@@ -399,16 +400,16 @@ export function useRoomControllerRuntime(): RoomControllerState {
 
   const addSongVersion = useCallback(
     async (songId: string, assetId: string) => {
-      await runCommand((input) => addQueueEntry({ ...input, songId, assetId }), { retryOnConflict: true });
+      await runCommand((input) => addQueueEntry({ ...input, sourceType: "nas", assetId }), { retryOnConflict: true });
     },
     [runCommand]
   );
 
-  const addIndexedAsset = useCallback(
-    async (indexedAssetId: string) => {
-      setPendingIndexedAssetId(indexedAssetId);
+  const addNasAsset = useCallback(
+    async (assetId: string) => {
+      setPendingNasAssetId(assetId);
       try {
-        await runCommand((input) => addQueueEntry({ ...input, indexedAssetId }), { retryOnConflict: true });
+        await runCommand((input) => addQueueEntry({ ...input, sourceType: "nas", assetId }), { retryOnConflict: true });
         const restored = await restoreControlSession({ roomSlug: initial.roomSlug, deviceId });
         setSnapshot(restored.snapshot);
         await runSongSearch(songSearchQueryRef.current);
@@ -416,7 +417,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
       } catch (error) {
         setErrorMessage(errorMessageFrom(error, "点歌失败"));
       } finally {
-        setPendingIndexedAssetId((current) => (current === indexedAssetId ? null : current));
+        setPendingNasAssetId((current) => (current === assetId ? null : current));
       }
     },
     [deviceId, initial.roomSlug, runCommand, runSongSearch]
@@ -496,7 +497,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
     deviceId,
     duplicateConfirm,
     errorMessage,
-    pendingIndexedAssetId,
+    pendingNasAssetId,
     pendingInteractionKind,
     pendingUndo,
     pendingSupplementKeys,
@@ -510,6 +511,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
     snapshot,
     volumePercent: pendingVolumePercent ?? snapshot?.volumePercent ?? DEFAULT_ROOM_VOLUME_PERCENT,
     addSongVersion,
+    addNasAsset,
     cancelDuplicateAdd: () => setDuplicateConfirm(null),
     cancelSkip: () => setSkipConfirmOpen(false),
     confirmDuplicateAdd: async () => {
@@ -517,8 +519,8 @@ export function useRoomControllerRuntime(): RoomControllerState {
       if (!selection) {
         return;
       }
-      if (selection.kind === "indexed") {
-        await addIndexedAsset(selection.indexedAssetId);
+      if (selection.kind === "nas") {
+        await addNasAsset(selection.assetId);
       } else {
         await addSongVersion(selection.songId, selection.assetId);
       }
@@ -543,13 +545,13 @@ export function useRoomControllerRuntime(): RoomControllerState {
       void addSongVersion(songId, assetId);
       return true;
     },
-    requestAddIndexedAsset: (indexedAssetId, title, queueState) => {
+    requestAddNasAsset: (assetId, title, queueState) => {
       if (queueState === "queued") {
-        setDuplicateConfirm({ kind: "indexed", indexedAssetId, title });
+        setDuplicateConfirm({ kind: "nas", assetId, title });
         return false;
       }
 
-      void addIndexedAsset(indexedAssetId);
+      void addNasAsset(assetId);
       return true;
     },
     sendInteraction,

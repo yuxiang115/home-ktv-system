@@ -76,6 +76,8 @@ describe("PlayingScreen", () => {
         roomId: "living-room",
         sessionVersion: 4,
         queueEntryId: "queue-current",
+        sourceType: "nas",
+        songId: "song-current",
         assetId: "asset-instrumental",
         currentQueueEntryPreview: {
           queueEntryId: "queue-current",
@@ -133,6 +135,8 @@ function snapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot {
       roomId: "living-room",
       sessionVersion: 4,
       queueEntryId: "queue-current",
+      sourceType: "nas",
+      songId: "song-current",
       assetId: "asset-instrumental",
       currentQueueEntryPreview: {
         queueEntryId: "queue-current",

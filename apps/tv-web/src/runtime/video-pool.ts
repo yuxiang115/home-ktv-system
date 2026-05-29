@@ -218,6 +218,8 @@ function playbackTargetFromSwitchTarget(target: SwitchTarget, previousTarget: Pl
     roomId: target.roomId,
     sessionVersion: target.sessionVersion,
     queueEntryId: target.queueEntryId,
+    sourceType: target.sourceType,
+    songId: previousTarget?.songId ?? "",
     assetId: target.toAssetId,
     currentQueueEntryPreview: previousTarget?.currentQueueEntryPreview ?? {
       queueEntryId: target.queueEntryId,
@@ -258,13 +260,90 @@ function enabledIndexes(audioTracks: SelectableAudioTrackList): number[] {
 }
 
 function findAudioTrackIndex(audioTracks: SelectableAudioTrackList, trackRef: TrackRef): number | null {
-  for (let index = 0; index < audioTracks.length; index += 1) {
-    if (audioTracks[index]?.id === trackRef.id) {
-      return index;
+  const exactIdIndex = findTrackIndex(audioTracks, (track) => track.id === trackRef.id);
+  if (exactIdIndex !== null && !isAmbiguousOrdinalId(trackRef.id, audioTracks.length)) {
+    return exactIdIndex;
+  }
+
+  const label = trackRef.label.trim();
+  if (label) {
+    const labelIndex = findUniqueTrackIndex(
+      audioTracks,
+      (track) => track.label?.toLocaleLowerCase().includes(label.toLocaleLowerCase()) === true
+    );
+    if (labelIndex !== null) {
+      return labelIndex;
     }
   }
 
-  return audioTracks[trackRef.index] ? trackRef.index : null;
+  if (trackRef.index > 0 && audioTracks[trackRef.index - 1]) {
+    return trackRef.index - 1;
+  }
+
+  if (audioTracks[trackRef.index]) {
+    return trackRef.index;
+  }
+
+  if (exactIdIndex !== null) {
+    return exactIdIndex;
+  }
+
+  const numericId = toTrackNumericId(trackRef.id);
+  if (numericId !== null) {
+    const numericIdIndex = findTrackIndex(audioTracks, (track) => toTrackNumericId(track.id) === numericId);
+    if (numericIdIndex !== null) {
+      return numericIdIndex;
+    }
+  }
+
+  return null;
+}
+
+function findTrackIndex(
+  audioTracks: SelectableAudioTrackList,
+  predicate: (track: SelectableAudioTrack) => boolean
+): number | null {
+  for (let index = 0; index < audioTracks.length; index += 1) {
+    const track = audioTracks[index];
+    if (track && predicate(track)) {
+      return index;
+    }
+  }
+  return null;
+}
+
+function findUniqueTrackIndex(
+  audioTracks: SelectableAudioTrackList,
+  predicate: (track: SelectableAudioTrack) => boolean
+): number | null {
+  let matchedIndex: number | null = null;
+  for (let index = 0; index < audioTracks.length; index += 1) {
+    const track = audioTracks[index];
+    if (!track || !predicate(track)) {
+      continue;
+    }
+    if (matchedIndex !== null) {
+      return null;
+    }
+    matchedIndex = index;
+  }
+  return matchedIndex;
+}
+
+function isAmbiguousOrdinalId(value: string | undefined, trackCount: number): boolean {
+  const numericId = toTrackNumericId(value);
+  return numericId !== null && numericId >= 0 && numericId <= trackCount;
+}
+
+function toTrackNumericId(value: string | undefined): number | null {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return null;
+  }
+  const parsed = normalized.toLocaleLowerCase().startsWith("0x")
+    ? Number.parseInt(normalized.slice(2), 16)
+    : Number.parseInt(normalized, 10);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function msToSeconds(positionMs: number): number {
