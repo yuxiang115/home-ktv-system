@@ -55,4 +55,9 @@ describe("runtime database simplification schema", () => {
     expect(migrationSql).toContain("DROP TABLE IF EXISTS device_sessions");
     expect(migrationSql).toContain("DROP TABLE IF EXISTS room_pairing_tokens");
   });
+
+  it("drops legacy control session foreign keys before removing obsolete tables", () => {
+    expect(migrationSql).toContain("DROP CONSTRAINT IF EXISTS queue_entries_removed_by_control_session_fk");
+    expect(migrationSql).toContain("DROP CONSTRAINT IF EXISTS queue_entries_removed_by_control_session_id_fkey");
+  });
 });

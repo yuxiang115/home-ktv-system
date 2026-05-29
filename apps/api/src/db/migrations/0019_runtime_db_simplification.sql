@@ -42,7 +42,8 @@ ALTER TABLE rooms
   DROP CONSTRAINT IF EXISTS rooms_default_player_device_fk;
 
 ALTER TABLE queue_entries
-  DROP CONSTRAINT IF EXISTS queue_entries_removed_by_control_session_fk;
+  DROP CONSTRAINT IF EXISTS queue_entries_removed_by_control_session_fk,
+  DROP CONSTRAINT IF EXISTS queue_entries_removed_by_control_session_id_fkey;
 
 ALTER TABLE rooms
   ADD COLUMN IF NOT EXISTS pairing_token_value text,
