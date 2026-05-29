@@ -487,93 +487,20 @@ CREATE INDEX IF NOT EXISTS ktv_song_assets_active_song_idx
   ON ktv_song_assets(song_id, updated_at DESC)
   WHERE missing_at IS NULL;
 
-CREATE TABLE IF NOT EXISTS ktv_style_groups (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  name text NOT NULL UNIQUE,
-  sort_order integer NOT NULL DEFAULT 0,
-  enabled boolean NOT NULL DEFAULT true,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS ktv_style_tags (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  group_id text NOT NULL REFERENCES ktv_style_groups(id) ON DELETE RESTRICT,
-  name text NOT NULL,
-  normalized_name text NOT NULL,
-  sort_order integer NOT NULL DEFAULT 0,
-  enabled boolean NOT NULL DEFAULT true,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (normalized_name)
-);
-
 CREATE TABLE IF NOT EXISTS ktv_song_style_tags (
   song_id text NOT NULL REFERENCES ktv_songs(id) ON DELETE CASCADE,
-  tag_id text NOT NULL REFERENCES ktv_style_tags(id) ON DELETE CASCADE,
-  source text NOT NULL,
-  confidence numeric(4,3) NOT NULL DEFAULT 0 CHECK (confidence >= 0 AND confidence <= 1),
-  evidence jsonb NOT NULL DEFAULT '{}'::jsonb,
-  locked boolean NOT NULL DEFAULT false,
+  tag_name text NOT NULL,
+  tag_group text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (song_id, tag_id, source)
+  UNIQUE(song_id, tag_name, tag_group)
 );
 
-CREATE TABLE IF NOT EXISTS ktv_song_tagging_runs (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  source text NOT NULL,
-  status text NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'completed', 'failed')),
-  selected_count integer NOT NULL DEFAULT 0 CHECK (selected_count >= 0),
-  processed_count integer NOT NULL DEFAULT 0 CHECK (processed_count >= 0),
-  tagged_count integer NOT NULL DEFAULT 0 CHECK (tagged_count >= 0),
-  empty_count integer NOT NULL DEFAULT 0 CHECK (empty_count >= 0),
-  failed_count integer NOT NULL DEFAULT 0 CHECK (failed_count >= 0),
-  average_tags numeric(8,3),
-  options jsonb NOT NULL DEFAULT '{}'::jsonb,
-  summary jsonb NOT NULL DEFAULT '{}'::jsonb,
-  error_message text,
-  started_at timestamptz NOT NULL DEFAULT now(),
-  finished_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
+CREATE INDEX IF NOT EXISTS ktv_song_style_tags_group_tag_idx
+  ON ktv_song_style_tags(tag_group, tag_name, song_id);
 
-CREATE TABLE IF NOT EXISTS ktv_song_tagging_status (
-  song_id text NOT NULL REFERENCES ktv_songs(id) ON DELETE CASCADE,
-  source text NOT NULL,
-  status text NOT NULL CHECK (status IN ('pending', 'tagged', 'empty', 'failed')),
-  tag_count integer NOT NULL DEFAULT 0 CHECK (tag_count >= 0),
-  confidence numeric(4,3),
-  run_id text REFERENCES ktv_song_tagging_runs(id) ON DELETE SET NULL,
-  error_message text,
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  created_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (song_id, source)
-);
-
-CREATE INDEX IF NOT EXISTS ktv_style_tags_group_idx
-  ON ktv_style_tags(group_id, sort_order, name);
 CREATE INDEX IF NOT EXISTS ktv_song_style_tags_tag_idx
-  ON ktv_song_style_tags(tag_id, song_id);
-CREATE INDEX IF NOT EXISTS ktv_song_style_tags_source_idx
-  ON ktv_song_style_tags(source, updated_at DESC);
-CREATE INDEX IF NOT EXISTS ktv_song_tagging_runs_source_started_idx
-  ON ktv_song_tagging_runs(source, started_at DESC);
-CREATE INDEX IF NOT EXISTS ktv_song_tagging_status_source_status_idx
-  ON ktv_song_tagging_status(source, status, updated_at DESC);
-
-CREATE TABLE IF NOT EXISTS ktv_song_tagging_cache (
-  source text NOT NULL,
-  cache_key text NOT NULL,
-  payload jsonb NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (source, cache_key)
-);
-
-CREATE INDEX IF NOT EXISTS ktv_song_tagging_cache_updated_idx
-  ON ktv_song_tagging_cache(source, updated_at DESC);
+  ON ktv_song_style_tags(tag_name, song_id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS online_song_assets_id_song_id_uq
   ON online_song_assets(id, song_id);
