@@ -18,6 +18,7 @@
     "ktv:tags:import": "pnpm -F @home-ktv/api tag:ktv-styles:import",
     "ktv:tags:full": "node scripts/tools/run-style-tagging-full.mjs",
     "ktv:tags:llm-batch": "node scripts/tools/run-style-tagging-llm-batch.mjs",
+    "ktv:tags:llm-batch:py": "python3 scripts/tools/run_style_tagging_llm_batch.py",
     "ktv:tags:job": "node scripts/tools/style-tagging-job.mjs",
     "covers:songs": "pnpm -F @home-ktv/api covers:songs",
     "covers:coverage": "pnpm -F @home-ktv/api covers:coverage",
