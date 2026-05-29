@@ -412,6 +412,8 @@ function roomStatus(tokenExpiresAt: string, promoted = false) {
       online: true,
       deviceName: null,
       lastSeenAt: "2026-05-04T10:00:00.000Z",
+      onlineCount: 1,
+      devices: [{ deviceId: "tv-1", deviceName: "TV", lastSeenAt: "2026-05-04T10:00:00.000Z" }],
       conflict: null
     },
     controllers: { onlineCount: 1 },
@@ -465,6 +467,8 @@ function realtimeSnapshot() {
       online: true,
       deviceName: "Living Room TV",
       lastSeenAt: "2026-05-04T10:40:00.000Z",
+      onlineCount: 1,
+      devices: [{ deviceId: "tv-1", deviceName: "Living Room TV", lastSeenAt: "2026-05-04T10:40:00.000Z" }],
       conflict: null
     },
     controllers: { onlineCount: 2 },

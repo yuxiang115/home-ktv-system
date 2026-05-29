@@ -113,10 +113,11 @@ export async function buildRoomControlSnapshot(input: BuildRoomControlSnapshotIn
     listRecentPlaybackEvents(input.repositories, room.id),
     listOnlineTasks(input.repositories, room.id)
   ]);
-  const activeTvPlayer = await input.repositories.deviceSessions.findActiveTvPlayer(
+  const activeTvPlayers = await input.repositories.deviceSessions.listActiveTvPlayers(
     room.id,
     new Date(now.getTime() - ACTIVE_TV_PLAYER_WINDOW_MS)
   );
+  const activeTvPlayer = activeTvPlayers[0] ?? null;
 
   const onlineCount = await input.repositories.controlSessions.countActiveByRoom(
     room.id,
@@ -141,9 +142,17 @@ export async function buildRoomControlSnapshot(input: BuildRoomControlSnapshotIn
           online: true,
           deviceName: activeTvPlayer.deviceName,
           lastSeenAt: activeTvPlayer.lastSeenAt,
+          onlineCount: activeTvPlayers.length,
+          devices: activeTvPlayers
+            .filter((device) => device.lastSeenAt)
+            .map((device) => ({
+              deviceId: device.id,
+              deviceName: device.deviceName,
+              lastSeenAt: device.lastSeenAt ?? now.toISOString()
+            })),
           conflict: null
         }
-      : { online: false, deviceName: null, lastSeenAt: null, conflict: null },
+      : { online: false, deviceName: null, lastSeenAt: null, onlineCount: 0, devices: [], conflict: null },
     controllers: { onlineCount },
     currentTarget: baseSnapshot.currentTarget,
     switchTarget: baseSnapshot.switchTarget,

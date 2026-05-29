@@ -1,10 +1,9 @@
 import type { DeviceSession, DeviceSessionId, Room, RoomId } from "@home-ktv/domain";
-import type { PairingInfo, PlayerConflictState } from "@home-ktv/player-contracts";
+import type { PairingInfo } from "@home-ktv/player-contracts";
 import type { QueryExecutor } from "../../db/query-executor.js";
 import type { DeviceSessionRow } from "../../db/schema.js";
 import { getOrCreatePairingInfo } from "../rooms/pairing-token-service.js";
 import type { RoomPairingTokenRepository } from "../rooms/repositories/pairing-token-repository.js";
-import { detectPlayerConflict } from "./conflict-service.js";
 
 export interface RegisterPlayerInput {
   room: Room;
@@ -18,19 +17,12 @@ export interface RegisterPlayerInput {
   now?: Date;
 }
 
-export type RegisterPlayerResult =
-  | {
-      status: "registered";
-      deviceSession: DeviceSession;
-      pairing: PairingInfo;
-      conflict: null;
-    }
-  | {
-      status: "conflict";
-      deviceSession: null;
-      pairing: PairingInfo;
-      conflict: PlayerConflictState;
-    };
+export interface RegisterPlayerResult {
+  status: "registered";
+  deviceSession: DeviceSession;
+  pairing: PairingInfo;
+  conflict: null;
+}
 
 export interface UpsertTvPlayerInput {
   roomId: RoomId;
@@ -49,6 +41,7 @@ export interface UpdateTvHeartbeatInput {
 
 export interface PlayerDeviceSessionRepository {
   findActiveTvPlayer(roomId: RoomId, activeAfter: Date): Promise<DeviceSession | null>;
+  listActiveTvPlayers(roomId: RoomId, activeAfter: Date): Promise<DeviceSession[]>;
   upsertTvPlayer(input: UpsertTvPlayerInput): Promise<DeviceSession>;
   updateTvHeartbeat(input: UpdateTvHeartbeatInput): Promise<DeviceSession | null>;
 }
@@ -62,22 +55,6 @@ export async function registerPlayer(input: RegisterPlayerInput): Promise<Regist
     now,
     ...(input.controllerBaseUrl ? { controllerBaseUrl: input.controllerBaseUrl } : {})
   });
-  const conflict = await detectPlayerConflict({
-    roomId: input.room.id,
-    deviceId: input.deviceId,
-    repository: input.repository,
-    now
-  });
-
-  if (conflict) {
-    return {
-      status: "conflict",
-      deviceSession: null,
-      pairing,
-      conflict
-    };
-  }
-
   const deviceSession = await input.repository.upsertTvPlayer({
     roomId: input.room.id,
     deviceId: input.deviceId,
@@ -113,19 +90,22 @@ export class PgPlayerDeviceSessionRepository implements PlayerDeviceSessionRepos
   constructor(private readonly db: QueryExecutor) {}
 
   async findActiveTvPlayer(roomId: RoomId, activeAfter: Date): Promise<DeviceSession | null> {
+    const active = await this.listActiveTvPlayers(roomId, activeAfter);
+    return active[0] ?? null;
+  }
+
+  async listActiveTvPlayers(roomId: RoomId, activeAfter: Date): Promise<DeviceSession[]> {
     const result = await this.db.query<DeviceSessionRow>(
       `SELECT id, room_id, device_type, device_name, last_seen_at, capabilities, pairing_token, created_at, updated_at
        FROM device_sessions
        WHERE room_id = $1
          AND device_type = 'tv'
          AND last_seen_at >= $2
-       ORDER BY last_seen_at DESC
-       LIMIT 1`,
+       ORDER BY last_seen_at DESC, id ASC`,
       [roomId, activeAfter]
     );
 
-    const row = result.rows[0];
-    return row ? mapDeviceSessionRow(row) : null;
+    return result.rows.map(mapDeviceSessionRow);
   }
 
   async upsertTvPlayer(input: UpsertTvPlayerInput): Promise<DeviceSession> {

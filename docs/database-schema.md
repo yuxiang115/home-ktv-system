@@ -56,7 +56,7 @@ schema_migrations
 | `candidate_tasks` | 0 | 线上候选歌曲发现、拉取、入库工作流；当前 NAS 播放主流程不依赖它。 |
 | `control_commands` | 45 | 控制端命令的幂等记录和执行结果日志。 |
 | `control_sessions` | 15 | 手机控制端会话。 |
-| `device_sessions` | 9 | TV 或手机设备在线状态。 |
+| `device_sessions` | 9 | TV 设备在线状态；同一房间可以有多台 TV 同时在线。 |
 | `ktv_artists` | 8,557 | NAS 曲库的歌手维表。 |
 | `ktv_index_runs` | 2 | NAS 曲库索引任务历史。 |
 | `ktv_song_artists` | 35,991 | NAS 歌曲与歌手的多对多关系。 |
@@ -227,7 +227,7 @@ schema_migrations
 
 ### `device_sessions`
 
-TV 或手机设备在线状态。
+TV 设备在线状态。当前业务允许同一个房间内多台 TV 同时在线，它们作为镜像播放端共享同一份房间播放状态。
 
 | 字段 | 类型 | 可空 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
@@ -244,6 +244,7 @@ TV 或手机设备在线状态。
 索引和约束：
 
 - 主键：`id`。
+- 当前没有 `(room_id, device_type)` 级别的唯一约束，因此不会限制一个房间只能有一台 TV。
 
 ### `ktv_artists`
 
@@ -554,7 +555,7 @@ NAS 曲库里的逻辑歌曲。
 
 ### `playback_sessions`
 
-每个房间当前播放状态。
+每个房间当前播放状态。多台 TV 在线时仍然共用这一条房间级播放状态；它不是单台 TV 的播放会话。
 
 | 字段 | 类型 | 可空 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
@@ -636,7 +637,7 @@ KTV 房间表。
 | `slug` | `text` | 否 | - | 对外稳定房间标识。 |
 | `name` | `text` | 否 | - | 房间展示名。 |
 | `status` | `text` | 否 | - | `active`、`inactive`、`maintenance`。 |
-| `default_player_device_id` | `text` | 是 | - | 默认播放设备，外键到 `device_sessions.id`。 |
+| `default_player_device_id` | `text` | 是 | - | 默认或最近注册的播放设备，外键到 `device_sessions.id`；不表示唯一 TV。 |
 | `created_at` | `timestamptz` | 否 | `now()` | 创建时间。 |
 | `updated_at` | `timestamptz` | 否 | `now()` | 更新时间。 |
 

@@ -680,6 +680,14 @@ function ControlScreen({
   t: TFunction;
   volumePercent: number;
 }) {
+  const onlineTvCount = snapshot?.tvPresence.onlineCount ?? (snapshot?.tvPresence.online ? 1 : 0);
+  const tvStatusLabel =
+    onlineTvCount > 1
+      ? t("status.tvOnlineCount", { count: onlineTvCount })
+      : snapshot?.tvPresence.online
+        ? t("status.tvOnline")
+        : t("status.tvOffline");
+
   return (
     <>
       <header className="top-bar">
@@ -689,7 +697,7 @@ function ControlScreen({
         </div>
         <div className="top-actions">
           <span className={snapshot?.tvPresence.online ? "status-pill online" : "status-pill offline"}>
-            {snapshot?.tvPresence.online ? t("status.tvOnline") : t("status.tvOffline")}
+            {tvStatusLabel}
           </span>
           <LanguageSwitch />
         </div>

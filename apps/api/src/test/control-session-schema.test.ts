@@ -111,6 +111,14 @@ describe("room control session schema contracts", () => {
         online: true,
         deviceName: "Living Room TV",
         lastSeenAt: "2026-05-01T13:45:00.000Z",
+        onlineCount: 1,
+        devices: [
+          {
+            deviceId: "tv-1",
+            deviceName: "Living Room TV",
+            lastSeenAt: "2026-05-01T13:45:00.000Z"
+          }
+        ],
         conflict: null
       },
       controllers: {

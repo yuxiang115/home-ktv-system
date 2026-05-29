@@ -96,10 +96,18 @@ export interface ControlSessionInfo {
   lastSeenAt: string;
 }
 
+export interface TvPresenceDevice {
+  deviceId: string;
+  deviceName: string;
+  lastSeenAt: string;
+}
+
 export interface TvPresence {
   online: boolean;
   deviceName: string | null;
   lastSeenAt: string | null;
+  onlineCount: number;
+  devices: readonly TvPresenceDevice[];
   conflict: PlayerConflictState | null;
 }
 

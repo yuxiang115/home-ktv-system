@@ -220,6 +220,7 @@ class InMemoryRuntimeRepositories implements RuntimeRepositories {
 
   readonly deviceSessions: PlayerDeviceSessionRepository = {
     findActiveTvPlayer: async (roomId, activeAfter) => this.findActiveTvPlayer(roomId, activeAfter),
+    listActiveTvPlayers: async (roomId, activeAfter) => this.listActiveTvPlayers(roomId, activeAfter),
     upsertTvPlayer: async (input) => this.upsertTvPlayer(input),
     updateTvHeartbeat: async (input) => this.updateTvHeartbeat(input)
   };
@@ -248,6 +249,11 @@ class InMemoryRuntimeRepositories implements RuntimeRepositories {
   }
 
   async findActiveTvPlayer(roomId: string, activeAfter: Date): Promise<DeviceSession | null> {
+    const active = await this.listActiveTvPlayers(roomId, activeAfter);
+    return active[0] ?? null;
+  }
+
+  async listActiveTvPlayers(roomId: string, activeAfter: Date): Promise<DeviceSession[]> {
     const active = Array.from(this.devices.values())
       .filter(
         (device) =>
@@ -258,7 +264,7 @@ class InMemoryRuntimeRepositories implements RuntimeRepositories {
       )
       .sort((a, b) => new Date(b.lastSeenAt ?? 0).getTime() - new Date(a.lastSeenAt ?? 0).getTime());
 
-    return active[0] ?? null;
+    return active;
   }
 
   async upsertTvPlayer(input: Parameters<PlayerDeviceSessionRepository["upsertTvPlayer"]>[0]): Promise<DeviceSession> {

@@ -184,6 +184,19 @@ describe("mobile controller runtime", () => {
     expect(queue).toBeTruthy();
   });
 
+  it("shows the active TV count when multiple TV players are online", async () => {
+    installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot({ tvOnlineCount: 2 })))]
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    await openControlTab();
+
+    expect(screen.getByText("2 台电视在线")).toBeTruthy();
+  });
+
   it("shows an empty online supplement state when a search has no local result and no candidates", async () => {
     const user = userEvent.setup();
     installControllerFetchMock({
@@ -2142,10 +2155,12 @@ function roomSnapshot(options: {
   queueStatus?: "queued" | "removed";
   queueUndoExpiresAt?: string | null;
   sessionVersion?: number;
+  tvOnlineCount?: number;
   volumePercent?: number;
 } = {}): RoomControlSnapshot {
   const queueStatus = options.queueStatus ?? "queued";
   const queueLength = options.queueLength ?? 1;
+  const tvOnlineCount = options.tvOnlineCount ?? 1;
   return {
     type: "room.control.snapshot",
     roomId: "living-room",
@@ -2160,7 +2175,18 @@ function roomSnapshot(options: {
       token: "token",
       tokenExpiresAt: "2026-05-04T10:10:00.000Z"
     },
-    tvPresence: { online: true, deviceName: "TV", lastSeenAt: "2026-05-04T10:00:00.000Z", conflict: null },
+    tvPresence: {
+      online: true,
+      deviceName: "TV",
+      lastSeenAt: "2026-05-04T10:00:00.000Z",
+      onlineCount: tvOnlineCount,
+      devices: Array.from({ length: tvOnlineCount }, (_, index) => ({
+        deviceId: `tv-${index + 1}`,
+        deviceName: `TV ${index + 1}`,
+        lastSeenAt: "2026-05-04T10:00:00.000Z"
+      })),
+      conflict: null
+    },
     controllers: { onlineCount: 1 },
     currentTarget: {
       roomId: "living-room",

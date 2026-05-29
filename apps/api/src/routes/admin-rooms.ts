@@ -161,7 +161,7 @@ async function buildFallbackRoomStatus(
   dependencies: AdminRoomsRouteDependencies
 ): Promise<any> {
   const now = new Date();
-  const [pairing, session, effectiveQueue, removedQueue, onlineCount, recentEvents, onlineTasks] = await Promise.all([
+  const [pairing, session, effectiveQueue, removedQueue, onlineCount, recentEvents, onlineTasks, activeTvPlayers] = await Promise.all([
     getOrCreatePairingInfo({
       room,
       publicBaseUrl: dependencies.config.publicBaseUrl,
@@ -178,8 +178,10 @@ async function buildFallbackRoomStatus(
       : Promise.resolve([]),
     typeof (dependencies.online ?? dependencies.onlineTasks)?.listActiveForRoom === "function"
       ? (dependencies.online ?? dependencies.onlineTasks)!.listActiveForRoom(room.id)
-      : Promise.resolve([])
+      : Promise.resolve([]),
+    dependencies.deviceSessions.listActiveTvPlayers(room.id, new Date(now.getTime() - 30_000))
   ]);
+  const primaryTv = activeTvPlayers[0] ?? null;
 
   const currentQueueEntry = session?.currentQueueEntryId ? await dependencies.queueEntries.findById(session.currentQueueEntryId) : null;
   const currentMedia = currentQueueEntry
@@ -199,9 +201,17 @@ async function buildFallbackRoomStatus(
     state: currentQueueEntry && currentMedia?.status === "ready" ? "playing" : room.status === "active" ? "idle" : "error",
     pairing,
     tvPresence: {
-      online: Boolean(currentQueueEntry && currentMedia?.status === "ready"),
-      deviceName: null,
-      lastSeenAt: currentQueueEntry && currentMedia?.status === "ready" ? now.toISOString() : null,
+      online: activeTvPlayers.length > 0,
+      deviceName: primaryTv?.deviceName ?? null,
+      lastSeenAt: primaryTv?.lastSeenAt ?? null,
+      onlineCount: activeTvPlayers.length,
+      devices: activeTvPlayers
+        .filter((device) => device.lastSeenAt)
+        .map((device) => ({
+          deviceId: device.id,
+          deviceName: device.deviceName,
+          lastSeenAt: device.lastSeenAt ?? now.toISOString()
+        })),
       conflict: null
     },
     controllers: { onlineCount },

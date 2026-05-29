@@ -255,7 +255,14 @@ function controlSnapshot(token: string, sessionVersion: number): RoomControlSnap
     ...snapshot,
     type: "room.control.snapshot",
     sessionVersion,
-    tvPresence: { online: true, deviceName: "Living Room TV", lastSeenAt: "2026-04-29T13:45:03.000Z", conflict: null },
+    tvPresence: {
+      online: true,
+      deviceName: "Living Room TV",
+      lastSeenAt: "2026-04-29T13:45:03.000Z",
+      onlineCount: 1,
+      devices: [{ deviceId: "tv-1", deviceName: "Living Room TV", lastSeenAt: "2026-04-29T13:45:03.000Z" }],
+      conflict: null
+    },
     controllers: { onlineCount: 1 },
     queue: []
   };

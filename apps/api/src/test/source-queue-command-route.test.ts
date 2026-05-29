@@ -250,6 +250,10 @@ class FakeDeviceSessionRepository implements PlayerDeviceSessionRepository {
     return null;
   }
 
+  async listActiveTvPlayers(): Promise<[]> {
+    return [];
+  }
+
   async upsertTvPlayer(): Promise<never> {
     throw new Error("Not implemented");
   }
