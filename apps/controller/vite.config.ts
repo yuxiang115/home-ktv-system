@@ -1,6 +1,20 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
+function previewAllowedHosts(envName: string): string[] {
+  const value = process.env[envName]?.trim();
+  if (!value) {
+    return [];
+  }
+
+  try {
+    return [new URL(value).hostname];
+  } catch {
+    const hostname = value.replace(/^https?:\/\//u, "").split("/")[0]?.split(":")[0]?.trim();
+    return hostname ? [hostname] : [];
+  }
+}
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -8,8 +22,9 @@ export default defineConfig({
     port: 5176
   },
   preview: {
+    allowedHosts: previewAllowedHosts("CONTROLLER_BASE_URL"),
     host: "0.0.0.0",
-    port: 4176
+    port: 5176
   },
   test: {
     environment: "happy-dom",

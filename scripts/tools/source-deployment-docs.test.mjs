@@ -33,6 +33,19 @@ test("source deployment preview commands pass ports to vite", async () => {
   assert.match(sourceScript, /"preview",\s*"--host",\s*"0\.0\.0\.0",\s*"--port",\s*"5173"/u);
 });
 
+test("vite preview configs allow deployment hostnames", async () => {
+  const adminConfig = await readText("apps/admin/vite.config.ts");
+  const controllerConfig = await readText("apps/controller/vite.config.ts");
+  const tvWebConfig = await readText("apps/tv-web/vite.config.ts");
+
+  assert.match(adminConfig, /port:\s*5174/u);
+  assert.match(adminConfig, /allowedHosts:\s*previewAllowedHosts\("ADMIN_BASE_URL"\)/u);
+  assert.match(controllerConfig, /port:\s*5176/u);
+  assert.match(controllerConfig, /allowedHosts:\s*previewAllowedHosts\("CONTROLLER_BASE_URL"\)/u);
+  assert.match(tvWebConfig, /port:\s*5173/u);
+  assert.match(tvWebConfig, /allowedHosts:\s*previewAllowedHosts\("TV_WEB_BASE_URL"\)/u);
+});
+
 async function readText(relativePath) {
   return readFile(path.join(ROOT_DIR, relativePath), "utf8");
 }
