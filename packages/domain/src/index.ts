@@ -365,6 +365,11 @@ export interface SongDiscoveryResponse {
   genres: SongDiscoveryGenre[];
 }
 
+export interface SongDiscoverySongsResponse {
+  songs: SongDiscoverySong[];
+  nextOffset: number | null;
+}
+
 export interface KtvIndexTableAvailability {
   tableName: "ktv_index_runs" | "ktv_artists" | "ktv_songs" | "ktv_song_artists" | "ktv_song_assets";
   exists: boolean;

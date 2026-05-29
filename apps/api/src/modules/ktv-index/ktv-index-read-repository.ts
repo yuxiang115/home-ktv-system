@@ -22,6 +22,35 @@ export interface SearchKtvIndexedSongsInput {
   unreadableIndexedAssetIds?: readonly string[];
 }
 
+export interface KtvIndexDiscoveryArtistSummary {
+  artistId: string;
+  artistName: string;
+  songCount: number;
+  playCount: number;
+}
+
+export interface KtvIndexDiscoveryGenreSummary {
+  genre: string;
+  songCount: number;
+  playCount: number;
+}
+
+export interface ListKtvIndexedSongsByArtistInput {
+  artistId: string;
+  limit?: number;
+  offset?: number;
+  queuedIndexedAssetIds?: readonly string[];
+  unreadableIndexedAssetIds?: readonly string[];
+}
+
+export interface ListKtvIndexedSongsByGenreInput {
+  genre: string;
+  limit?: number;
+  offset?: number;
+  queuedIndexedAssetIds?: readonly string[];
+  unreadableIndexedAssetIds?: readonly string[];
+}
+
 export interface GetKtvIndexDiagnosticsInput {
   previewQuery?: string;
   previewLimit?: number;
@@ -32,6 +61,10 @@ export interface GetKtvIndexDiagnosticsInput {
 
 export interface KtvIndexReadRepository {
   searchIndexedSongs(input: SearchKtvIndexedSongsInput): Promise<SongSearchIndexedResult[]>;
+  listDiscoveryArtists?(): Promise<KtvIndexDiscoveryArtistSummary[]>;
+  listDiscoveryGenres?(): Promise<KtvIndexDiscoveryGenreSummary[]>;
+  listIndexedSongsByArtist?(input: ListKtvIndexedSongsByArtistInput): Promise<SongSearchIndexedResult[]>;
+  listIndexedSongsByGenre?(input: ListKtvIndexedSongsByGenreInput): Promise<SongSearchIndexedResult[]>;
   getDiagnostics(input?: GetKtvIndexDiagnosticsInput): Promise<KtvIndexDiagnosticsResponse>;
 }
 
@@ -111,6 +144,21 @@ interface SampleAssetRow {
   file_path: string;
 }
 
+interface DiscoveryArtistSummaryRow {
+  artist_id: string;
+  artist_name: string;
+  song_count: number | string;
+  play_count: number | string;
+}
+
+interface DiscoveryGenreSummaryRow {
+  genre: string;
+  song_count: number | string;
+  play_count: number | string;
+}
+
+const untaggedDiscoveryGenre = "未打标签";
+
 export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
   constructor(
     private readonly db: QueryExecutor,
@@ -119,6 +167,97 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
 
   async searchIndexedSongs(input: SearchKtvIndexedSongsInput): Promise<SongSearchIndexedResult[]> {
     const rows = await this.queryIndexedRows(input);
+    return mapIndexedSearchRows(rows, {
+      queuedIndexedAssetIds: input.queuedIndexedAssetIds ?? [],
+      unreadableIndexedAssetIds: input.unreadableIndexedAssetIds ?? []
+    });
+  }
+
+  async listDiscoveryArtists(): Promise<KtvIndexDiscoveryArtistSummary[]> {
+    const result = await this.db.query<DiscoveryArtistSummaryRow>(
+      `SELECT ar.id AS artist_id,
+              ar.name AS artist_name,
+              count(DISTINCT s.id)::int AS song_count,
+              coalesce(sum(s.request_count), 0)::int AS play_count
+       FROM ktv_artists ar
+       JOIN ktv_song_artists sa ON sa.artist_id = ar.id
+       JOIN ktv_songs s ON s.id = sa.song_id
+       WHERE EXISTS (
+         SELECT 1
+         FROM ktv_song_assets a
+         WHERE a.song_id = s.id
+           AND a.missing_at IS NULL
+       )
+       GROUP BY ar.id, ar.name
+       ORDER BY play_count DESC, song_count DESC, ar.name ASC`
+    );
+
+    return result.rows.map((row) => ({
+      artistId: row.artist_id,
+      artistName: row.artist_name,
+      songCount: toNumber(row.song_count),
+      playCount: toNumber(row.play_count)
+    }));
+  }
+
+  async listDiscoveryGenres(): Promise<KtvIndexDiscoveryGenreSummary[]> {
+    const result = await this.db.query<DiscoveryGenreSummaryRow>(
+      `WITH active_songs AS (
+         SELECT s.id AS song_id,
+                s.request_count
+         FROM ktv_songs s
+         WHERE EXISTS (
+           SELECT 1
+           FROM ktv_song_assets a
+           WHERE a.song_id = s.id
+             AND a.missing_at IS NULL
+         )
+       ),
+       genre_catalog AS (
+         SELECT DISTINCT st.tag_name AS genre,
+                active_songs.song_id,
+                active_songs.request_count
+         FROM active_songs
+         JOIN ktv_song_style_tags st ON st.song_id = active_songs.song_id
+         WHERE length(trim(st.tag_name)) > 0
+         UNION ALL
+         SELECT $1::text AS genre,
+                active_songs.song_id,
+                active_songs.request_count
+         FROM active_songs
+         WHERE NOT EXISTS (
+           SELECT 1
+           FROM ktv_song_style_tags st
+           WHERE st.song_id = active_songs.song_id
+             AND length(trim(st.tag_name)) > 0
+         )
+       )
+       SELECT genre,
+              count(DISTINCT song_id)::int AS song_count,
+              coalesce(sum(request_count), 0)::int AS play_count
+       FROM genre_catalog
+       GROUP BY genre
+       ORDER BY play_count DESC, song_count DESC, genre ASC`,
+      [untaggedDiscoveryGenre]
+    );
+
+    return result.rows.map((row) => ({
+      genre: row.genre,
+      songCount: toNumber(row.song_count),
+      playCount: toNumber(row.play_count)
+    }));
+  }
+
+  async listIndexedSongsByArtist(input: ListKtvIndexedSongsByArtistInput): Promise<SongSearchIndexedResult[]> {
+    const rows = await this.queryIndexedRowsByArtist(input);
+    return mapIndexedSearchRows(rows, {
+      queuedIndexedAssetIds: input.queuedIndexedAssetIds ?? [],
+      unreadableIndexedAssetIds: input.unreadableIndexedAssetIds ?? []
+    });
+  }
+
+  async listIndexedSongsByGenre(input: ListKtvIndexedSongsByGenreInput): Promise<SongSearchIndexedResult[]> {
+    const rows = await this.queryIndexedRowsByGenre(input);
     return mapIndexedSearchRows(rows, {
       queuedIndexedAssetIds: input.queuedIndexedAssetIds ?? [],
       unreadableIndexedAssetIds: input.unreadableIndexedAssetIds ?? []
@@ -317,6 +456,161 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
        WHERE asset_rank <= $5
        ORDER BY score DESC, title ASC, primary_artist_name ASC, file_name ASC`,
       [normalizedQuery, likeQuery, tagQuery, limit, versionsPerSong]
+    );
+
+    return result.rows;
+  }
+
+  private async queryIndexedRowsByArtist(input: ListKtvIndexedSongsByArtistInput): Promise<IndexedSearchRow[]> {
+    const limit = discoverySongPageLimit(input.limit);
+    const offset = discoverySongPageOffset(input.offset);
+    const result = await this.db.query<IndexedSearchRow>(
+      `WITH matched_songs AS (
+         SELECT s.id AS song_id,
+                s.title,
+                s.primary_artist_name,
+                COALESCE((
+                  SELECT array_agg(tag_name ORDER BY tag_group, tag_name)
+                  FROM (
+                    SELECT DISTINCT st.tag_name,
+                           st.tag_group
+                    FROM ktv_song_style_tags st
+                    WHERE st.song_id = s.id
+                  ) style_tag_rows
+                ), ARRAY[]::text[]) AS style_tags,
+                'artist'::text AS match_reason,
+                s.request_count AS score
+         FROM ktv_songs s
+         JOIN ktv_song_artists filter_artist ON filter_artist.song_id = s.id AND filter_artist.artist_id = $1
+         JOIN ktv_song_assets active_asset ON active_asset.song_id = s.id AND active_asset.missing_at IS NULL
+         GROUP BY s.id, s.title, s.primary_artist_name, s.request_count, s.last_requested_at
+         ORDER BY s.request_count DESC, s.last_requested_at DESC NULLS LAST, s.title ASC, s.primary_artist_name ASC
+         LIMIT $2 OFFSET $3
+       ),
+       ranked_assets AS (
+         SELECT ms.song_id,
+                ms.title,
+                ms.primary_artist_name,
+                ms.style_tags,
+                ms.match_reason,
+                ms.score,
+                a.id AS asset_id,
+                a.file_name,
+                a.file_path,
+                a.extension,
+                a.size_bytes,
+                a.parse_confidence,
+                a.technical_metadata,
+                a.missing_at,
+                row_number() OVER (PARTITION BY ms.song_id ORDER BY a.updated_at DESC, a.file_path ASC) AS asset_rank
+         FROM matched_songs ms
+         JOIN ktv_song_assets a ON a.song_id = ms.song_id
+         WHERE a.missing_at IS NULL
+       )
+       SELECT song_id,
+              title,
+              primary_artist_name,
+              style_tags,
+              match_reason,
+              score,
+              asset_id,
+              file_name,
+              file_path,
+              extension,
+              size_bytes,
+              parse_confidence,
+              technical_metadata,
+              missing_at
+       FROM ranked_assets
+       WHERE asset_rank <= 1
+       ORDER BY score DESC, title ASC, primary_artist_name ASC, file_name ASC`,
+      [input.artistId, limit, offset]
+    );
+
+    return result.rows;
+  }
+
+  private async queryIndexedRowsByGenre(input: ListKtvIndexedSongsByGenreInput): Promise<IndexedSearchRow[]> {
+    const limit = discoverySongPageLimit(input.limit);
+    const offset = discoverySongPageOffset(input.offset);
+    const isUntagged = input.genre === untaggedDiscoveryGenre;
+    const genreJoin = isUntagged
+      ? ""
+      : "JOIN ktv_song_style_tags filter_tag ON filter_tag.song_id = s.id AND filter_tag.tag_name = $1";
+    const genreWhere = isUntagged
+      ? `AND NOT EXISTS (
+           SELECT 1
+           FROM ktv_song_style_tags filter_tag
+           WHERE filter_tag.song_id = s.id
+             AND length(trim(filter_tag.tag_name)) > 0
+         )`
+      : "";
+    const values = isUntagged ? [limit, offset] : [input.genre, limit, offset];
+    const limitParam = isUntagged ? "$1" : "$2";
+    const offsetParam = isUntagged ? "$2" : "$3";
+    const result = await this.db.query<IndexedSearchRow>(
+      `WITH matched_songs AS (
+         SELECT s.id AS song_id,
+                s.title,
+                s.primary_artist_name,
+                COALESCE((
+                  SELECT array_agg(tag_name ORDER BY tag_group, tag_name)
+                  FROM (
+                    SELECT DISTINCT st.tag_name,
+                           st.tag_group
+                    FROM ktv_song_style_tags st
+                    WHERE st.song_id = s.id
+                  ) style_tag_rows
+                ), ARRAY[]::text[]) AS style_tags,
+                'style'::text AS match_reason,
+                s.request_count AS score
+         FROM ktv_songs s
+         ${genreJoin}
+         JOIN ktv_song_assets active_asset ON active_asset.song_id = s.id AND active_asset.missing_at IS NULL
+         WHERE true
+           ${genreWhere}
+         GROUP BY s.id, s.title, s.primary_artist_name, s.request_count, s.last_requested_at
+         ORDER BY s.request_count DESC, s.last_requested_at DESC NULLS LAST, s.title ASC, s.primary_artist_name ASC
+         LIMIT ${limitParam} OFFSET ${offsetParam}
+       ),
+       ranked_assets AS (
+         SELECT ms.song_id,
+                ms.title,
+                ms.primary_artist_name,
+                ms.style_tags,
+                ms.match_reason,
+                ms.score,
+                a.id AS asset_id,
+                a.file_name,
+                a.file_path,
+                a.extension,
+                a.size_bytes,
+                a.parse_confidence,
+                a.technical_metadata,
+                a.missing_at,
+                row_number() OVER (PARTITION BY ms.song_id ORDER BY a.updated_at DESC, a.file_path ASC) AS asset_rank
+         FROM matched_songs ms
+         JOIN ktv_song_assets a ON a.song_id = ms.song_id
+         WHERE a.missing_at IS NULL
+       )
+       SELECT song_id,
+              title,
+              primary_artist_name,
+              style_tags,
+              match_reason,
+              score,
+              asset_id,
+              file_name,
+              file_path,
+              extension,
+              size_bytes,
+              parse_confidence,
+              technical_metadata,
+              missing_at
+       FROM ranked_assets
+       WHERE asset_rank <= 1
+       ORDER BY score DESC, title ASC, primary_artist_name ASC, file_name ASC`,
+      values
     );
 
     return result.rows;
@@ -551,6 +845,14 @@ function createEmptyNasSample(): KtvIndexDiagnosticsResponse["nasSample"] {
     unmapped: 0,
     results: [] satisfies KtvIndexNasSampleResult[]
   };
+}
+
+function discoverySongPageLimit(value: number | undefined): number {
+  return Math.min(100, Math.max(1, typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : 60));
+}
+
+function discoverySongPageOffset(value: number | undefined): number {
+  return Math.max(0, typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : 0);
 }
 
 function toNumber(value: number | string): number {

@@ -287,6 +287,42 @@ describe("mobile controller runtime", () => {
     expect(screen.queryByRole("button", { name: /歌手点歌/u })).toBeNull();
   });
 
+  it("loads artist detail songs from the discovery artist endpoint", async () => {
+    const user = userEvent.setup();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))]
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /歌手点歌/u }));
+    await user.click(screen.getByRole("button", { name: /周杰伦 2 首歌/u }));
+
+    expect(await screen.findByText("周杰伦详情歌1")).toBeTruthy();
+    expect(requests.some((request) => request.url === "/rooms/living-room/songs/discovery/artists/artist-jay/songs?offset=0&limit=60")).toBe(
+      true
+    );
+  });
+
+  it("loads genre detail songs from the discovery genre endpoint", async () => {
+    const user = userEvent.setup();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))]
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /风格点歌/u }));
+    await user.click(screen.getByRole("button", { name: /流行 2 首歌/u }));
+
+    expect(await screen.findByText("流行详情歌1")).toBeTruthy();
+    expect(requests.some((request) => request.url === "/rooms/living-room/songs/discovery/genres/songs?genre=%E6%B5%81%E8%A1%8C&offset=0&limit=60")).toBe(
+      true
+    );
+  });
+
   it("shows the current queue count on the control tab", async () => {
     installControllerFetchMock({
       restoreResponses: [json(sessionResponse(roomSnapshot()))]
@@ -1740,6 +1776,8 @@ function installControllerFetchMock(options: {
   commandResponses?: Record<string, MockResponse | MockResponse[]>;
   songSearchResponse?: (query: string) => unknown;
   songDiscoveryResponse?: (seed: string) => unknown;
+  discoveryArtistSongsResponse?: (artistId: string, offset: number, limit: number) => unknown;
+  discoveryGenreSongsResponse?: (genre: string, offset: number, limit: number) => unknown;
 } = {}) {
   const requests: RequestRecord[] = [];
   const restoreResponses = [...(options.restoreResponses ?? [json(sessionResponse(roomSnapshot()))])];
@@ -1771,6 +1809,21 @@ function installControllerFetchMock(options: {
       if (method === "GET" && requestUrl.pathname.endsWith("/songs/discovery")) {
         const seed = requestUrl.searchParams.get("seed") ?? "";
         return json((options.songDiscoveryResponse ?? songDiscoveryResponse)(seed));
+      }
+
+      const artistSongsMatch = requestUrl.pathname.match(/\/songs\/discovery\/artists\/([^/]+)\/songs$/u);
+      if (method === "GET" && artistSongsMatch) {
+        const artistId = decodeURIComponent(artistSongsMatch[1] ?? "");
+        const offset = Number.parseInt(requestUrl.searchParams.get("offset") ?? "0", 10);
+        const limit = Number.parseInt(requestUrl.searchParams.get("limit") ?? "60", 10);
+        return json((options.discoveryArtistSongsResponse ?? discoveryArtistSongsResponse)(artistId, offset, limit));
+      }
+
+      if (method === "GET" && requestUrl.pathname.endsWith("/songs/discovery/genres/songs")) {
+        const genre = requestUrl.searchParams.get("genre") ?? "";
+        const offset = Number.parseInt(requestUrl.searchParams.get("offset") ?? "0", 10);
+        const limit = Number.parseInt(requestUrl.searchParams.get("limit") ?? "60", 10);
+        return json((options.discoveryGenreSongsResponse ?? discoveryGenreSongsResponse)(genre, offset, limit));
       }
 
       if (method === "POST" && requestUrl.pathname.endsWith("/interactions")) {
@@ -1968,27 +2021,76 @@ function songDiscoveryResponse(seed: string): SongDiscoveryResponse {
         artistId: "artist-jay",
         artistName: "周杰伦",
         songCount: 2,
-        songs: [recommended[0]!, recommended[2]!]
+        songs: []
       },
       {
         artistId: "artist-mayday",
         artistName: "五月天",
         songCount: 2,
-        songs: [recommended[1]!, recommended[3]!]
+        songs: []
       }
     ],
     genres: [
       {
         genre: "流行",
         songCount: 2,
-        songs: [recommended[0]!, recommended[2]!]
+        songs: []
       },
       {
         genre: "摇滚",
         songCount: 2,
-        songs: [recommended[1]!, recommended[3]!]
+        songs: []
       }
     ]
+  };
+}
+
+function discoveryArtistSongsResponse(artistId: string) {
+  const artistName = artistId === "artist-mayday" ? "五月天" : "周杰伦";
+  return {
+    songs: [
+      discoverySong({
+        songId: `${artistId}-detail-song-1`,
+        title: `${artistName}详情歌1`,
+        artistId,
+        artistName,
+        genre: ["流行"],
+        playCount: 10
+      }),
+      discoverySong({
+        songId: `${artistId}-detail-song-2`,
+        title: `${artistName}详情歌2`,
+        artistId,
+        artistName,
+        genre: ["流行"],
+        playCount: 9
+      })
+    ],
+    nextOffset: null
+  };
+}
+
+function discoveryGenreSongsResponse(genre: string) {
+  return {
+    songs: [
+      discoverySong({
+        songId: `genre-${genre}-detail-song-1`,
+        title: `${genre}详情歌1`,
+        artistId: "artist-jay",
+        artistName: "周杰伦",
+        genre: [genre],
+        playCount: 10
+      }),
+      discoverySong({
+        songId: `genre-${genre}-detail-song-2`,
+        title: `${genre}详情歌2`,
+        artistId: "artist-mayday",
+        artistName: "五月天",
+        genre: [genre],
+        playCount: 9
+      })
+    ],
+    nextOffset: null
   };
 }
 

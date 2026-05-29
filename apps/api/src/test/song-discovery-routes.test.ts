@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import type { QueueEntry, Room, SongDiscoveryResponse, SongSearchIndexedResult } from "@home-ktv/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SongCoverCacheRepository } from "../modules/covers/song-cover-cache-repository.js";
 import type { SongCoverLookupKey } from "../modules/covers/types.js";
 import type { KtvIndexReadRepository, SearchKtvIndexedSongsInput } from "../modules/ktv-index/ktv-index-read-repository.js";
@@ -102,6 +102,100 @@ describe("song discovery routes", () => {
         expect.objectContaining({ genre: "摇滚", songCount: 1 })
       ])
     );
+  });
+
+  it("builds artist and genre modules from the full catalog instead of the recommendation sample", async () => {
+    const ktvIndex = new FakeKtvIndexReadRepository([
+      createIndexedResult({
+        indexedSongId: "ktv-song-recommended",
+        indexedAssetId: "ktv-asset-recommended",
+        title: "推荐样本歌",
+        artistName: "样本歌手",
+        styleTags: ["样本风格"]
+      })
+    ]);
+    const listDiscoveryArtists = vi.fn(async () => [
+      { artistId: "artist-a", artistName: "歌手A", songCount: 12, playCount: 4 },
+      { artistId: "artist-b", artistName: "歌手B", songCount: 7, playCount: 0 },
+      { artistId: "artist-c", artistName: "歌手C", songCount: 3, playCount: 0 }
+    ]);
+    const listDiscoveryGenres = vi.fn(async () => [
+      { genre: "流行", songCount: 120, playCount: 8 },
+      { genre: "摇滚", songCount: 45, playCount: 1 }
+    ]);
+    Object.assign(ktvIndex, { listDiscoveryArtists, listDiscoveryGenres });
+
+    const { server } = await createHarness({ ktvIndex });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/rooms/living-room/songs/discovery?seed=full-catalog&limit=1"
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<SongDiscoveryResponse>();
+    expect(body.recommended).toHaveLength(1);
+    expect(body.artists).toEqual([
+      { artistId: "artist-a", artistName: "歌手A", songCount: 12, songs: [] },
+      { artistId: "artist-b", artistName: "歌手B", songCount: 7, songs: [] },
+      { artistId: "artist-c", artistName: "歌手C", songCount: 3, songs: [] }
+    ]);
+    expect(body.genres).toEqual([
+      { genre: "流行", songCount: 120, songs: [] },
+      { genre: "摇滚", songCount: 45, songs: [] }
+    ]);
+    expect(listDiscoveryArtists).toHaveBeenCalledTimes(1);
+    expect(listDiscoveryGenres).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads discovery songs for one artist on demand", async () => {
+    const ktvIndex = new FakeKtvIndexReadRepository([]);
+    const listIndexedSongsByArtist = vi.fn(async () => [
+      createIndexedResult({
+        indexedSongId: "ktv-song-artist-detail",
+        indexedAssetId: "ktv-asset-artist-detail",
+        title: "歌手详情歌",
+        artistName: "歌手A",
+        styleTags: ["流行"]
+      })
+    ]);
+    Object.assign(ktvIndex, { listIndexedSongsByArtist });
+
+    const { server, queueEntries } = await createHarness({
+      ktvIndex,
+      playCounts: { "ktv-song-artist-detail": 5 }
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/rooms/living-room/songs/discovery/artists/artist-a/songs?offset=2&limit=2"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(listIndexedSongsByArtist).toHaveBeenCalledWith({
+      artistId: "artist-a",
+      limit: 2,
+      offset: 2,
+      queuedIndexedAssetIds: [],
+      unreadableIndexedAssetIds: []
+    });
+    expect(queueEntries.countCalls).toEqual([["ktv-song-artist-detail"]]);
+    expect(response.json()).toMatchObject({
+      songs: [
+        {
+          songId: "ktv-song-artist-detail",
+          title: "歌手详情歌",
+          artistName: "歌手A",
+          playCount: 5,
+          versions: [
+            expect.objectContaining({
+              assetId: "ktv-asset-artist-detail"
+            })
+          ]
+        }
+      ],
+      nextOffset: null
+    });
   });
 
   it("returns empty discovery modules when NAS search is unavailable", async () => {

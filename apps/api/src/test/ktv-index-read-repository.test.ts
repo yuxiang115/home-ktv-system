@@ -97,6 +97,88 @@ describe("PgKtvIndexReadRepository", () => {
     ]);
   });
 
+  it("lists discovery artist and genre summaries from the full active catalog", async () => {
+    const db = new ScriptedKtvIndexDb();
+    const repository = new PgKtvIndexReadRepository(db);
+
+    const artists = await (repository as unknown as {
+      listDiscoveryArtists(): Promise<Array<{ artistId: string; artistName: string; songCount: number; playCount: number }>>;
+    }).listDiscoveryArtists();
+    const genres = await (repository as unknown as {
+      listDiscoveryGenres(): Promise<Array<{ genre: string; songCount: number; playCount: number }>>;
+    }).listDiscoveryGenres();
+
+    expect(artists).toEqual([
+      { artistId: "artist-jay", artistName: "周杰伦", songCount: 120, playCount: 300 },
+      { artistId: "artist-mayday", artistName: "五月天", songCount: 80, playCount: 40 }
+    ]);
+    expect(genres).toEqual([
+      { genre: "流行", songCount: 600, playCount: 1200 },
+      { genre: "未打标签", songCount: 12, playCount: 0 }
+    ]);
+
+    const artistQuery = db.queries.find((query) => query.text.includes("FROM ktv_artists ar"));
+    expect(artistQuery?.text).toContain("count(DISTINCT s.id)");
+    expect(artistQuery?.text).toContain("a.missing_at IS NULL");
+    const genreQuery = db.queries.find((query) => query.text.includes("genre_catalog"));
+    expect(genreQuery?.text).toContain("ktv_song_style_tags");
+    expect(genreQuery?.values).toEqual(["未打标签"]);
+  });
+
+  it("loads paged indexed songs by artist or genre", async () => {
+    const db = new ScriptedKtvIndexDb();
+    const repository = new PgKtvIndexReadRepository(db);
+
+    const artistSongs = await (repository as unknown as {
+      listIndexedSongsByArtist(input: {
+        artistId: string;
+        limit: number;
+        offset: number;
+        queuedIndexedAssetIds: string[];
+        unreadableIndexedAssetIds: string[];
+      }): Promise<unknown[]>;
+    }).listIndexedSongsByArtist({
+      artistId: "artist-jay",
+      limit: 20,
+      offset: 40,
+      queuedIndexedAssetIds: ["ktv-asset-1"],
+      unreadableIndexedAssetIds: []
+    });
+    const genreSongs = await (repository as unknown as {
+      listIndexedSongsByGenre(input: {
+        genre: string;
+        limit: number;
+        offset: number;
+        queuedIndexedAssetIds: string[];
+        unreadableIndexedAssetIds: string[];
+      }): Promise<unknown[]>;
+    }).listIndexedSongsByGenre({
+      genre: "流行",
+      limit: 20,
+      offset: 0,
+      queuedIndexedAssetIds: [],
+      unreadableIndexedAssetIds: ["ktv-asset-2"]
+    });
+
+    expect(artistSongs).toHaveLength(1);
+    expect(genreSongs).toHaveLength(1);
+    expect(artistSongs[0]).toMatchObject({
+      indexedSongId: "ktv-song-1",
+      versions: [expect.objectContaining({ indexedAssetId: "ktv-asset-1", queueState: "queued" })]
+    });
+    expect(genreSongs[0]).toMatchObject({
+      indexedSongId: "ktv-song-1",
+      versions: [expect.objectContaining({ indexedAssetId: "ktv-asset-1" })]
+    });
+
+    expect(db.queries.find((query) => query.text.includes("filter_artist.artist_id = $1"))?.values).toEqual([
+      "artist-jay",
+      20,
+      40
+    ]);
+    expect(db.queries.find((query) => query.text.includes("filter_tag.tag_name = $1"))?.values).toEqual(["流行", 20, 0]);
+  });
+
   it("returns raw diagnostics and Admin-only preview details", async () => {
     const db = new ScriptedKtvIndexDb();
     const repository = new PgKtvIndexReadRepository(db);
@@ -311,6 +393,28 @@ class ScriptedKtvIndexDb implements QueryExecutor {
 
     if (text.includes("ORDER BY updated_at DESC") || text.includes("ORDER BY random()")) {
       return { rows: [] as TRow[] };
+    }
+
+    if (text.includes("FROM ktv_artists ar")) {
+      return {
+        rows: [
+          { artist_id: "artist-jay", artist_name: "周杰伦", song_count: "120", play_count: "300" },
+          { artist_id: "artist-mayday", artist_name: "五月天", song_count: "80", play_count: "40" }
+        ] as TRow[]
+      };
+    }
+
+    if (text.includes("genre_catalog")) {
+      return {
+        rows: [
+          { genre: "流行", song_count: "600", play_count: "1200" },
+          { genre: "未打标签", song_count: "12", play_count: "0" }
+        ] as TRow[]
+      };
+    }
+
+    if (text.includes("filter_artist.artist_id = $1") || text.includes("filter_tag.tag_name = $1")) {
+      return { rows: [createSearchRow()] as TRow[] };
     }
 
     if (text.includes("WITH matched_songs")) {

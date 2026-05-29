@@ -1,4 +1,4 @@
-import type { OnlineCandidateTask, SongDiscoveryResponse, SongSearchResponse } from "@home-ktv/domain";
+import type { OnlineCandidateTask, SongDiscoveryResponse, SongDiscoverySongsResponse, SongSearchResponse } from "@home-ktv/domain";
 import type { ControlSessionInfo, RoomControlSnapshot, RoomInteractionEvent, RoomInteractionKind } from "@home-ktv/player-contracts";
 
 const deviceIdStorageKey = "home_ktv_device_id";
@@ -114,6 +114,38 @@ export async function fetchSongDiscovery(input: {
   const init: RequestInit = input.signal ? { signal: input.signal } : {};
   return fetchController<SongDiscoveryResponse>(
     `/rooms/${encodeURIComponent(input.roomSlug)}/songs/discovery?seed=${encodeURIComponent(input.seed)}`,
+    init
+  );
+}
+
+export async function fetchDiscoveryArtistSongs(input: {
+  roomSlug: string;
+  artistId: string;
+  offset?: number;
+  limit?: number;
+  signal?: AbortSignal;
+}): Promise<SongDiscoverySongsResponse> {
+  const init: RequestInit = input.signal ? { signal: input.signal } : {};
+  return fetchController<SongDiscoverySongsResponse>(
+    `/rooms/${encodeURIComponent(input.roomSlug)}/songs/discovery/artists/${encodeURIComponent(input.artistId)}/songs?offset=${
+      input.offset ?? 0
+    }&limit=${input.limit ?? 60}`,
+    init
+  );
+}
+
+export async function fetchDiscoveryGenreSongs(input: {
+  roomSlug: string;
+  genre: string;
+  offset?: number;
+  limit?: number;
+  signal?: AbortSignal;
+}): Promise<SongDiscoverySongsResponse> {
+  const init: RequestInit = input.signal ? { signal: input.signal } : {};
+  return fetchController<SongDiscoverySongsResponse>(
+    `/rooms/${encodeURIComponent(input.roomSlug)}/songs/discovery/genres/songs?genre=${encodeURIComponent(input.genre)}&offset=${
+      input.offset ?? 0
+    }&limit=${input.limit ?? 60}`,
     init
   );
 }

@@ -1,6 +1,7 @@
 import type { SongDiscoveryArtist, SongDiscoveryGenre, SongDiscoverySong, SongSearchNasResult } from "@home-ktv/domain";
 import type { RoomInteractionKind } from "@home-ktv/player-contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchDiscoveryArtistSongs, fetchDiscoveryGenreSongs } from "./api/client.js";
 import {
   candidateTypeName,
   I18nProvider,
@@ -870,6 +871,30 @@ type BrowseView =
   | { kind: "artist"; item: SongDiscoveryArtist }
   | { kind: "genre"; item: SongDiscoveryGenre };
 
+type DiscoveryDetailView = Extract<BrowseView, { kind: "artist" | "genre" }>;
+
+type DiscoveryDetailState = {
+  nextOffset: number | null;
+  songs: SongDiscoverySong[];
+  status: "loading" | "success" | "error";
+};
+
+const discoveryDetailPageSize = 60;
+
+function isDiscoveryDetailView(view: BrowseView): view is DiscoveryDetailView {
+  return view.kind === "artist" || view.kind === "genre";
+}
+
+function discoveryDetailKey(view: BrowseView): string | null {
+  if (view.kind === "artist") {
+    return `artist:${view.item.artistId}`;
+  }
+  if (view.kind === "genre") {
+    return `genre:${view.item.genre}`;
+  }
+  return null;
+}
+
 function SearchOverlay({
   controller,
   history,
@@ -1123,6 +1148,73 @@ function DiscoveryBrowseView({
   t: TFunction;
   view: BrowseView;
 }) {
+  const [detailPages, setDetailPages] = useState<Record<string, DiscoveryDetailState>>({});
+  const detailKey = discoveryDetailKey(view);
+  const loadDetailSongs = useCallback(
+    async (detailView: DiscoveryDetailView, offset: number) => {
+      const key = discoveryDetailKey(detailView);
+      if (!key) {
+        return;
+      }
+
+      setDetailPages((current) => ({
+        ...current,
+        [key]: {
+          nextOffset: current[key]?.nextOffset ?? null,
+          songs: current[key]?.songs ?? [],
+          status: "loading"
+        }
+      }));
+
+      try {
+        const response =
+          detailView.kind === "artist"
+            ? await fetchDiscoveryArtistSongs({
+                roomSlug: controller.roomSlug,
+                artistId: detailView.item.artistId,
+                offset,
+                limit: discoveryDetailPageSize
+              })
+            : await fetchDiscoveryGenreSongs({
+                roomSlug: controller.roomSlug,
+                genre: detailView.item.genre,
+                offset,
+                limit: discoveryDetailPageSize
+              });
+
+        setDetailPages((current) => {
+          const previous = current[key];
+          return {
+            ...current,
+            [key]: {
+              nextOffset: response.nextOffset,
+              songs: offset === 0 ? response.songs : [...(previous?.songs ?? []), ...response.songs],
+              status: "success"
+            }
+          };
+        });
+      } catch {
+        setDetailPages((current) => ({
+          ...current,
+          [key]: {
+            nextOffset: current[key]?.nextOffset ?? null,
+            songs: current[key]?.songs ?? [],
+            status: "error"
+          }
+        }));
+      }
+    },
+    [controller.roomSlug]
+  );
+
+  useEffect(() => {
+    if (!isDiscoveryDetailView(view) || !detailKey || detailPages[detailKey]) {
+      return;
+    }
+
+    void loadDetailSongs(view, 0);
+  }, [detailKey, detailPages, loadDetailSongs, view]);
+
   if (view.kind === "artists" || view.kind === "genres") {
     const isArtists = view.kind === "artists";
     const items = isArtists ? discovery?.artists ?? [] : discovery?.genres ?? [];
@@ -1165,7 +1257,9 @@ function DiscoveryBrowseView({
   }
 
   const title = view.kind === "artist" ? view.item.artistName : view.item.genre;
-  const songs = view.item.songs;
+  const detailState = detailKey ? detailPages[detailKey] : undefined;
+  const songs = detailState?.songs ?? view.item.songs;
+  const loading = detailState?.status === "loading";
   return (
     <section className="panel recommendation-panel">
       <div className="panel-heading">
@@ -1184,6 +1278,18 @@ function DiscoveryBrowseView({
             t={t}
           />
         ))}
+        {loading && songs.length === 0 ? <p className="empty-state local-empty">{t("discovery.detailLoading")}</p> : null}
+        {detailState?.status === "error" ? <p className="empty-state local-empty">{t("discovery.detailError")}</p> : null}
+        {isDiscoveryDetailView(view) && detailState?.nextOffset != null ? (
+          <button
+            className="secondary-button compact-button discovery-load-more"
+            disabled={loading}
+            type="button"
+            onClick={() => void loadDetailSongs(view, detailState.nextOffset ?? 0)}
+          >
+            {loading ? t("discovery.detailLoading") : t("button.loadMore")}
+          </button>
+        ) : null}
       </div>
     </section>
   );

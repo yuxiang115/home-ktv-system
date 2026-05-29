@@ -1,8 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import type {
+  QueueEntry,
   SongDiscoveryArtist,
   SongDiscoveryGenre,
   SongDiscoveryResponse,
+  SongDiscoverySongsResponse,
   SongDiscoverySong,
   SongId,
   SongSearchIndexedResult
@@ -16,13 +18,21 @@ import type { RoomRepository } from "../modules/rooms/repositories/room-reposito
 export interface SongDiscoveryRouteDependencies {
   rooms: RoomRepository;
   queueEntries: QueueEntryRepository;
-  ktvIndex?: Pick<KtvIndexReadRepository, "searchIndexedSongs">;
+  ktvIndex?: Pick<
+    KtvIndexReadRepository,
+    "searchIndexedSongs" | "listDiscoveryArtists" | "listDiscoveryGenres" | "listIndexedSongsByArtist" | "listIndexedSongsByGenre"
+  >;
   coverCache?: Pick<SongCoverCacheRepository, "findBySongKeys">;
 }
 
 interface SongDiscoveryQuery {
   seed?: string;
   limit?: string | number;
+}
+
+interface SongDiscoverySongsQuery {
+  limit?: string | number;
+  offset?: string | number;
 }
 
 export async function registerSongDiscoveryRoutes(
@@ -41,22 +51,92 @@ export async function registerSongDiscoveryRoutes(
       const seed = String(request.query.seed ?? Date.now());
       const limit = parseLimit(request.query.limit);
       const queue = await dependencies.queueEntries.listEffectiveQueue(room.id);
-      const songs = await listNasDiscoverySongs({
-        dependencies,
-        queuedAssetIds: queue
-          .filter((entry) => (entry.source?.sourceType ?? "nas") === "nas")
-          .map((entry) => entry.source?.assetId ?? entry.assetId)
-      });
+      const queuedAssetIds = queuedNasAssetIds(queue);
+      const [songs, fullArtists, fullGenres] = await Promise.all([
+        listNasDiscoverySongs({
+          dependencies,
+          queuedAssetIds
+        }),
+        listFullArtistModules(dependencies),
+        listFullGenreModules(dependencies)
+      ]);
       const songsWithCovers = await attachCoverImageUrls(songs, dependencies.coverCache);
       const weightedRecommendations = selectWeightedSongs(songsWithCovers, limit, seed);
+      const artists = fullArtists ?? buildArtistModules(songsWithCovers);
+      const genres = fullGenres ?? buildGenreModules(songsWithCovers);
 
       const response: SongDiscoveryResponse = {
         seed,
         recommended: surfaceCoveredSongs(weightedRecommendations, songsWithCovers, limit, seed),
-        artists: buildArtistModules(songsWithCovers),
-        genres: buildGenreModules(songsWithCovers)
+        artists,
+        genres
       };
 
+      await reply.send(response);
+    }
+  );
+
+  server.get<{ Params: { roomSlug: string; artistId: string }; Querystring: SongDiscoverySongsQuery }>(
+    "/rooms/:roomSlug/songs/discovery/artists/:artistId/songs",
+    async (request, reply) => {
+      const room = await dependencies.rooms.findBySlug(request.params.roomSlug);
+      if (!room) {
+        await reply.code(404).send({ code: "ROOM_NOT_FOUND" });
+        return;
+      }
+
+      if (!dependencies.ktvIndex?.listIndexedSongsByArtist) {
+        await reply.send(emptySongsPage());
+        return;
+      }
+
+      const page = parseSongsPage(request.query);
+      const queue = await dependencies.queueEntries.listEffectiveQueue(room.id);
+      const records = await dependencies.ktvIndex.listIndexedSongsByArtist({
+        artistId: request.params.artistId,
+        limit: page.limit,
+        offset: page.offset,
+        queuedIndexedAssetIds: queuedNasAssetIds(queue),
+        unreadableIndexedAssetIds: []
+      });
+      const songs = await songsFromIndexedRecords(records, dependencies);
+      const response: SongDiscoverySongsResponse = {
+        songs: await attachCoverImageUrls(songs, dependencies.coverCache),
+        nextOffset: records.length >= page.limit ? page.offset + songs.length : null
+      };
+      await reply.send(response);
+    }
+  );
+
+  server.get<{ Params: { roomSlug: string }; Querystring: SongDiscoverySongsQuery & { genre?: string } }>(
+    "/rooms/:roomSlug/songs/discovery/genres/songs",
+    async (request, reply) => {
+      const room = await dependencies.rooms.findBySlug(request.params.roomSlug);
+      if (!room) {
+        await reply.code(404).send({ code: "ROOM_NOT_FOUND" });
+        return;
+      }
+
+      const genre = String(request.query.genre ?? "").trim();
+      if (!genre || !dependencies.ktvIndex?.listIndexedSongsByGenre) {
+        await reply.send(emptySongsPage());
+        return;
+      }
+
+      const page = parseSongsPage(request.query);
+      const queue = await dependencies.queueEntries.listEffectiveQueue(room.id);
+      const records = await dependencies.ktvIndex.listIndexedSongsByGenre({
+        genre,
+        limit: page.limit,
+        offset: page.offset,
+        queuedIndexedAssetIds: queuedNasAssetIds(queue),
+        unreadableIndexedAssetIds: []
+      });
+      const songs = await songsFromIndexedRecords(records, dependencies);
+      const response: SongDiscoverySongsResponse = {
+        songs: await attachCoverImageUrls(songs, dependencies.coverCache),
+        nextOffset: records.length >= page.limit ? page.offset + songs.length : null
+      };
       await reply.send(response);
     }
   );
@@ -93,6 +173,35 @@ function parseLimit(rawLimit: string | number | undefined): number {
   return Math.min(30, Math.max(1, Number.isFinite(parsedLimit) ? parsedLimit : 30));
 }
 
+function parseSongsPage(query: SongDiscoverySongsQuery): { limit: number; offset: number } {
+  return {
+    limit: parseSongsLimit(query.limit),
+    offset: parseOffset(query.offset)
+  };
+}
+
+function parseSongsLimit(rawLimit: string | number | undefined): number {
+  const parsedLimit =
+    typeof rawLimit === "number" ? Math.trunc(rawLimit) : Number.parseInt(String(rawLimit ?? ""), 10);
+  return Math.min(100, Math.max(1, Number.isFinite(parsedLimit) ? parsedLimit : 60));
+}
+
+function parseOffset(rawOffset: string | number | undefined): number {
+  const parsedOffset =
+    typeof rawOffset === "number" ? Math.trunc(rawOffset) : Number.parseInt(String(rawOffset ?? ""), 10);
+  return Math.max(0, Number.isFinite(parsedOffset) ? parsedOffset : 0);
+}
+
+function queuedNasAssetIds(queue: readonly QueueEntry[]): string[] {
+  return queue
+    .filter((entry) => (entry.source?.sourceType ?? "nas") === "nas")
+    .map((entry) => entry.source?.assetId ?? entry.assetId);
+}
+
+function emptySongsPage(): SongDiscoverySongsResponse {
+  return { songs: [], nextOffset: null };
+}
+
 async function listNasDiscoverySongs(input: {
   dependencies: SongDiscoveryRouteDependencies;
   queuedAssetIds: readonly string[];
@@ -113,6 +222,46 @@ async function listNasDiscoverySongs(input: {
   const songIds = records.map((record) => record.indexedSongId as SongId);
   const requestCounts = (await input.dependencies.queueEntries.listGlobalSongRequestCounts?.(songIds)) ?? new Map<SongId, number>();
   return records.map((record) => nasDiscoverySong(record, requestCounts.get(record.indexedSongId as SongId) ?? 0));
+}
+
+async function songsFromIndexedRecords(
+  records: readonly SongSearchIndexedResult[],
+  dependencies: SongDiscoveryRouteDependencies
+): Promise<SongDiscoverySong[]> {
+  const songIds = records.map((record) => record.indexedSongId as SongId);
+  const requestCounts = (await dependencies.queueEntries.listGlobalSongRequestCounts?.(songIds)) ?? new Map<SongId, number>();
+  return records.map((record) => nasDiscoverySong(record, requestCounts.get(record.indexedSongId as SongId) ?? 0));
+}
+
+async function listFullArtistModules(
+  dependencies: SongDiscoveryRouteDependencies
+): Promise<SongDiscoveryArtist[] | null> {
+  const artists = await dependencies.ktvIndex?.listDiscoveryArtists?.();
+  if (!artists) {
+    return null;
+  }
+
+  return artists.map((artist) => ({
+    artistId: artist.artistId,
+    artistName: artist.artistName,
+    songCount: artist.songCount,
+    songs: []
+  }));
+}
+
+async function listFullGenreModules(
+  dependencies: SongDiscoveryRouteDependencies
+): Promise<SongDiscoveryGenre[] | null> {
+  const genres = await dependencies.ktvIndex?.listDiscoveryGenres?.();
+  if (!genres) {
+    return null;
+  }
+
+  return genres.map((genre) => ({
+    genre: genre.genre,
+    songCount: genre.songCount,
+    songs: []
+  }));
 }
 
 function nasDiscoverySong(record: SongSearchIndexedResult, playCount: number): SongDiscoverySong {
