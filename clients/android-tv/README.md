@@ -56,7 +56,16 @@ adb connect <TV_IP>:5555
 adb install -r clients/android-tv/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-启动并指定后端：
+启动。默认连接当前服务器 `https://ktv-api.shaolongfei.com`：
+
+```bash
+adb shell am start -W \
+  -n com.liuyue.homektv/.MainActivity \
+  --es room living-room \
+  --es deviceName "Living Room TV"
+```
+
+如需连接本地开发后端，可以显式指定 `apiBaseUrl`：
 
 ```bash
 adb shell am start -W \
@@ -66,7 +75,7 @@ adb shell am start -W \
   --es deviceName "Living Room TV"
 ```
 
-`apiBaseUrl` 必须是电视能访问的电脑局域网地址。
+本地开发时，`apiBaseUrl` 必须是电视能访问的电脑局域网地址。
 
 ## 播放规则
 

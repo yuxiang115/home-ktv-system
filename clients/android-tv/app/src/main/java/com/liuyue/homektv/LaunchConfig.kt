@@ -8,7 +8,7 @@ data class LaunchConfig(
     val deviceName: String,
 ) {
     companion object {
-        private const val DEFAULT_API_BASE_URL = "http://192.168.5.64:4000"
+        private const val DEFAULT_API_BASE_URL = "https://ktv-api.shaolongfei.com"
         private const val DEFAULT_ROOM_SLUG = "living-room"
         private const val DEFAULT_DEVICE_NAME = "HomeKTV Android TV"
 
