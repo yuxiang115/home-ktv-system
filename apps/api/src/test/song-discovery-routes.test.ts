@@ -115,13 +115,13 @@ describe("song discovery routes", () => {
       })
     ]);
     const listDiscoveryArtists = vi.fn(async () => [
-      { artistId: "artist-a", artistName: "歌手A", songCount: 12, playCount: 4 },
       { artistId: "artist-b", artistName: "歌手B", songCount: 7, playCount: 0 },
-      { artistId: "artist-c", artistName: "歌手C", songCount: 3, playCount: 0 }
+      { artistId: "artist-c", artistName: "歌手C", songCount: 3, playCount: 0 },
+      { artistId: "artist-a", artistName: "歌手A", songCount: 12, playCount: 4 }
     ]);
     const listDiscoveryGenres = vi.fn(async () => [
-      { genre: "流行", songCount: 120, playCount: 8 },
-      { genre: "摇滚", songCount: 45, playCount: 1 }
+      { genre: "摇滚", songCount: 45, playCount: 1 },
+      { genre: "流行", songCount: 120, playCount: 8 }
     ]);
     Object.assign(ktvIndex, { listDiscoveryArtists, listDiscoveryGenres });
 
@@ -146,6 +146,50 @@ describe("song discovery routes", () => {
     ]);
     expect(listDiscoveryArtists).toHaveBeenCalledTimes(1);
     expect(listDiscoveryGenres).toHaveBeenCalledTimes(1);
+  });
+
+  it("sorts fallback artist and genre modules by song count before play count", async () => {
+    const ktvIndex = new FakeKtvIndexReadRepository([
+      createIndexedResult({
+        indexedSongId: "ktv-song-pop-1",
+        indexedAssetId: "ktv-asset-pop-1",
+        title: "低热度流行一",
+        artistName: "多歌歌手",
+        styleTags: ["流行"]
+      }),
+      createIndexedResult({
+        indexedSongId: "ktv-song-pop-2",
+        indexedAssetId: "ktv-asset-pop-2",
+        title: "低热度流行二",
+        artistName: "多歌歌手",
+        styleTags: ["流行"]
+      }),
+      createIndexedResult({
+        indexedSongId: "ktv-song-rock-1",
+        indexedAssetId: "ktv-asset-rock-1",
+        title: "高热度摇滚",
+        artistName: "热门歌手",
+        styleTags: ["摇滚"]
+      })
+    ]);
+    const { server } = await createHarness({
+      ktvIndex,
+      playCounts: {
+        "ktv-song-pop-1": 1,
+        "ktv-song-pop-2": 1,
+        "ktv-song-rock-1": 20
+      }
+    });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/rooms/living-room/songs/discovery?seed=fallback-sort&limit=3"
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<SongDiscoveryResponse>();
+    expect(body.artists.map((artist) => artist.artistName)).toEqual(["多歌歌手", "热门歌手"]);
+    expect(body.genres.map((genre) => genre.genre)).toEqual(["流行", "摇滚"]);
   });
 
   it("loads discovery songs for one artist on demand", async () => {

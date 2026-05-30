@@ -241,12 +241,17 @@ async function listFullArtistModules(
     return null;
   }
 
-  return artists.map((artist) => ({
-    artistId: artist.artistId,
-    artistName: artist.artistName,
-    songCount: artist.songCount,
-    songs: []
-  }));
+  return [...artists]
+    .sort(
+      (left, right) =>
+        right.songCount - left.songCount || right.playCount - left.playCount || left.artistName.localeCompare(right.artistName)
+    )
+    .map((artist) => ({
+      artistId: artist.artistId,
+      artistName: artist.artistName,
+      songCount: artist.songCount,
+      songs: []
+    }));
 }
 
 async function listFullGenreModules(
@@ -257,11 +262,16 @@ async function listFullGenreModules(
     return null;
   }
 
-  return genres.map((genre) => ({
-    genre: genre.genre,
-    songCount: genre.songCount,
-    songs: []
-  }));
+  return [...genres]
+    .sort(
+      (left, right) =>
+        right.songCount - left.songCount || right.playCount - left.playCount || left.genre.localeCompare(right.genre)
+    )
+    .map((genre) => ({
+      genre: genre.genre,
+      songCount: genre.songCount,
+      songs: []
+    }));
 }
 
 function nasDiscoverySong(record: SongSearchIndexedResult, playCount: number): SongDiscoverySong {
@@ -408,7 +418,10 @@ function buildArtistModules(songs: readonly SongDiscoverySong[]): SongDiscoveryA
   }
 
   return [...byArtist.values()]
-    .sort((left, right) => right.playCount - left.playCount || right.songs.length - left.songs.length || left.artistName.localeCompare(right.artistName))
+    .sort(
+      (left, right) =>
+        right.songs.length - left.songs.length || right.playCount - left.playCount || left.artistName.localeCompare(right.artistName)
+    )
     .map((artist) => ({
       artistId: artist.artistId,
       artistName: artist.artistName,
@@ -429,7 +442,10 @@ function buildGenreModules(songs: readonly SongDiscoverySong[]): SongDiscoveryGe
   }
 
   return [...byGenre.values()]
-    .sort((left, right) => right.playCount - left.playCount || right.songs.length - left.songs.length || left.genre.localeCompare(right.genre))
+    .sort(
+      (left, right) =>
+        right.songs.length - left.songs.length || right.playCount - left.playCount || left.genre.localeCompare(right.genre)
+    )
     .map((genre) => ({
       genre: genre.genre,
       songCount: genre.songs.length,

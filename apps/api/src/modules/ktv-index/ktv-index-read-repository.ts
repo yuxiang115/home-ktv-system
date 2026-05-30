@@ -189,7 +189,7 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
            AND a.missing_at IS NULL
        )
        GROUP BY ar.id, ar.name
-       ORDER BY play_count DESC, song_count DESC, ar.name ASC`
+       ORDER BY song_count DESC, play_count DESC, ar.name ASC`
     );
 
     return result.rows.map((row) => ({
@@ -237,7 +237,7 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
               coalesce(sum(request_count), 0)::int AS play_count
        FROM genre_catalog
        GROUP BY genre
-       ORDER BY play_count DESC, song_count DESC, genre ASC`,
+       ORDER BY song_count DESC, play_count DESC, genre ASC`,
       [untaggedDiscoveryGenre]
     );
 

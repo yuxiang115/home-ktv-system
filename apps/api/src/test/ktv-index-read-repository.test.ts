@@ -120,8 +120,10 @@ describe("PgKtvIndexReadRepository", () => {
     const artistQuery = db.queries.find((query) => query.text.includes("FROM ktv_artists ar"));
     expect(artistQuery?.text).toContain("count(DISTINCT s.id)");
     expect(artistQuery?.text).toContain("a.missing_at IS NULL");
+    expect(artistQuery?.text).toMatch(/ORDER BY song_count DESC,\s*play_count DESC,\s*ar\.name ASC/u);
     const genreQuery = db.queries.find((query) => query.text.includes("genre_catalog"));
     expect(genreQuery?.text).toContain("ktv_song_style_tags");
+    expect(genreQuery?.text).toMatch(/ORDER BY song_count DESC,\s*play_count DESC,\s*genre ASC/u);
     expect(genreQuery?.values).toEqual(["未打标签"]);
   });
 
