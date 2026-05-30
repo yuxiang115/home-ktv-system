@@ -36,6 +36,57 @@ class RoomInteractionUiStateTest {
         assertTrue(topPercent <= 74f)
     }
 
+    @Test
+    fun computesBulletMarqueeFromVisibleLayerBounds() {
+        val plan = bulletMarqueePlan(
+            id = "interaction-1",
+            layerWidth = 1920,
+            layerHeight = 1080,
+            bannerWidth = 480,
+            bannerHeight = 72,
+            horizontalGutter = 48,
+            minTop = 88,
+            bottomReserved = 150,
+        )
+
+        assertEquals(1968f, plan.startTranslationX)
+        assertEquals(-528f, plan.endTranslationX)
+        assertTrue(plan.top in 88..858)
+    }
+
+    @Test
+    fun stacksBlessingsByMeasuredHeightWithoutOverlap() {
+        val topMargins = blessingStackTopMargins(
+            cardHeights = listOf(112, 96, 132),
+            firstTop = 52,
+            gap = 14,
+            minCardHeight = 84,
+        )
+
+        assertEquals(listOf(52, 178, 288), topMargins)
+    }
+
+    @Test
+    fun createsBoundedBouncyEmojiLaunchPlan() {
+        val plan = emojiLaunchPlan(
+            id = "interaction-rocket",
+            layerWidth = 1920,
+            layerHeight = 1080,
+            size = 112,
+            margin = 120,
+        )
+
+        assertTrue(plan.left in 0..1808)
+        assertTrue(plan.top in 0..968)
+        assertTrue(plan.targetTranslationY < -420f)
+        assertTrue(kotlin.math.abs(plan.initialVelocityX) >= 1800f)
+        assertTrue(plan.initialVelocityY <= -3600f)
+        assertTrue(plan.minTranslationX <= plan.targetTranslationX)
+        assertTrue(plan.maxTranslationX >= plan.targetTranslationX)
+        assertTrue(plan.minTranslationY <= plan.targetTranslationY)
+        assertTrue(plan.maxTranslationY >= 0f)
+    }
+
     private fun interaction(
         id: String = "interaction-1",
         kind: String = "bullet",

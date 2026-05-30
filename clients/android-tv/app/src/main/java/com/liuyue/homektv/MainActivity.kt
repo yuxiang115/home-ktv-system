@@ -15,7 +15,6 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
-import android.view.animation.BounceInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.widget.Button
@@ -23,6 +22,9 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.dynamicanimation.animation.DynamicAnimation
+import androidx.dynamicanimation.animation.SpringAnimation
+import androidx.dynamicanimation.animation.SpringForce
 import okhttp3.WebSocket
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
@@ -207,6 +209,8 @@ class MainActivity : Activity() {
                 intArrayOf(Color.rgb(5, 7, 13), Color.rgb(11, 16, 32), Color.BLACK),
             )
             keepScreenOn = true
+            clipChildren = false
+            clipToPadding = false
         }
 
         videoLayout = VLCVideoLayout(this).apply {
@@ -236,6 +240,9 @@ class MainActivity : Activity() {
         interactionLayer = FrameLayout(this).apply {
             isClickable = false
             isFocusable = false
+            clipChildren = false
+            clipToPadding = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
         root.addView(
             interactionLayer,
@@ -339,6 +346,7 @@ class MainActivity : Activity() {
             },
         )
 
+        interactionLayer.bringToFront()
         setContentView(root)
     }
 
@@ -1313,6 +1321,8 @@ class MainActivity : Activity() {
 
     private fun renderRoomInteraction(interaction: RoomInteractionEvent) {
         if (!roomModeActive || !::interactionLayer.isInitialized) return
+        Log.i(TAG, "Room interaction ${interaction.kind}: ${interaction.message.take(24)}")
+        interactionLayer.bringToFront()
         when (interaction.kind) {
             "emoji" -> renderEmojiInteraction(interaction)
             "bullet" -> renderBulletInteraction(interaction)
@@ -1324,50 +1334,67 @@ class MainActivity : Activity() {
         interactionLayer.post {
             val layerWidth = interactionLayer.width.coerceAtLeast(dp(720))
             val layerHeight = interactionLayer.height.coerceAtLeast(dp(420))
-            val size = dp(86)
-            val margin = dp(96)
-            val startX = horizontalInteractionPosition(interaction.id, layerWidth, margin) - size / 2
-            val startY = layerHeight + dp(24)
+            val size = dp(104)
+            val plan = emojiLaunchPlan(
+                id = interaction.id,
+                layerWidth = layerWidth,
+                layerHeight = layerHeight,
+                size = size,
+                margin = dp(96),
+            )
             val seed = stableHash(interaction.id)
-            val travelX = ((seed % dp(360)) - dp(180)).toFloat()
-            val launchY = -(layerHeight * 0.72f)
-            val driftDownY = layerHeight * 0.32f
             val ttl = interactionTtlFor(interaction, fallbackMs = 12_000L)
 
             val emojiView = TextView(this).apply {
                 text = interaction.message
-                textSize = 54f
+                textSize = 58f
                 gravity = Gravity.CENTER
                 includeFontPadding = false
                 background = roundedBackground(Color.argb(78, 15, 23, 42), dp(999).toFloat())
                 elevation = dp(10).toFloat()
-                rotation = ((seed % 36) - 18).toFloat()
+                rotation = plan.initialRotation
+                scaleX = 0.78f
+                scaleY = 0.78f
             }
             interactionLayer.addView(
                 emojiView,
                 FrameLayout.LayoutParams(size, size).apply {
-                    leftMargin = startX.coerceIn(0, (layerWidth - size).coerceAtLeast(0))
-                    topMargin = startY
+                    leftMargin = plan.left
+                    topMargin = plan.top
                 },
             )
 
-            renderEmojiConfetti(startX + size / 2, layerHeight - dp(10), seed)
+            renderEmojiConfetti(plan.left + size / 2, plan.top + size - dp(8), seed)
+            startEmojiSpring(emojiView, DynamicAnimation.TRANSLATION_X, plan.targetTranslationX, plan.initialVelocityX, plan.minTranslationX, plan.maxTranslationX)
+            startEmojiSpring(emojiView, DynamicAnimation.TRANSLATION_Y, plan.targetTranslationY, plan.initialVelocityY, plan.minTranslationY, plan.maxTranslationY)
             emojiView.animate()
-                .translationX(travelX)
-                .translationY(launchY)
-                .rotationBy(if (seed % 2 == 0) 540f else -540f)
-                .setDuration(1_450L)
+                .rotationBy(plan.rotationBy)
+                .scaleX(1f)
+                .scaleY(1f)
+                .setDuration(1_100L)
                 .setInterpolator(DecelerateInterpolator())
-                .withEndAction {
-                    emojiView.animate()
-                        .translationY(launchY + driftDownY)
-                        .alpha(0f)
-                        .setDuration((ttl - 1_450L).coerceAtLeast(1_000L))
-                        .setInterpolator(BounceInterpolator())
-                        .start()
-                }
                 .start()
-            removeViewLater(emojiView, ttl)
+            fadeOutAndRemoveViewLater(emojiView, ttl)
+        }
+    }
+
+    private fun startEmojiSpring(
+        view: View,
+        property: DynamicAnimation.ViewProperty,
+        finalPosition: Float,
+        startVelocity: Float,
+        minValue: Float,
+        maxValue: Float,
+    ) {
+        SpringAnimation(view, property, finalPosition).apply {
+            setMinValue(minValue)
+            setMaxValue(maxValue)
+            setStartVelocity(startVelocity)
+            spring = SpringForce(finalPosition).apply {
+                dampingRatio = SpringForce.DAMPING_RATIO_LOW_BOUNCY
+                stiffness = SpringForce.STIFFNESS_LOW
+            }
+            start()
         }
     }
 
@@ -1410,7 +1437,6 @@ class MainActivity : Activity() {
         interactionLayer.post {
             val layerWidth = interactionLayer.width.coerceAtLeast(dp(720))
             val layerHeight = interactionLayer.height.coerceAtLeast(dp(420))
-            val top = ((bulletLaneTopPercent(interaction.id) / 100f) * layerHeight).toInt()
             val ttl = interactionTtlFor(interaction, fallbackMs = 7_000L)
             val banner = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -1422,6 +1448,9 @@ class MainActivity : Activity() {
                     strokeColor = Color.argb(76, 34, 211, 238),
                 )
                 elevation = dp(12).toFloat()
+                translationX = layerWidth + dp(48).toFloat()
+                alpha = 0f
+                visibility = View.INVISIBLE
             }
             banner.addView(
                 View(this).apply {
@@ -1436,7 +1465,7 @@ class MainActivity : Activity() {
                     typeface = Typeface.DEFAULT_BOLD
                     setTextColor(Color.rgb(248, 250, 252))
                     includeFontPadding = false
-                    maxWidth = dp(860)
+                    maxWidth = (layerWidth * 0.58f).toInt().coerceAtMost(dp(880))
                     ellipsize = TextUtils.TruncateAt.END
                     setSingleLine(true)
                 },
@@ -1447,14 +1476,32 @@ class MainActivity : Activity() {
             interactionLayer.addView(
                 banner,
                 FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
-                    leftMargin = layerWidth + dp(32)
-                    topMargin = top.coerceIn(dp(70), layerHeight - dp(120))
+                    leftMargin = 0
+                    topMargin = dp(92)
                 },
             )
             banner.post {
+                val plan = bulletMarqueePlan(
+                    id = interaction.id,
+                    layerWidth = layerWidth,
+                    layerHeight = layerHeight,
+                    bannerWidth = banner.width,
+                    bannerHeight = banner.height,
+                    horizontalGutter = dp(56),
+                    minTop = dp(84),
+                    bottomReserved = dp(150),
+                )
+                val params = banner.layoutParams as? FrameLayout.LayoutParams
+                if (params != null) {
+                    params.topMargin = plan.top
+                    banner.layoutParams = params
+                }
+                banner.translationX = plan.startTranslationX
+                banner.visibility = View.VISIBLE
+                banner.alpha = 1f
                 banner.animate()
-                    .translationX(-(layerWidth + banner.width + dp(96)).toFloat())
-                    .alpha(0.94f)
+                    .translationX(plan.endTranslationX)
+                    .alpha(0.98f)
                     .setDuration(ttl)
                     .setInterpolator(LinearInterpolator())
                     .withEndAction { interactionLayer.removeView(banner) }
@@ -1503,6 +1550,7 @@ class MainActivity : Activity() {
             )
             blessingInteractions[interaction.id] = interaction to card
             layoutBlessingStack()
+            card.post { layoutBlessingStack() }
             card.animate()
                 .alpha(1f)
                 .translationY(0f)
@@ -1520,11 +1568,23 @@ class MainActivity : Activity() {
 
     private fun layoutBlessingStack() {
         val sorted = sortBlessingsNewestFirst(blessingInteractions.values.map { it.first })
+        val measuredHeights = sorted.map { interaction ->
+            val view = blessingInteractions[interaction.id]?.second
+            (view?.height ?: 0).takeIf { it > 0 }
+                ?: (view?.measuredHeight ?: 0).takeIf { it > 0 }
+                ?: dp(92)
+        }
+        val topMargins = blessingStackTopMargins(
+            cardHeights = measuredHeights,
+            firstTop = dp(52),
+            gap = dp(14),
+            minCardHeight = dp(84),
+        )
         sorted.forEachIndexed { index, interaction ->
             val view = blessingInteractions[interaction.id]?.second ?: return@forEachIndexed
             val params = view.layoutParams as? FrameLayout.LayoutParams ?: return@forEachIndexed
             params.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            params.topMargin = dp(52 + index * 72)
+            params.topMargin = topMargins.getOrElse(index) { dp(52) }
             view.layoutParams = params
         }
     }
@@ -1542,10 +1602,17 @@ class MainActivity : Activity() {
             .start()
     }
 
-    private fun removeViewLater(view: View, delayMs: Long) {
+    private fun fadeOutAndRemoveViewLater(view: View, delayMs: Long) {
         interactionHandler.postDelayed({
-            (view.parent as? FrameLayout)?.removeView(view)
-        }, delayMs)
+            view.animate()
+                .alpha(0f)
+                .scaleX(0.82f)
+                .scaleY(0.82f)
+                .setDuration(420L)
+                .setInterpolator(DecelerateInterpolator())
+                .withEndAction { (view.parent as? FrameLayout)?.removeView(view) }
+                .start()
+        }, (delayMs - 420L).coerceAtLeast(1_000L))
     }
 
     private fun clearRoomInteractions() {
@@ -1560,11 +1627,6 @@ class MainActivity : Activity() {
         return interactionTtlMs(interaction, fallbackMs)
             .coerceAtLeast(1_000L)
             .coerceAtMost(15_000L)
-    }
-
-    private fun horizontalInteractionPosition(seed: String, width: Int, margin: Int): Int {
-        val available = (width - margin * 2).coerceAtLeast(1)
-        return margin + stableHash(seed) % available
     }
 
     private fun shouldClearStatusNotice(value: String): Boolean {

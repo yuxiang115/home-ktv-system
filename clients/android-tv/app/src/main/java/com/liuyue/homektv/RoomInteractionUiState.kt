@@ -28,6 +28,108 @@ fun bulletLaneTopPercent(id: String): Float {
     return 11f + lane * 4.6f + laneOffset
 }
 
+data class BulletMarqueePlan(
+    val top: Int,
+    val startTranslationX: Float,
+    val endTranslationX: Float,
+)
+
+fun bulletMarqueePlan(
+    id: String,
+    layerWidth: Int,
+    layerHeight: Int,
+    bannerWidth: Int,
+    bannerHeight: Int,
+    horizontalGutter: Int,
+    minTop: Int,
+    bottomReserved: Int,
+): BulletMarqueePlan {
+    val safeLayerWidth = layerWidth.coerceAtLeast(1)
+    val safeLayerHeight = layerHeight.coerceAtLeast(1)
+    val safeBannerWidth = bannerWidth.coerceAtLeast(1)
+    val safeBannerHeight = bannerHeight.coerceAtLeast(1)
+    val maxTop = (safeLayerHeight - bottomReserved - safeBannerHeight).coerceAtLeast(minTop)
+    val rawTop = ((bulletLaneTopPercent(id) / 100f) * safeLayerHeight).toInt()
+    return BulletMarqueePlan(
+        top = rawTop.coerceIn(minTop, maxTop),
+        startTranslationX = (safeLayerWidth + horizontalGutter).toFloat(),
+        endTranslationX = -(safeBannerWidth + horizontalGutter).toFloat(),
+    )
+}
+
+fun blessingStackTopMargins(
+    cardHeights: List<Int>,
+    firstTop: Int,
+    gap: Int,
+    minCardHeight: Int,
+): List<Int> {
+    val margins = mutableListOf<Int>()
+    var nextTop = firstTop
+    for (height in cardHeights) {
+        margins.add(nextTop)
+        nextTop += height.coerceAtLeast(minCardHeight) + gap
+    }
+    return margins
+}
+
+data class EmojiLaunchPlan(
+    val left: Int,
+    val top: Int,
+    val targetTranslationX: Float,
+    val targetTranslationY: Float,
+    val minTranslationX: Float,
+    val maxTranslationX: Float,
+    val minTranslationY: Float,
+    val maxTranslationY: Float,
+    val initialVelocityX: Float,
+    val initialVelocityY: Float,
+    val initialRotation: Float,
+    val rotationBy: Float,
+)
+
+fun emojiLaunchPlan(
+    id: String,
+    layerWidth: Int,
+    layerHeight: Int,
+    size: Int,
+    margin: Int,
+): EmojiLaunchPlan {
+    val safeLayerWidth = layerWidth.coerceAtLeast(size + 1)
+    val safeLayerHeight = layerHeight.coerceAtLeast(size + 1)
+    val safeSize = size.coerceAtLeast(1)
+    val hash = stableHash(id)
+    val startCenter = horizontalPositionFromHash(hash, safeLayerWidth, margin)
+    val left = (startCenter - safeSize / 2).coerceIn(0, (safeLayerWidth - safeSize).coerceAtLeast(0))
+    val top = (safeLayerHeight - safeSize - (safeLayerHeight * 0.03f).toInt()).coerceIn(
+        0,
+        (safeLayerHeight - safeSize).coerceAtLeast(0),
+    )
+    val targetCenter = horizontalPositionFromHash(hash / 31 + 17, safeLayerWidth, margin)
+    val targetTranslationX = (targetCenter - startCenter).toFloat().coerceIn(
+        -left.toFloat(),
+        (safeLayerWidth - safeSize - left).toFloat(),
+    )
+    val targetTranslationY = (-(safeLayerHeight * (0.58f + (hash % 18) / 100f))).coerceIn(
+        -top.toFloat(),
+        (safeLayerHeight - safeSize - top).toFloat(),
+    )
+    val velocityXDirection = if (hash % 2 == 0) 1f else -1f
+    return EmojiLaunchPlan(
+        left = left,
+        top = top,
+        targetTranslationX = targetTranslationX,
+        targetTranslationY = targetTranslationY,
+        minTranslationX = -left.toFloat(),
+        maxTranslationX = (safeLayerWidth - safeSize - left).toFloat(),
+        minTranslationY = -top.toFloat(),
+        maxTranslationY = (safeLayerHeight - safeSize - top).toFloat(),
+        initialVelocityX = velocityXDirection * (1_900f + (hash % 1_400)),
+        initialVelocityY = -(3_800f + (hash % 1_800)),
+        initialRotation = ((hash % 42) - 21).toFloat(),
+        rotationBy = if (hash % 2 == 0) 720f else -720f,
+    )
+}
+
 fun stableHash(value: String): Int {
     var hash = -2128831035
     for (character in value) {
@@ -35,6 +137,11 @@ fun stableHash(value: String): Int {
         hash *= 16777619
     }
     return hash and Int.MAX_VALUE
+}
+
+private fun horizontalPositionFromHash(hash: Int, width: Int, margin: Int): Int {
+    val available = (width - margin * 2).coerceAtLeast(1)
+    return margin + hash % available
 }
 
 private fun parseIsoUtcMs(value: String): Long? {
