@@ -36,20 +36,19 @@ export class NasPlayableMediaRepository implements PlayableMediaRepository {
     }
 
     const result = await this.db.query<NasPlayableMediaRow>(
-      `SELECT a.id AS asset_id,
-              a.song_id,
-              a.file_path,
-              a.file_name,
-              a.extension,
-              a.size_bytes,
-              a.technical_status,
-              a.technical_metadata,
-              a.missing_at,
+      `SELECT s.id AS asset_id,
+              s.id AS song_id,
+              s.file_path,
+              s.file_name,
+              s.extension,
+              s.size_bytes,
+              s.technical_status,
+              s.technical_metadata,
+              s.missing_at,
               s.title,
               s.primary_artist_name
-       FROM ktv_song_assets a
-       JOIN ktv_songs s ON s.id = a.song_id
-       WHERE a.id = $1
+       FROM ktv_songs s
+       WHERE s.id = $1
        LIMIT 1`,
       [source.assetId]
     );

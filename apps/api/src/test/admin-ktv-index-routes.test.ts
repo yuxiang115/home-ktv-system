@@ -25,7 +25,7 @@ describe("admin KTV index routes", () => {
       sampleTimeoutMs: 50
     });
     expect(response.json()).toMatchObject({
-      tables: [{ tableName: "ktv_song_assets", exists: true }],
+      tables: [{ tableName: "ktv_songs", exists: true }],
       latestRun: { id: "run-1", sourceRoot: "/mnt/nas/KTV歌曲" },
       activeAssetCount: 34385,
       nasSample: { checked: 1, readable: 1 },
@@ -47,7 +47,7 @@ describe("admin KTV index routes", () => {
 
 function createDiagnosticsFixture(): KtvIndexDiagnosticsResponse {
   return {
-    tables: [{ tableName: "ktv_song_assets", exists: true }],
+    tables: [{ tableName: "ktv_songs", exists: true }],
     latestRun: {
       id: "run-1",
       sourceRoot: "/mnt/nas/KTV歌曲",

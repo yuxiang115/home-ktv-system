@@ -97,7 +97,7 @@ export class PgKtvIndexRawAssetRepository implements KtvIndexRawAssetRepository 
   async findRawAssetById(indexedAssetId: string): Promise<KtvIndexRawAssetRow | null> {
     const result = await this.db.query<KtvIndexRawAssetRow>(
       `SELECT id, file_path AS "filePath"
-       FROM ktv_song_assets
+       FROM ktv_songs
        WHERE id = $1 AND missing_at IS NULL
        LIMIT 1`,
       [indexedAssetId]

@@ -33,16 +33,30 @@ describe("NAS / online catalog final schema", () => {
     expect(schemaSql).toContain("online_song_id text");
     expect(schemaSql).toContain("online_asset_id text");
     expect(schemaSql).toContain("queue_entries_source_identity_ck");
-    expect(schemaSql).toContain("queue_entries_nas_asset_song_fk");
+    expect(schemaSql).toContain("queue_entries_nas_song_fk");
+    expect(schemaSql).toContain("queue_entries_nas_identity_ck");
+    expect(schemaSql).not.toContain("queue_entries_nas_asset_song_fk");
   });
 
-  it("adds online placeholders and removes old active asset state", () => {
-    expect(schemaSql).toContain("CREATE TABLE IF NOT EXISTS online_songs");
-    expect(schemaSql).toContain("CREATE TABLE IF NOT EXISTS online_song_assets");
+  it("keeps only ktv_songs for NAS and removes online placeholder tables", () => {
+    expect(schemaSql).toContain("CREATE TABLE IF NOT EXISTS ktv_songs");
+    for (const removedTable of [
+      "CREATE TABLE IF NOT EXISTS ktv_song_assets",
+      "CREATE TABLE IF NOT EXISTS ktv_artists",
+      "CREATE TABLE IF NOT EXISTS ktv_song_artists",
+      "CREATE TABLE IF NOT EXISTS ktv_index_runs",
+      "CREATE TABLE IF NOT EXISTS online_songs",
+      "CREATE TABLE IF NOT EXISTS online_song_assets"
+    ]) {
+      expect(schemaSql).not.toContain(removedTable);
+    }
+    expect(schemaSql).toContain("file_path text NOT NULL");
+    expect(schemaSql).toContain("artist_names text[] NOT NULL DEFAULT '{}'");
+    expect(schemaSql).toContain("style_tags text[] NOT NULL DEFAULT '{}'");
     expect(schemaSql).not.toContain("active_asset_id text REFERENCES assets");
-    expect(schemaSql).not.toContain("ready_asset_id");
-    expect(schemaSql).toContain("ready_source_type text CHECK (ready_source_type IN ('online'))");
-    expect(schemaSql).toContain("ready_online_asset_id text REFERENCES online_song_assets(id) ON DELETE SET NULL");
+    expect(schemaSql).toContain("ready_asset_id text");
+    expect(schemaSql).not.toContain("ready_source_type text CHECK (ready_source_type IN ('online'))");
+    expect(schemaSql).not.toContain("ready_online_asset_id");
   });
 
   it("uses nas and online as cover cache source kinds", () => {

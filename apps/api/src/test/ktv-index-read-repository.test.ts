@@ -4,7 +4,7 @@ import { buildNasSample } from "../modules/ktv-index/ktv-index-diagnostics.js";
 import { PgKtvIndexReadRepository } from "../modules/ktv-index/ktv-index-read-repository.js";
 
 describe("PgKtvIndexReadRepository", () => {
-  it("searches active indexed songs with grouped queueable versions", async () => {
+  it("searches active indexed songs as playable NAS rows", async () => {
     const db = new ScriptedKtvIndexDb();
     const repository = new PgKtvIndexReadRepository(db);
 
@@ -14,9 +14,9 @@ describe("PgKtvIndexReadRepository", () => {
       versionsPerSong: 2
     });
 
-    expect(results).toHaveLength(1);
+    expect(results).toHaveLength(2);
     expect(results[0]).toMatchObject({
-      indexedSongId: "ktv-song-1",
+      indexedSongId: "ktv-asset-1",
       title: "七里香",
       artistName: "周杰伦",
       styleTags: ["流行", "KTV必点"],
@@ -37,36 +37,23 @@ describe("PgKtvIndexReadRepository", () => {
         queueState: "not_queued",
         canQueue: true,
         disabledLabel: null
-      },
-      {
-        indexedAssetId: "ktv-asset-2",
-        displayName: "周杰伦-七里香-国语-演唱会.mpg",
-        sourceLabel: "KTV索引",
-        extension: ".mpg",
-        sizeBytes: null,
-        audioTrackCount: 2,
-        styleTags: ["流行", "KTV必点"],
-        category: "流行",
-        queueState: "not_queued",
-        canQueue: true,
-        disabledLabel: null
       }
     ]);
     expect(JSON.stringify(results)).not.toContain("filePath");
     expect(JSON.stringify(results)).not.toContain("/mnt/nas");
 
     const searchQuery = db.queries.find((query) => query.text.includes("similarity(s.normalized_title"));
-    expect(searchQuery?.text).toContain("a.missing_at IS NULL");
-    expect(searchQuery?.text).toContain("ktv_song_artists");
-    expect(searchQuery?.text).toContain("ktv_artists");
+    expect(searchQuery?.text).toContain("s.missing_at IS NULL");
+    expect(searchQuery?.text).not.toContain("ktv_song_artists");
+    expect(searchQuery?.text).not.toContain("ktv_artists");
     expect(searchQuery?.text).not.toContain("s.category");
-    expect(searchQuery?.text).toContain("ktv_song_style_tags");
-    expect(searchQuery?.text).toContain("st.tag_name");
-    expect(searchQuery?.text).toContain("ORDER BY tag_group, tag_name");
+    expect(searchQuery?.text).not.toContain("ktv_song_style_tags");
+    expect(searchQuery?.text).toContain("unnest(s.style_tags)");
+    expect(searchQuery?.text).toContain("s.id AS asset_id");
     expect(searchQuery?.text).not.toContain("JOIN ktv_style_tags");
     expect(searchQuery?.text).not.toContain("JOIN ktv_style_groups");
     expect(searchQuery?.text).not.toContain("st.tag_id");
-    expect(searchQuery?.values).toEqual(["七里香", "%七里香%", "%七里香%", 10, 2]);
+    expect(searchQuery?.values).toEqual(["七里香", "%七里香%", "%七里香%", 10]);
   });
 
   it("maps queued and unreadable indexed assets to explicit queue states", async () => {
@@ -87,7 +74,9 @@ describe("PgKtvIndexReadRepository", () => {
         queueState: "queued",
         canQueue: true,
         disabledLabel: null
-      }),
+      })
+    ]);
+    expect(results[1]?.versions).toEqual([
       expect.objectContaining({
         indexedAssetId: "ktv-asset-2",
         queueState: "file_unreadable",
@@ -109,20 +98,20 @@ describe("PgKtvIndexReadRepository", () => {
     }).listDiscoveryGenres();
 
     expect(artists).toEqual([
-      { artistId: "artist-jay", artistName: "周杰伦", songCount: 120, playCount: 300 },
-      { artistId: "artist-mayday", artistName: "五月天", songCount: 80, playCount: 40 }
+      { artistId: "周杰伦", artistName: "周杰伦", songCount: 120, playCount: 300 },
+      { artistId: "五月天", artistName: "五月天", songCount: 80, playCount: 40 }
     ]);
     expect(genres).toEqual([
       { genre: "流行", songCount: 600, playCount: 1200 },
       { genre: "未打标签", songCount: 12, playCount: 0 }
     ]);
 
-    const artistQuery = db.queries.find((query) => query.text.includes("FROM ktv_artists ar"));
-    expect(artistQuery?.text).toContain("count(DISTINCT s.id)");
-    expect(artistQuery?.text).toContain("a.missing_at IS NULL");
-    expect(artistQuery?.text).toMatch(/ORDER BY song_count DESC,\s*play_count DESC,\s*ar\.name ASC/u);
+    const artistQuery = db.queries.find((query) => query.text.includes("WITH song_artists AS"));
+    expect(artistQuery?.text).toContain("unnest(");
+    expect(artistQuery?.text).toContain("s.missing_at IS NULL");
+    expect(artistQuery?.text).toMatch(/ORDER BY song_count DESC,\s*play_count DESC,\s*artist_name ASC/u);
     const genreQuery = db.queries.find((query) => query.text.includes("genre_catalog"));
-    expect(genreQuery?.text).toContain("ktv_song_style_tags");
+    expect(genreQuery?.text).toContain("unnest(active_songs.style_tags)");
     expect(genreQuery?.text).toMatch(/ORDER BY song_count DESC,\s*play_count DESC,\s*genre ASC/u);
     expect(genreQuery?.values).toEqual(["未打标签"]);
   });
@@ -140,7 +129,7 @@ describe("PgKtvIndexReadRepository", () => {
         unreadableIndexedAssetIds: string[];
       }): Promise<unknown[]>;
     }).listIndexedSongsByArtist({
-      artistId: "artist-jay",
+      artistId: "周杰伦",
       limit: 20,
       offset: 40,
       queuedIndexedAssetIds: ["ktv-asset-1"],
@@ -165,20 +154,20 @@ describe("PgKtvIndexReadRepository", () => {
     expect(artistSongs).toHaveLength(1);
     expect(genreSongs).toHaveLength(1);
     expect(artistSongs[0]).toMatchObject({
-      indexedSongId: "ktv-song-1",
+      indexedSongId: "ktv-asset-1",
       versions: [expect.objectContaining({ indexedAssetId: "ktv-asset-1", queueState: "queued" })]
     });
     expect(genreSongs[0]).toMatchObject({
-      indexedSongId: "ktv-song-1",
+      indexedSongId: "ktv-asset-1",
       versions: [expect.objectContaining({ indexedAssetId: "ktv-asset-1" })]
     });
 
-    expect(db.queries.find((query) => query.text.includes("filter_artist.artist_id = $1"))?.values).toEqual([
-      "artist-jay",
+    expect(db.queries.find((query) => query.text.includes("$1 = ANY("))?.values).toEqual([
+      "周杰伦",
       20,
       40
     ]);
-    expect(db.queries.find((query) => query.text.includes("filter_tag.tag_name = $1"))?.values).toEqual(["流行", 20, 0]);
+    expect(db.queries.find((query) => query.text.includes("$1 = ANY(s.style_tags)"))?.values).toEqual(["流行", 20, 0]);
   });
 
   it("returns raw diagnostics and Admin-only preview details", async () => {
@@ -240,7 +229,7 @@ describe("PgKtvIndexReadRepository", () => {
 
     expect(db.queries.map((query) => query.text)).toEqual(expect.arrayContaining([
       expect.stringContaining("to_regclass"),
-      expect.stringContaining("count(*) FILTER (WHERE a.missing_at IS NULL)"),
+      expect.stringContaining("count(*) FILTER (WHERE s.missing_at IS NULL)"),
       expect.stringContaining("GROUP BY technical_status"),
       expect.stringContaining("jsonb_array_length"),
       expect.stringContaining("parse_confidence < 0.75")
@@ -323,17 +312,11 @@ class ScriptedKtvIndexDb implements QueryExecutor {
 
     if (text.includes("to_regclass")) {
       return {
-        rows: [
-          { table_name: "ktv_index_runs", exists: true },
-          { table_name: "ktv_artists", exists: true },
-          { table_name: "ktv_songs", exists: true },
-          { table_name: "ktv_song_artists", exists: true },
-          { table_name: "ktv_song_assets", exists: true }
-        ] as TRow[]
+        rows: [{ table_name: "ktv_songs", exists: true }] as TRow[]
       };
     }
 
-    if (text.includes("FROM ktv_index_runs")) {
+    if (text.includes("WITH latest_run")) {
       return {
         rows: [
           {
@@ -352,7 +335,7 @@ class ScriptedKtvIndexDb implements QueryExecutor {
       };
     }
 
-    if (text.includes("count(*) FILTER (WHERE a.missing_at IS NULL)")) {
+    if (text.includes("count(*) FILTER (WHERE s.missing_at IS NULL)")) {
       return {
         rows: [
           {
@@ -397,11 +380,11 @@ class ScriptedKtvIndexDb implements QueryExecutor {
       return { rows: [] as TRow[] };
     }
 
-    if (text.includes("FROM ktv_artists ar")) {
+    if (text.includes("WITH song_artists AS")) {
       return {
         rows: [
-          { artist_id: "artist-jay", artist_name: "周杰伦", song_count: "120", play_count: "300" },
-          { artist_id: "artist-mayday", artist_name: "五月天", song_count: "80", play_count: "40" }
+          { artist_id: "周杰伦", artist_name: "周杰伦", song_count: "120", play_count: "300" },
+          { artist_id: "五月天", artist_name: "五月天", song_count: "80", play_count: "40" }
         ] as TRow[]
       };
     }
@@ -415,14 +398,15 @@ class ScriptedKtvIndexDb implements QueryExecutor {
       };
     }
 
-    if (text.includes("filter_artist.artist_id = $1") || text.includes("filter_tag.tag_name = $1")) {
+    if (text.includes("$1 = ANY(") || text.includes("$1 = ANY(s.style_tags)")) {
       return { rows: [createSearchRow()] as TRow[] };
     }
 
-    if (text.includes("WITH matched_songs")) {
+    if (text.includes("similarity(s.normalized_title")) {
       return {
         rows: [
           createSearchRow({
+            song_id: "ktv-asset-1",
             asset_id: "ktv-asset-1",
             file_name: "周杰伦-七里香-国语-流行.mkv",
             file_path: "/mnt/nas/KTV歌曲/周杰伦-七里香-国语-流行.mkv",
@@ -438,6 +422,7 @@ class ScriptedKtvIndexDb implements QueryExecutor {
             style_tags: ["流行", "KTV必点"]
           }),
           createSearchRow({
+            song_id: "ktv-asset-2",
             asset_id: "ktv-asset-2",
             file_name: "周杰伦-七里香-国语-演唱会.mpg",
             file_path: "/mnt/nas/KTV歌曲/周杰伦-七里香-国语-演唱会.mpg",
@@ -461,7 +446,7 @@ class ScriptedKtvIndexDb implements QueryExecutor {
 
 function createSearchRow(overrides: Record<string, unknown> = {}) {
   return {
-    song_id: "ktv-song-1",
+    song_id: "ktv-asset-1",
     title: "七里香",
     primary_artist_name: "周杰伦",
     style_tags: ["流行", "KTV必点"],

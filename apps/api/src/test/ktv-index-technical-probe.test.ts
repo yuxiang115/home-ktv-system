@@ -183,7 +183,7 @@ class FakeKtvIndexProbeDb implements QueryExecutor {
   constructor(private readonly input: { rows: KtvIndexProbeTargetRow[] }) {}
 
   async query<TRow>(text: string, values: readonly unknown[] = []) {
-    if (text.includes("FROM ktv_song_assets")) {
+    if (text.includes("FROM ktv_songs")) {
       const [retryFailed, assetId, limit = null] = values as [boolean, string | null, number | null];
       this.selectValues.push({ limit, retryFailed, assetId });
       const rows = this.input.rows

@@ -35,12 +35,13 @@ describe("real MV schema contracts", () => {
     expect(migrationSql).toContain("AND compatibility_status = 'unknown'");
   });
 
-  it("keeps real-MV playback metadata on NAS asset technical metadata in final schema", () => {
+  it("keeps real-MV playback metadata on NAS song technical metadata in final schema", () => {
     expect(enumValues.compatibilityStatus).toEqual(["unknown", "review_required", "playable", "unsupported"]);
-    expect(schemaSql).toContain("CREATE TABLE IF NOT EXISTS ktv_song_assets");
+    expect(schemaSql).toContain("CREATE TABLE IF NOT EXISTS ktv_songs");
+    expect(schemaSql).not.toContain("CREATE TABLE IF NOT EXISTS ktv_song_assets");
     expect(schemaSql).toContain("technical_status text NOT NULL DEFAULT 'pending' CHECK (technical_status IN ('pending', 'probed', 'failed'))");
     expect(schemaSql).toContain("technical_metadata jsonb NOT NULL DEFAULT '{}'::jsonb");
-    expect(schemaSql).toContain("ktv_song_assets_technical_status_idx");
+    expect(schemaSql).toContain("ktv_songs_technical_status_idx");
     expect(schemaSql).not.toContain("CREATE TABLE IF NOT EXISTS assets");
   });
 

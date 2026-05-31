@@ -44,15 +44,17 @@ class RunStyleTaggingLlmBatchTest(unittest.TestCase):
     def test_sql_literal_escapes_single_quotes(self):
         self.assertEqual(runner.sql_literal("A'B"), "'A''B'")
 
-    def test_candidate_sql_uses_simplified_style_tag_table(self):
+    def test_candidate_sql_uses_inline_style_tags(self):
         sql = runner.candidate_sql(max_existing_tags=1, limit=30)
 
-        self.assertIn("LEFT JOIN ktv_song_style_tags st ON st.song_id = s.id", sql)
-        self.assertIn("count(st.tag_name)::integer AS tag_count", sql)
+        self.assertIn("cardinality(s.style_tags)::integer AS tag_count", sql)
+        self.assertIn("WHERE s.missing_at IS NULL", sql)
+        self.assertNotIn("ktv_song_style_tags", sql)
+        self.assertNotIn("ktv_song_assets", sql)
         self.assertNotIn("st.tag_id", sql)
         self.assertNotIn("ktv_song_tagging_status", sql)
 
-    def test_import_sql_writes_direct_tag_names_and_groups(self):
+    def test_import_sql_writes_inline_style_tags(self):
         sql = runner.build_import_sql(
             [
                 {"songId": "song-1", "status": "tagged", "tags": ["流行", "KTV必点"]},
@@ -60,11 +62,11 @@ class RunStyleTaggingLlmBatchTest(unittest.TestCase):
             ]
         )
 
-        self.assertIn("INSERT INTO ktv_song_style_tags (song_id, tag_name, tag_group)", sql)
-        self.assertIn("'流行', '核心曲风'", sql)
-        self.assertIn("'KTV必点', 'KTV场景'", sql)
+        self.assertIn("UPDATE ktv_songs", sql)
+        self.assertIn("style_tags = ARRAY['流行', 'KTV必点']::text[]", sql)
         self.assertNotIn("ktv_style_tags", sql)
         self.assertNotIn("ktv_style_groups", sql)
+        self.assertNotIn("ktv_song_style_tags", sql)
         self.assertNotIn("ktv_song_tagging_status", sql)
         self.assertNotIn("ktv_song_tagging_runs", sql)
 

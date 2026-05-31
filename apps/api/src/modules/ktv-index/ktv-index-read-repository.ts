@@ -74,13 +74,7 @@ export interface KtvIndexReadRepositoryOptions {
 
 type KtvTableName = KtvIndexTableAvailability["tableName"];
 
-const ktvTableNames = [
-  "ktv_index_runs",
-  "ktv_artists",
-  "ktv_songs",
-  "ktv_song_artists",
-  "ktv_song_assets"
-] as const satisfies readonly KtvTableName[];
+const ktvTableNames = ["ktv_songs"] as const satisfies readonly KtvTableName[];
 
 interface IndexedSearchRow {
   song_id: string;
@@ -175,21 +169,27 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
 
   async listDiscoveryArtists(): Promise<KtvIndexDiscoveryArtistSummary[]> {
     const result = await this.db.query<DiscoveryArtistSummaryRow>(
-      `SELECT ar.id AS artist_id,
-              ar.name AS artist_name,
-              count(DISTINCT s.id)::int AS song_count,
-              coalesce(sum(s.request_count), 0)::int AS play_count
-       FROM ktv_artists ar
-       JOIN ktv_song_artists sa ON sa.artist_id = ar.id
-       JOIN ktv_songs s ON s.id = sa.song_id
-       WHERE EXISTS (
-         SELECT 1
-         FROM ktv_song_assets a
-         WHERE a.song_id = s.id
-           AND a.missing_at IS NULL
+      `WITH song_artists AS (
+         SELECT s.id AS song_id,
+                s.request_count,
+                artist.artist_name
+         FROM ktv_songs s
+         CROSS JOIN LATERAL unnest(
+           CASE
+             WHEN cardinality(s.artist_names) > 0 THEN s.artist_names
+             ELSE ARRAY[s.primary_artist_name]::text[]
+           END
+         ) AS artist(artist_name)
+         WHERE s.missing_at IS NULL
        )
-       GROUP BY ar.id, ar.name
-       ORDER BY song_count DESC, play_count DESC, ar.name ASC`
+       SELECT artist_name AS artist_id,
+              artist_name,
+              count(DISTINCT song_id)::int AS song_count,
+              coalesce(sum(request_count), 0)::int AS play_count
+       FROM song_artists
+       WHERE length(trim(artist_name)) > 0
+       GROUP BY artist_name
+       ORDER BY song_count DESC, play_count DESC, artist_name ASC`
     );
 
     return result.rows.map((row) => ({
@@ -204,22 +204,18 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
     const result = await this.db.query<DiscoveryGenreSummaryRow>(
       `WITH active_songs AS (
          SELECT s.id AS song_id,
-                s.request_count
+                s.request_count,
+                s.style_tags
          FROM ktv_songs s
-         WHERE EXISTS (
-           SELECT 1
-           FROM ktv_song_assets a
-           WHERE a.song_id = s.id
-             AND a.missing_at IS NULL
-         )
+         WHERE s.missing_at IS NULL
        ),
        genre_catalog AS (
-         SELECT DISTINCT st.tag_name AS genre,
+         SELECT DISTINCT tag_name AS genre,
                 active_songs.song_id,
                 active_songs.request_count
          FROM active_songs
-         JOIN ktv_song_style_tags st ON st.song_id = active_songs.song_id
-         WHERE length(trim(st.tag_name)) > 0
+         CROSS JOIN LATERAL unnest(active_songs.style_tags) AS tag(tag_name)
+         WHERE length(trim(tag_name)) > 0
          UNION ALL
          SELECT $1::text AS genre,
                 active_songs.song_id,
@@ -227,9 +223,8 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
          FROM active_songs
          WHERE NOT EXISTS (
            SELECT 1
-           FROM ktv_song_style_tags st
-           WHERE st.song_id = active_songs.song_id
-             AND length(trim(st.tag_name)) > 0
+           FROM unnest(active_songs.style_tags) AS tag(tag_name)
+           WHERE length(trim(tag_name)) > 0
          )
        )
        SELECT genre,
@@ -341,121 +336,65 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
     const likeQuery = `%${normalizedQuery}%`;
     const tagQuery = `%${input.query.trim()}%`;
     const limit = Math.min(500, Math.max(1, input.limit ?? 20));
-    const versionsPerSong = Math.min(8, Math.max(1, input.versionsPerSong ?? 4));
     const matchedSongOrder = input.shuffle
-      ? "random(), score DESC, s.title ASC, s.primary_artist_name ASC"
-      : "score DESC, s.title ASC, s.primary_artist_name ASC";
+      ? "random(), score DESC, title ASC, primary_artist_name ASC"
+      : "score DESC, title ASC, primary_artist_name ASC";
 
     const result = await this.db.query<IndexedSearchRow>(
-      `WITH matched_songs AS (
-         SELECT s.id AS song_id,
-                s.title,
-                s.primary_artist_name,
-                COALESCE((
-                  SELECT array_agg(tag_name ORDER BY tag_group, tag_name)
-                  FROM (
-                    SELECT DISTINCT st.tag_name,
-                           st.tag_group
-                    FROM ktv_song_style_tags st
-                    WHERE st.song_id = s.id
-                  ) style_tag_rows
-                ), ARRAY[]::text[]) AS style_tags,
-                CASE
-                  WHEN $1 = '' THEN 1
-                  WHEN s.normalized_title = $1 THEN 100
-                  WHEN s.normalized_primary_artist_name = $1 THEN 90
-                  WHEN bool_or(ar.normalized_name = $1) THEN 85
-                  WHEN s.normalized_title LIKE $2 OR similarity(s.normalized_title, $1) > 0.25 THEN 70
-                  WHEN s.normalized_primary_artist_name LIKE $2 OR bool_or(ar.normalized_name LIKE $2) THEN 60
-                  WHEN s.title_pinyin LIKE $2 OR bool_or(ar.name_pinyin LIKE $2) THEN 50
-                  WHEN s.title_initials LIKE $2 OR bool_or(ar.name_initials LIKE $2) THEN 45
-                  WHEN EXISTS (
-                    SELECT 1
-                    FROM ktv_song_style_tags st
-                    WHERE st.song_id = s.id
-                      AND (replace(lower(st.tag_name), ' ', '') LIKE $2 OR st.tag_name ILIKE $3)
-                  ) THEN 35
-                  ELSE 0
-                END AS score,
-                CASE
-                  WHEN $1 = '' THEN 'default'
-                  WHEN s.normalized_title = $1 THEN 'title'
-                  WHEN s.normalized_primary_artist_name = $1 OR bool_or(ar.normalized_name = $1) THEN 'artist'
-                  WHEN s.normalized_title LIKE $2 OR similarity(s.normalized_title, $1) > 0.25 THEN 'normalized_title'
-                  WHEN s.normalized_primary_artist_name LIKE $2 OR bool_or(ar.normalized_name LIKE $2) THEN 'artist'
-                  WHEN s.title_pinyin LIKE $2 OR bool_or(ar.name_pinyin LIKE $2) THEN 'pinyin'
-                  WHEN s.title_initials LIKE $2 OR bool_or(ar.name_initials LIKE $2) THEN 'initials'
-                  WHEN EXISTS (
-                    SELECT 1
-                    FROM ktv_song_style_tags st
-                    WHERE st.song_id = s.id
-                      AND (replace(lower(st.tag_name), ' ', '') LIKE $2 OR st.tag_name ILIKE $3)
-                  ) THEN 'style'
-                  ELSE 'default'
-                END AS match_reason
-         FROM ktv_songs s
-         JOIN ktv_song_assets active_asset ON active_asset.song_id = s.id AND active_asset.missing_at IS NULL
-         LEFT JOIN ktv_song_artists sa ON sa.song_id = s.id
-         LEFT JOIN ktv_artists ar ON ar.id = sa.artist_id
-         WHERE $1 = ''
-            OR s.normalized_title = $1
-            OR s.normalized_title LIKE $2
-            OR similarity(s.normalized_title, $1) > 0.25
-            OR s.title_pinyin LIKE $2
-            OR s.title_initials LIKE $2
-            OR s.normalized_primary_artist_name LIKE $2
-            OR ar.normalized_name LIKE $2
-            OR ar.name_pinyin LIKE $2
-            OR ar.name_initials LIKE $2
-            OR EXISTS (
-              SELECT 1
-              FROM ktv_song_style_tags st
-              WHERE st.song_id = s.id
-                AND (replace(lower(st.tag_name), ' ', '') LIKE $2 OR st.tag_name ILIKE $3)
-            )
-         GROUP BY s.id, s.title, s.primary_artist_name, s.normalized_title,
-                  s.normalized_primary_artist_name, s.title_pinyin, s.title_initials
-         ORDER BY ${matchedSongOrder}
-         LIMIT $4
-       ),
-       ranked_assets AS (
-         SELECT ms.song_id,
-                ms.title,
-                ms.primary_artist_name,
-                ms.style_tags,
-                ms.match_reason,
-                ms.score,
-                a.id AS asset_id,
-                a.file_name,
-                a.file_path,
-                a.extension,
-                a.size_bytes,
-                a.parse_confidence,
-                a.technical_metadata,
-                a.missing_at,
-                row_number() OVER (PARTITION BY ms.song_id ORDER BY a.updated_at DESC, a.file_path ASC) AS asset_rank
-         FROM matched_songs ms
-         JOIN ktv_song_assets a ON a.song_id = ms.song_id
-         WHERE a.missing_at IS NULL
-       )
-       SELECT song_id,
-              title,
-              primary_artist_name,
-              style_tags,
-              match_reason,
-              score,
-              asset_id,
-              file_name,
-              file_path,
-              extension,
-              size_bytes,
-              parse_confidence,
-              technical_metadata,
-              missing_at
-       FROM ranked_assets
-       WHERE asset_rank <= $5
-       ORDER BY score DESC, title ASC, primary_artist_name ASC, file_name ASC`,
-      [normalizedQuery, likeQuery, tagQuery, limit, versionsPerSong]
+      `SELECT s.id AS song_id,
+              s.title,
+              s.primary_artist_name,
+              s.style_tags,
+              CASE
+                WHEN $1 = '' THEN 1
+                WHEN s.normalized_title = $1 THEN 100
+                WHEN s.normalized_primary_artist_name = $1 THEN 90
+                WHEN EXISTS (SELECT 1 FROM unnest(s.artist_names) AS artist(artist_name) WHERE replace(lower(artist_name), ' ', '') = $1) THEN 85
+                WHEN s.normalized_title LIKE $2 OR similarity(s.normalized_title, $1) > 0.25 THEN 70
+                WHEN s.normalized_primary_artist_name LIKE $2
+                  OR EXISTS (SELECT 1 FROM unnest(s.artist_names) AS artist(artist_name) WHERE replace(lower(artist_name), ' ', '') LIKE $2 OR artist_name ILIKE $3) THEN 60
+                WHEN s.title_pinyin LIKE $2 THEN 50
+                WHEN s.title_initials LIKE $2 THEN 45
+                WHEN EXISTS (SELECT 1 FROM unnest(s.style_tags) AS tag(tag_name) WHERE replace(lower(tag_name), ' ', '') LIKE $2 OR tag_name ILIKE $3) THEN 35
+                ELSE 0
+              END AS score,
+              CASE
+                WHEN $1 = '' THEN 'default'
+                WHEN s.normalized_title = $1 THEN 'title'
+                WHEN s.normalized_primary_artist_name = $1
+                  OR EXISTS (SELECT 1 FROM unnest(s.artist_names) AS artist(artist_name) WHERE replace(lower(artist_name), ' ', '') = $1) THEN 'artist'
+                WHEN s.normalized_title LIKE $2 OR similarity(s.normalized_title, $1) > 0.25 THEN 'normalized_title'
+                WHEN s.normalized_primary_artist_name LIKE $2
+                  OR EXISTS (SELECT 1 FROM unnest(s.artist_names) AS artist(artist_name) WHERE replace(lower(artist_name), ' ', '') LIKE $2 OR artist_name ILIKE $3) THEN 'artist'
+                WHEN s.title_pinyin LIKE $2 THEN 'pinyin'
+                WHEN s.title_initials LIKE $2 THEN 'initials'
+                WHEN EXISTS (SELECT 1 FROM unnest(s.style_tags) AS tag(tag_name) WHERE replace(lower(tag_name), ' ', '') LIKE $2 OR tag_name ILIKE $3) THEN 'style'
+                ELSE 'default'
+              END AS match_reason,
+              s.id AS asset_id,
+              s.file_name,
+              s.file_path,
+              s.extension,
+              s.size_bytes,
+              s.parse_confidence,
+              s.technical_metadata,
+              s.missing_at
+       FROM ktv_songs s
+       WHERE s.missing_at IS NULL
+         AND (
+           $1 = ''
+           OR s.normalized_title = $1
+           OR s.normalized_title LIKE $2
+           OR similarity(s.normalized_title, $1) > 0.25
+           OR s.title_pinyin LIKE $2
+           OR s.title_initials LIKE $2
+           OR s.normalized_primary_artist_name LIKE $2
+           OR EXISTS (SELECT 1 FROM unnest(s.artist_names) AS artist(artist_name) WHERE replace(lower(artist_name), ' ', '') LIKE $2 OR artist_name ILIKE $3)
+           OR EXISTS (SELECT 1 FROM unnest(s.style_tags) AS tag(tag_name) WHERE replace(lower(tag_name), ' ', '') LIKE $2 OR tag_name ILIKE $3)
+         )
+       ORDER BY ${matchedSongOrder}
+       LIMIT $4`,
+      [normalizedQuery, likeQuery, tagQuery, limit]
     );
 
     return result.rows;
@@ -465,65 +404,30 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
     const limit = discoverySongPageLimit(input.limit);
     const offset = discoverySongPageOffset(input.offset);
     const result = await this.db.query<IndexedSearchRow>(
-      `WITH matched_songs AS (
-         SELECT s.id AS song_id,
-                s.title,
-                s.primary_artist_name,
-                COALESCE((
-                  SELECT array_agg(tag_name ORDER BY tag_group, tag_name)
-                  FROM (
-                    SELECT DISTINCT st.tag_name,
-                           st.tag_group
-                    FROM ktv_song_style_tags st
-                    WHERE st.song_id = s.id
-                  ) style_tag_rows
-                ), ARRAY[]::text[]) AS style_tags,
-                'artist'::text AS match_reason,
-                s.request_count AS score
-         FROM ktv_songs s
-         JOIN ktv_song_artists filter_artist ON filter_artist.song_id = s.id AND filter_artist.artist_id = $1
-         JOIN ktv_song_assets active_asset ON active_asset.song_id = s.id AND active_asset.missing_at IS NULL
-         GROUP BY s.id, s.title, s.primary_artist_name, s.request_count, s.last_requested_at
-         ORDER BY s.request_count DESC, s.last_requested_at DESC NULLS LAST, s.title ASC, s.primary_artist_name ASC
-         LIMIT $2 OFFSET $3
-       ),
-       ranked_assets AS (
-         SELECT ms.song_id,
-                ms.title,
-                ms.primary_artist_name,
-                ms.style_tags,
-                ms.match_reason,
-                ms.score,
-                a.id AS asset_id,
-                a.file_name,
-                a.file_path,
-                a.extension,
-                a.size_bytes,
-                a.parse_confidence,
-                a.technical_metadata,
-                a.missing_at,
-                row_number() OVER (PARTITION BY ms.song_id ORDER BY a.updated_at DESC, a.file_path ASC) AS asset_rank
-         FROM matched_songs ms
-         JOIN ktv_song_assets a ON a.song_id = ms.song_id
-         WHERE a.missing_at IS NULL
-       )
-       SELECT song_id,
-              title,
-              primary_artist_name,
-              style_tags,
-              match_reason,
-              score,
-              asset_id,
-              file_name,
-              file_path,
-              extension,
-              size_bytes,
-              parse_confidence,
-              technical_metadata,
-              missing_at
-       FROM ranked_assets
-       WHERE asset_rank <= 1
-       ORDER BY score DESC, title ASC, primary_artist_name ASC, file_name ASC`,
+      `SELECT s.id AS song_id,
+              s.title,
+              s.primary_artist_name,
+              s.style_tags,
+              'artist'::text AS match_reason,
+              s.request_count AS score,
+              s.id AS asset_id,
+              s.file_name,
+              s.file_path,
+              s.extension,
+              s.size_bytes,
+              s.parse_confidence,
+              s.technical_metadata,
+              s.missing_at
+       FROM ktv_songs s
+       WHERE s.missing_at IS NULL
+         AND $1 = ANY(
+           CASE
+             WHEN cardinality(s.artist_names) > 0 THEN s.artist_names
+             ELSE ARRAY[s.primary_artist_name]::text[]
+           END
+         )
+       ORDER BY s.request_count DESC, s.last_requested_at DESC NULLS LAST, s.title ASC, s.primary_artist_name ASC, s.file_name ASC
+       LIMIT $2 OFFSET $3`,
       [input.artistId, limit, offset]
     );
 
@@ -534,82 +438,32 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
     const limit = discoverySongPageLimit(input.limit);
     const offset = discoverySongPageOffset(input.offset);
     const isUntagged = input.genre === untaggedDiscoveryGenre;
-    const genreJoin = isUntagged
-      ? ""
-      : "JOIN ktv_song_style_tags filter_tag ON filter_tag.song_id = s.id AND filter_tag.tag_name = $1";
     const genreWhere = isUntagged
-      ? `AND NOT EXISTS (
-           SELECT 1
-           FROM ktv_song_style_tags filter_tag
-           WHERE filter_tag.song_id = s.id
-             AND length(trim(filter_tag.tag_name)) > 0
-         )`
-      : "";
+      ? "AND NOT EXISTS (SELECT 1 FROM unnest(s.style_tags) AS tag(tag_name) WHERE length(trim(tag_name)) > 0)"
+      : "AND $1 = ANY(s.style_tags)";
     const values = isUntagged ? [limit, offset] : [input.genre, limit, offset];
     const limitParam = isUntagged ? "$1" : "$2";
     const offsetParam = isUntagged ? "$2" : "$3";
     const result = await this.db.query<IndexedSearchRow>(
-      `WITH matched_songs AS (
-         SELECT s.id AS song_id,
-                s.title,
-                s.primary_artist_name,
-                COALESCE((
-                  SELECT array_agg(tag_name ORDER BY tag_group, tag_name)
-                  FROM (
-                    SELECT DISTINCT st.tag_name,
-                           st.tag_group
-                    FROM ktv_song_style_tags st
-                    WHERE st.song_id = s.id
-                  ) style_tag_rows
-                ), ARRAY[]::text[]) AS style_tags,
-                'style'::text AS match_reason,
-                s.request_count AS score
-         FROM ktv_songs s
-         ${genreJoin}
-         JOIN ktv_song_assets active_asset ON active_asset.song_id = s.id AND active_asset.missing_at IS NULL
-         WHERE true
-           ${genreWhere}
-         GROUP BY s.id, s.title, s.primary_artist_name, s.request_count, s.last_requested_at
-         ORDER BY s.request_count DESC, s.last_requested_at DESC NULLS LAST, s.title ASC, s.primary_artist_name ASC
-         LIMIT ${limitParam} OFFSET ${offsetParam}
-       ),
-       ranked_assets AS (
-         SELECT ms.song_id,
-                ms.title,
-                ms.primary_artist_name,
-                ms.style_tags,
-                ms.match_reason,
-                ms.score,
-                a.id AS asset_id,
-                a.file_name,
-                a.file_path,
-                a.extension,
-                a.size_bytes,
-                a.parse_confidence,
-                a.technical_metadata,
-                a.missing_at,
-                row_number() OVER (PARTITION BY ms.song_id ORDER BY a.updated_at DESC, a.file_path ASC) AS asset_rank
-         FROM matched_songs ms
-         JOIN ktv_song_assets a ON a.song_id = ms.song_id
-         WHERE a.missing_at IS NULL
-       )
-       SELECT song_id,
-              title,
-              primary_artist_name,
-              style_tags,
-              match_reason,
-              score,
-              asset_id,
-              file_name,
-              file_path,
-              extension,
-              size_bytes,
-              parse_confidence,
-              technical_metadata,
-              missing_at
-       FROM ranked_assets
-       WHERE asset_rank <= 1
-       ORDER BY score DESC, title ASC, primary_artist_name ASC, file_name ASC`,
+      `SELECT s.id AS song_id,
+              s.title,
+              s.primary_artist_name,
+              s.style_tags,
+              'style'::text AS match_reason,
+              s.request_count AS score,
+              s.id AS asset_id,
+              s.file_name,
+              s.file_path,
+              s.extension,
+              s.size_bytes,
+              s.parse_confidence,
+              s.technical_metadata,
+              s.missing_at
+       FROM ktv_songs s
+       WHERE s.missing_at IS NULL
+         ${genreWhere}
+       ORDER BY s.request_count DESC, s.last_requested_at DESC NULLS LAST, s.title ASC, s.primary_artist_name ASC, s.file_name ASC
+       LIMIT ${limitParam} OFFSET ${offsetParam}`,
       values
     );
 
@@ -633,11 +487,31 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
 
   private async getLatestRun(): Promise<KtvIndexRunSummary | null> {
     const result = await this.db.query<LatestRunRow>(
-      `SELECT id, source_root, ssh_host, status, files_seen, songs_upserted, assets_upserted,
-              error_message, started_at, finished_at
-       FROM ktv_index_runs
-       ORDER BY started_at DESC
-       LIMIT 1`
+      `WITH latest_run AS (
+         SELECT last_seen_run_id AS id,
+                max(source_root) AS source_root,
+                max(ssh_host) AS ssh_host,
+                count(*)::int AS files_seen,
+                count(*)::int AS songs_upserted,
+                count(*)::int AS assets_upserted,
+                max(updated_at) AS finished_at
+         FROM ktv_songs
+         WHERE last_seen_run_id IS NOT NULL
+         GROUP BY last_seen_run_id
+         ORDER BY max(updated_at) DESC, last_seen_run_id DESC
+         LIMIT 1
+       )
+       SELECT id,
+              source_root,
+              ssh_host,
+              'completed'::text AS status,
+              files_seen,
+              songs_upserted,
+              assets_upserted,
+              NULL::text AS error_message,
+              finished_at AS started_at,
+              finished_at
+       FROM latest_run`
     );
     const row = result.rows[0];
     if (!row) {
@@ -664,11 +538,19 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
     artistCount: number;
   }> {
     const result = await this.db.query<CountRow>(
-      `SELECT count(*) FILTER (WHERE a.missing_at IS NULL) AS active_asset_count,
-              count(*) FILTER (WHERE a.missing_at IS NOT NULL) AS missing_asset_count,
-              (SELECT count(*) FROM ktv_songs) AS song_count,
-              (SELECT count(*) FROM ktv_artists) AS artist_count
-       FROM ktv_song_assets a`
+      `SELECT count(*) FILTER (WHERE s.missing_at IS NULL) AS active_asset_count,
+              count(*) FILTER (WHERE s.missing_at IS NOT NULL) AS missing_asset_count,
+              (SELECT count(*) FROM ktv_songs s2 WHERE s2.missing_at IS NULL) AS song_count,
+              (SELECT count(DISTINCT artist_name)
+               FROM ktv_songs s3
+               CROSS JOIN LATERAL unnest(
+                 CASE
+                   WHEN cardinality(s3.artist_names) > 0 THEN s3.artist_names
+                   ELSE ARRAY[s3.primary_artist_name]::text[]
+                 END
+               ) AS artist(artist_name)
+               WHERE s3.missing_at IS NULL AND length(trim(artist_name)) > 0) AS artist_count
+       FROM ktv_songs s`
     );
     const row = result.rows[0];
     return {
@@ -682,7 +564,7 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
   private async getParseStrategies(): Promise<KtvIndexDiagnosticsResponse["parseStrategies"]> {
     const result = await this.db.query<ParseStrategyRow>(
       `SELECT parse_strategy, count(*)::int AS count
-       FROM ktv_song_assets
+       FROM ktv_songs
        WHERE missing_at IS NULL
        GROUP BY parse_strategy
        ORDER BY count DESC, parse_strategy ASC`
@@ -696,7 +578,7 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
   private async getTechnicalStatusCounts(): Promise<KtvIndexDiagnosticsResponse["technicalStatusCounts"]> {
     const result = await this.db.query<TechnicalStatusRow>(
       `SELECT technical_status, count(*)::int AS count
-       FROM ktv_song_assets
+       FROM ktv_songs
        WHERE missing_at IS NULL
        GROUP BY technical_status
        ORDER BY technical_status ASC`
@@ -711,7 +593,7 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
     const result = await this.db.query<AudioTrackDistributionRow>(
       `WITH track_arrays AS (
          SELECT coalesce(technical_metadata->'mediaInfoSummary'->'audioTracks', technical_metadata->'audioTracks') AS audio_tracks
-         FROM ktv_song_assets
+         FROM ktv_songs
          WHERE missing_at IS NULL
        )
        SELECT jsonb_array_length(audio_tracks)::int AS audio_track_count,
@@ -731,7 +613,7 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
     const result = await this.db.query<ConfidenceRow>(
       `SELECT count(*) FILTER (WHERE parse_confidence < 0.75)::int AS low_confidence_count,
               min(parse_confidence) AS min_parse_confidence
-       FROM ktv_song_assets
+       FROM ktv_songs
        WHERE missing_at IS NULL`
     );
     const row = result.rows[0];
@@ -755,7 +637,7 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
     const orderBy = input.deterministicSample ? "updated_at DESC" : "random()";
     const result = await this.db.query<SampleAssetRow>(
       `SELECT id, file_path
-       FROM ktv_song_assets
+       FROM ktv_songs
        WHERE missing_at IS NULL
        ORDER BY ${orderBy}
        LIMIT $1`,

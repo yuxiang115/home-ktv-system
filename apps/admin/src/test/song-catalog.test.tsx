@@ -139,7 +139,7 @@ function json(value: unknown, status = 200): Response {
 
 function createKtvDiagnostics(): KtvIndexDiagnosticsResponse {
   return {
-    tables: [{ tableName: "ktv_song_assets", exists: true }],
+    tables: [{ tableName: "ktv_songs", exists: true }],
     latestRun: {
       id: "run-1",
       sourceRoot: "/mnt/nas/KTV歌曲",

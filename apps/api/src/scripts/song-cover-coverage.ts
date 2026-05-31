@@ -230,18 +230,14 @@ async function listSampleSongs(
 ): Promise<SampleSongRow[]> {
   if (options.source === "online") {
     const result = await db.query<SampleSongRow>(
-      `SELECT s.id AS "sourceSongId",
-              s.title,
-              s.primary_artist_name AS "artistName"
-       FROM online_songs s
-       WHERE trim(s.title) <> ''
-         AND trim(s.primary_artist_name) <> ''
-         AND EXISTS (
-           SELECT 1
-           FROM online_song_assets a
-           WHERE a.song_id = s.id
-             AND a.status = 'ready'
-         )
+      `SELECT ready_asset_id AS "sourceSongId",
+              title,
+              artist_name AS "artistName"
+       FROM candidate_tasks
+       WHERE status = 'ready'
+         AND ready_asset_id IS NOT NULL
+         AND trim(title) <> ''
+         AND trim(artist_name) <> ''
        ORDER BY random()
        LIMIT $1`,
       [options.limit]
@@ -256,12 +252,7 @@ async function listSampleSongs(
      FROM ktv_songs s
      WHERE trim(s.title) <> ''
        AND trim(s.primary_artist_name) <> ''
-       AND EXISTS (
-         SELECT 1
-         FROM ktv_song_assets a
-         WHERE a.song_id = s.id
-           AND a.missing_at IS NULL
-       )
+       AND s.missing_at IS NULL
      ORDER BY random()
      LIMIT $1`,
     [options.limit]

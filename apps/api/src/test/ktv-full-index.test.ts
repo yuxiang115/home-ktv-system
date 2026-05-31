@@ -17,44 +17,42 @@ const activeAssetIndexMigrationSql = existsSync(activeAssetIndexMigrationUrl)
   : "";
 
 describe("KTV full index schema", () => {
-  it("creates normalized KTV index tables in migration and schemaSql", () => {
-    for (const sql of [migrationSql, schemaSql]) {
-      for (const expected of [
-        "CREATE TABLE IF NOT EXISTS ktv_index_runs",
-        "CREATE TABLE IF NOT EXISTS ktv_artists",
-        "CREATE TABLE IF NOT EXISTS ktv_songs",
-        "CREATE TABLE IF NOT EXISTS ktv_song_artists",
-        "CREATE TABLE IF NOT EXISTS ktv_song_assets"
-      ]) {
-        expect(sql).toContain(expected);
-      }
+  it("keeps a single playable-file ktv_songs table in the final schema", () => {
+    expect(migrationSql).toContain("CREATE TABLE IF NOT EXISTS ktv_song_assets");
+    expect(schemaSql).toContain("CREATE TABLE IF NOT EXISTS ktv_songs");
+    for (const removedTable of [
+      "CREATE TABLE IF NOT EXISTS ktv_index_runs",
+      "CREATE TABLE IF NOT EXISTS ktv_artists",
+      "CREATE TABLE IF NOT EXISTS ktv_song_artists",
+      "CREATE TABLE IF NOT EXISTS ktv_song_assets"
+    ]) {
+      expect(schemaSql).not.toContain(removedTable);
     }
 
     expect(tableNames.ktvSongs).toBe("ktv_songs");
-    expect(tableNames.ktvSongAssets).toBe("ktv_song_assets");
+    expect(Object.values(tableNames)).not.toContain("ktv_song_assets");
   });
 
   it("indexes title, artist, and path lookup columns without retaining legacy category", () => {
     for (const expected of [
       "ktv_songs_normalized_title_trgm_idx",
-      "ktv_artists_normalized_name_trgm_idx",
-      "ktv_song_assets_path_uq"
+      "ktv_songs_artist_names_gin_idx",
+      "ktv_songs_file_path_uq"
     ]) {
-      expect(migrationSql).toContain(expected);
       expect(schemaSql).toContain(expected);
     }
     expect(schemaSql).not.toContain("category text NOT NULL");
     expect(schemaSql).not.toContain("ktv_songs_category_idx");
   });
 
-  it("adds partial indexes for active playable assets", () => {
+  it("adds partial indexes for active playable songs", () => {
     for (const expected of [
-      "ktv_song_assets_active_song_idx",
+      "ktv_songs_active_idx",
       "WHERE missing_at IS NULL"
     ]) {
-      expect(activeAssetIndexMigrationSql).toContain(expected);
       expect(schemaSql).toContain(expected);
     }
+    expect(activeAssetIndexMigrationSql).toContain("ktv_song_assets_active_song_idx");
   });
 });
 
@@ -76,7 +74,7 @@ describe("KTV full index importer", () => {
     });
   });
 
-  it("upserts one song with multiple assets for duplicate title and artist", async () => {
+  it("upserts one playable song row per NAS file", async () => {
     const db = createRecordingDb();
     const drafts: KtvIndexAssetDraft[] = [
       createDraft({ filePath: "/media/a.mkv" }),
@@ -96,11 +94,11 @@ describe("KTV full index importer", () => {
       assetsUpserted: 2
     });
     expect(db.queries.map((query) => query.text)).toEqual(expect.arrayContaining([
-      expect.stringContaining("INSERT INTO ktv_index_runs"),
-      expect.stringContaining("INSERT INTO ktv_artists"),
       expect.stringContaining("INSERT INTO ktv_songs"),
-      expect.stringContaining("INSERT INTO ktv_song_assets")
+      expect.stringContaining("ON CONFLICT (file_path)")
     ]));
+    expect(db.queries.map((query) => query.text).join("\n")).not.toContain("ktv_song_assets");
+    expect(db.queries.map((query) => query.text).join("\n")).not.toContain("ktv_artists");
   });
 
   it("marks previously indexed assets missing during a full rebuild", async () => {
@@ -114,7 +112,7 @@ describe("KTV full index importer", () => {
 
     expect(result.assetsMarkedMissing).toBe(3);
     expect(db.queries.map((query) => query.text)).toEqual(expect.arrayContaining([
-      expect.stringContaining("UPDATE ktv_song_assets"),
+      expect.stringContaining("UPDATE ktv_songs"),
       expect.stringContaining("last_seen_run_id IS DISTINCT FROM $1"),
       expect.stringContaining("missing_at IS NULL")
     ]));

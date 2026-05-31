@@ -1,4 +1,5 @@
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import type { QueryExecutor } from "../../db/query-executor.js";
 import { buildPinyinSearchKeys, normalizeSearchText } from "../catalog/search-normalization.js";
 import {
@@ -81,17 +82,8 @@ export async function indexKtvAssetDrafts(
   try {
     for (const draft of input.drafts) {
       const primaryArtistName = draft.artistNames[0] ?? "Unknown Artist";
-      const artistRows = [];
-      for (const artistName of draft.artistNames) {
-        artistRows.push(await upsertArtist(db, artistName));
-      }
-
-      const songId = await upsertSong(db, draft, primaryArtistName);
+      await upsertSong(db, draft, primaryArtistName, runId, input.sourceRoot, input.sshHost);
       songsUpserted += 1;
-      for (let index = 0; index < artistRows.length; index += 1) {
-        await upsertSongArtist(db, songId, artistRows[index]?.id ?? "", index);
-      }
-      await upsertAsset(db, draft, songId, runId);
       assetsUpserted += 1;
     }
 
@@ -99,13 +91,6 @@ export async function indexKtvAssetDrafts(
       assetsMarkedMissing = await markMissingAssets(db, runId);
     }
 
-    await finishRun(db, {
-      runId,
-      status: "completed",
-      filesSeen: input.drafts.length,
-      songsUpserted,
-      assetsUpserted
-    });
     return {
       runId,
       filesSeen: input.drafts.length,
@@ -114,14 +99,6 @@ export async function indexKtvAssetDrafts(
       assetsMarkedMissing
     };
   } catch (error) {
-    await finishRun(db, {
-      runId,
-      status: "failed",
-      filesSeen: input.drafts.length,
-      songsUpserted,
-      assetsUpserted,
-      errorMessage: error instanceof Error ? error.message : String(error)
-    });
     throw error;
   }
 }
@@ -135,47 +112,53 @@ function splitArtistNames(value: string): string[] {
 }
 
 async function startRun(db: QueryExecutor, input: IndexKtvAssetDraftsInput): Promise<string> {
-  const result = await db.query<IdRow>(
-    `INSERT INTO ktv_index_runs (source_root, ssh_host, status, files_seen)
-     VALUES ($1, $2, 'running', $3)
-     RETURNING id`,
-    [input.sourceRoot, input.sshHost ?? null, input.drafts.length]
-  );
-  return requireRow(result.rows[0], "ktv_index_runs insert").id;
+  void db;
+  void input;
+  return randomUUID();
 }
 
-async function upsertArtist(db: QueryExecutor, name: string): Promise<IdRow> {
-  const normalizedName = normalizeSearchText(name);
-  const pinyinKeys = buildPinyinSearchKeys(name);
-  const result = await db.query<IdRow>(
-    `INSERT INTO ktv_artists (name, normalized_name, name_pinyin, name_initials)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (normalized_name)
-     DO UPDATE SET
-       name = EXCLUDED.name,
-       name_pinyin = EXCLUDED.name_pinyin,
-       name_initials = EXCLUDED.name_initials,
-       updated_at = now()
-     RETURNING id`,
-    [name, normalizedName, pinyinKeys.pinyin, pinyinKeys.initials]
-  );
-  return requireRow(result.rows[0], "ktv_artists upsert");
-}
-
-async function upsertSong(db: QueryExecutor, draft: KtvIndexAssetDraft, primaryArtistName: string): Promise<string> {
+async function upsertSong(
+  db: QueryExecutor,
+  draft: KtvIndexAssetDraft,
+  primaryArtistName: string,
+  runId: string,
+  sourceRoot: string,
+  sshHost: string | undefined
+): Promise<string> {
   const normalizedPrimaryArtistName = normalizeSearchText(primaryArtistName);
   const result = await db.query<IdRow>(
     `INSERT INTO ktv_songs (
        title, normalized_title, title_pinyin, title_initials,
-       primary_artist_name, normalized_primary_artist_name
+       primary_artist_name, normalized_primary_artist_name,
+       artist_names, style_tags,
+       file_path, relative_path, file_name, extension,
+       size_bytes, mtime_ms, parse_strategy, parse_confidence,
+       technical_status, technical_metadata,
+       source_root, ssh_host, first_seen_run_id, last_seen_run_id, missing_at
      )
-     VALUES ($1, $2, $3, $4, $5, $6)
-     ON CONFLICT (normalized_title, normalized_primary_artist_name)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::text[], $8::text[], $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19, $20, $21, $21, NULL)
+     ON CONFLICT (file_path)
      DO UPDATE SET
        title = EXCLUDED.title,
        title_pinyin = EXCLUDED.title_pinyin,
        title_initials = EXCLUDED.title_initials,
        primary_artist_name = EXCLUDED.primary_artist_name,
+       normalized_primary_artist_name = EXCLUDED.normalized_primary_artist_name,
+       artist_names = EXCLUDED.artist_names,
+       style_tags = EXCLUDED.style_tags,
+       relative_path = EXCLUDED.relative_path,
+       file_name = EXCLUDED.file_name,
+       extension = EXCLUDED.extension,
+       size_bytes = EXCLUDED.size_bytes,
+       mtime_ms = EXCLUDED.mtime_ms,
+       parse_strategy = EXCLUDED.parse_strategy,
+       parse_confidence = EXCLUDED.parse_confidence,
+       technical_status = EXCLUDED.technical_status,
+       technical_metadata = EXCLUDED.technical_metadata,
+       source_root = EXCLUDED.source_root,
+       ssh_host = EXCLUDED.ssh_host,
+       last_seen_run_id = EXCLUDED.last_seen_run_id,
+       missing_at = NULL,
        updated_at = now()
      RETURNING id`,
     [
@@ -184,49 +167,9 @@ async function upsertSong(db: QueryExecutor, draft: KtvIndexAssetDraft, primaryA
       draft.titlePinyin,
       draft.titleInitials,
       primaryArtistName,
-      normalizedPrimaryArtistName
-    ]
-  );
-  return requireRow(result.rows[0], "ktv_songs upsert").id;
-}
-
-async function upsertSongArtist(db: QueryExecutor, songId: string, artistId: string, artistOrder: number): Promise<void> {
-  if (!artistId) {
-    return;
-  }
-  await db.query(
-    `INSERT INTO ktv_song_artists (song_id, artist_id, artist_order)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (song_id, artist_id)
-     DO UPDATE SET artist_order = EXCLUDED.artist_order`,
-    [songId, artistId, artistOrder]
-  );
-}
-
-async function upsertAsset(db: QueryExecutor, draft: KtvIndexAssetDraft, songId: string, runId: string): Promise<string> {
-  const result = await db.query<IdRow>(
-    `INSERT INTO ktv_song_assets (
-       song_id, file_path, relative_path, file_name, extension, size_bytes, mtime_ms,
-       parse_strategy, parse_confidence, technical_status, technical_metadata,
-       first_seen_run_id, last_seen_run_id, missing_at
-     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $12, NULL)
-     ON CONFLICT (file_path)
-     DO UPDATE SET
-       song_id = EXCLUDED.song_id,
-       relative_path = EXCLUDED.relative_path,
-       file_name = EXCLUDED.file_name,
-       extension = EXCLUDED.extension,
-       size_bytes = EXCLUDED.size_bytes,
-       mtime_ms = EXCLUDED.mtime_ms,
-       parse_strategy = EXCLUDED.parse_strategy,
-       parse_confidence = EXCLUDED.parse_confidence,
-       last_seen_run_id = EXCLUDED.last_seen_run_id,
-       missing_at = NULL,
-       updated_at = now()
-     RETURNING id`,
-    [
-      songId,
+      normalizedPrimaryArtistName,
+      draft.artistNames,
+      [],
       draft.filePath,
       draft.relativePath,
       draft.fileName,
@@ -237,16 +180,18 @@ async function upsertAsset(db: QueryExecutor, draft: KtvIndexAssetDraft, songId:
       draft.parseConfidence,
       draft.technicalStatus,
       JSON.stringify(draft.technicalMetadata),
+      sourceRoot,
+      sshHost ?? null,
       runId
     ]
   );
-  return requireRow(result.rows[0], "ktv_song_assets upsert").id;
+  return requireRow(result.rows[0], "ktv_songs upsert").id;
 }
 
 async function markMissingAssets(db: QueryExecutor, runId: string): Promise<number> {
   const result = await db.query<{ count: number | string }>(
     `WITH marked AS (
-       UPDATE ktv_song_assets
+       UPDATE ktv_songs
        SET missing_at = now(),
            updated_at = now()
        WHERE last_seen_run_id IS DISTINCT FROM $1
@@ -256,40 +201,8 @@ async function markMissingAssets(db: QueryExecutor, runId: string): Promise<numb
      SELECT count(*)::int AS count FROM marked`,
     [runId]
   );
-  const row = requireRow(result.rows[0], "ktv_song_assets missing marker");
+  const row = requireRow(result.rows[0], "ktv_songs missing marker");
   return typeof row.count === "number" ? row.count : Number.parseInt(row.count, 10);
-}
-
-async function finishRun(
-  db: QueryExecutor,
-  input: {
-    runId: string;
-    status: "completed" | "failed";
-    filesSeen: number;
-    songsUpserted: number;
-    assetsUpserted: number;
-    errorMessage?: string | undefined;
-  }
-): Promise<void> {
-  await db.query(
-    `UPDATE ktv_index_runs
-     SET status = $2,
-         files_seen = $3,
-         songs_upserted = $4,
-         assets_upserted = $5,
-         error_message = $6,
-         finished_at = now(),
-         updated_at = now()
-     WHERE id = $1`,
-    [
-      input.runId,
-      input.status,
-      input.filesSeen,
-      input.songsUpserted,
-      input.assetsUpserted,
-      input.errorMessage ?? null
-    ]
-  );
 }
 
 function requireRow<TRow>(row: TRow | undefined, context: string): TRow {

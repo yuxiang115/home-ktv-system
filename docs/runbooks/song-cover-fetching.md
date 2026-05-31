@@ -17,7 +17,7 @@
 - 还没有把外部图片下载到本地文件缓存。
 - 目前 `image_url` 存的是外部平台图片地址。
 
-后续本地图片缓存应继续扩展 `song_cover_cache`，不要把封面字段放入 `ktv_songs` 或 `ktv_song_assets` 主表。
+后续本地图片缓存应继续扩展 `song_cover_cache`，不要把封面字段放入 `ktv_songs` 主表。
 
 ## 代码位置
 
@@ -62,7 +62,7 @@ source_kind = 'nas'
 source_song_id = ktv_songs.id
 ```
 
-说明：物理 NAS 索引表仍然沿用 `ktv_songs` / `ktv_song_assets` 命名；`source_kind` 是运行时和 API 层的来源语义，统一使用 `nas` / `online`。
+说明：物理 NAS 索引当前只保留 `ktv_songs` 单表；`source_kind` 是运行时和 API 层的来源语义，统一使用 `nas` / `online`。
 
 ## 拉取逻辑
 

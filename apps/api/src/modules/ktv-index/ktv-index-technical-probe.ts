@@ -90,7 +90,7 @@ export class KtvIndexTechnicalProbeService {
 
     const result = await this.db.query<KtvIndexProbeTargetRow>(
       `SELECT id, file_path, technical_status
-       FROM ktv_song_assets
+       FROM ktv_songs
        WHERE missing_at IS NULL
          AND ($2::text IS NULL OR id = $2)
          AND ($1::boolean OR technical_status <> 'failed')
@@ -112,7 +112,7 @@ export class KtvIndexTechnicalProbeService {
     probedAt: string;
   }): Promise<void> {
     await this.db.query(
-      `UPDATE ktv_song_assets
+      `UPDATE ktv_songs
        SET technical_status = 'probed',
            technical_metadata = technical_metadata || $1::jsonb,
            updated_at = now()
@@ -134,7 +134,7 @@ export class KtvIndexTechnicalProbeService {
     failedAt: string;
   }): Promise<void> {
     await this.db.query(
-      `UPDATE ktv_song_assets
+      `UPDATE ktv_songs
        SET technical_status = 'failed',
            technical_metadata = technical_metadata || $1::jsonb,
            updated_at = now()

@@ -11,14 +11,10 @@ The index keeps the NAS folder layout unchanged. Video files stay under `/mnt/na
 
 Tables:
 
-- `ktv_index_runs`: every index run, source root, status, counts, errors.
-- `ktv_artists`: normalized artist names plus pinyin and initials.
-- `ktv_songs`: title, primary artist, normalized search keys.
-- `ktv_song_artists`: many-to-many song/artist links for duet and multi-artist songs.
-- `ktv_song_assets`: actual playable files, path, size, parse confidence, technical metadata, missing marker.
-- `ktv_song_style_tags`: simplified style-tag relation. One song can belong to multiple style tags through multiple rows.
+- `ktv_songs`: one row per playable NAS file. It stores title, artist array, style-tag array, file path, parse confidence, technical metadata, missing marker, and request counters.
+- `song_cover_cache`: cover lookup cache keyed by `source_kind + source_song_id`.
 
-The existing playback catalog remains separate. This KTV index is the fast lookup layer for finding song versions, artist catalogs, style tags, and playable file paths.
+The old artist, asset, index-run, and style relation tables were merged into `ktv_songs` by `0021_catalog_schema_simplification.sql`. This KTV index is the lookup layer for finding song versions, artist catalogs, style tags, and playable file paths.
 
 ## Admission Policy
 
@@ -80,17 +76,13 @@ Details:
 Exception policy:
 
 - If a file does not match the folder rule, delete it or add a new explicit folder rule before making it part of the active library.
-- After cleanup, all active assets should have `parse_strategy = 'filename'` and `parse_confidence = 0.98`.
+- After cleanup, all active songs should have `parse_strategy = 'filename'` and `parse_confidence = 0.98`.
 
 ## Style Tags
 
-歌曲风格不再依赖文件名中的原始分类。当前数据库只保留一张关系表：
+歌曲风格不再依赖文件名中的原始分类。当前数据库把标签直接保存到 `ktv_songs.style_tags text[]`。
 
-- `ktv_song_style_tags.song_id`: 歌曲 ID。
-- `ktv_song_style_tags.tag_name`: 标签名，例如国语、流行、KTV必点。
-- `ktv_song_style_tags.tag_group`: 标签分组，例如语种地区、核心曲风、KTV场景。
-
-一首歌有多个标签时写多行，唯一约束是 `(song_id, tag_name, tag_group)`。数据库不再保存标签字典、打标运行状态或缓存；这些状态由外部脚本自己的 JSONL 和 state 文件承担。标签回填不影响搜索、点歌和播放。
+一首歌有多个标签时写成数组，例如 `{'国语','流行','KTV必点'}`。数据库不再保存标签字典、打标关系表、打标运行状态或缓存；这些状态由外部脚本自己的 JSONL 和 state 文件承担。标签回填不影响搜索、点歌和播放。
 
 LLM 批量补标签使用独立 Python runner。它会先把结果追加到 JSONL 和 state 文件，全部完成后再统一导入数据库：
 
@@ -153,10 +145,10 @@ What it does:
 1. SSH to `lxc-nas`.
 2. Discover `.mkv`, `.mpg`, and `.mpeg` files under the source root.
 3. Parse metadata by folder rule.
-4. Upsert artists, songs, artist links, and assets.
-5. Mark assets not seen in the current full run as `missing_at = now()`.
+4. Upsert one `ktv_songs` row per playable file.
+5. Mark rows not seen in the current full run as `missing_at = now()`.
 
-The command is idempotent. Running it again does not duplicate songs or assets. If a previously missing file reappears, the asset is restored by setting `missing_at = null`.
+The command is idempotent. Running it again does not duplicate songs. If a previously missing file reappears, the row is restored by setting `missing_at = null`.
 
 For smoke tests only:
 
@@ -168,7 +160,7 @@ pnpm -F @home-ktv/api index:ktv -- \
   --limit 100
 ```
 
-`--limit` does not mark missing assets, so it is safe for test runs.
+`--limit` does not mark missing songs, so it is safe for test runs.
 
 ## Verification SQL
 
@@ -176,17 +168,17 @@ Active count and size:
 
 ```sql
 select
-  count(*) filter (where missing_at is null) as active_assets,
-  count(*) filter (where missing_at is not null) as missing_assets,
+  count(*) filter (where missing_at is null) as active_songs,
+  count(*) filter (where missing_at is not null) as missing_songs,
   pg_size_pretty(coalesce(sum(size_bytes) filter (where missing_at is null), 0)) as active_file_size
-from ktv_song_assets;
+from ktv_songs;
 ```
 
 Parser coverage:
 
 ```sql
 select parse_strategy, count(*)
-from ktv_song_assets
+from ktv_songs
 where missing_at is null
 group by parse_strategy
 order by count desc;
@@ -195,10 +187,10 @@ order by count desc;
 Low-confidence rows:
 
 ```sql
-select count(*) as active_assets,
+select count(*) as active_songs,
        count(*) filter (where parse_confidence < 0.75) as low_confidence,
        min(parse_confidence) as min_confidence
-from ktv_song_assets
+from ktv_songs
 where missing_at is null;
 ```
 

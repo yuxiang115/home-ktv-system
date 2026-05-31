@@ -340,10 +340,9 @@ async function buildIndexCrossCheck(databaseUrl, sampleResolution) {
     await client.connect();
 
     const ktvSongs = await countTable(client, "ktv_songs");
-    const ktvSongAssets = await countTable(client, "ktv_song_assets");
     const matches = await findAssetMatches(client, sampleResolution);
 
-    return { status: "ok", ktvSongs, ktvSongAssets, matches };
+    return { status: "ok", ktvSongs, matches };
   } catch (error) {
     return { status: "unavailable", reason: error instanceof Error ? error.message : String(error) };
   } finally {
@@ -376,7 +375,7 @@ async function findAssetMatches(client, sampleResolution) {
     ];
     const result = await client.query(
       `SELECT file_path, file_name, technical_status
-       FROM ktv_song_assets
+       FROM ktv_songs
        WHERE file_path = ANY($1::text[]) OR file_path LIKE ANY($2::text[])
        ORDER BY updated_at DESC
        LIMIT 10`,

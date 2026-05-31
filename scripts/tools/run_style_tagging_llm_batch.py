@@ -512,10 +512,8 @@ def candidate_sql(max_existing_tags, limit):
     return f"""
 WITH existing_tags AS (
   SELECT s.id AS song_id,
-         count(st.tag_name)::integer AS tag_count
+         cardinality(s.style_tags)::integer AS tag_count
   FROM ktv_songs s
-  LEFT JOIN ktv_song_style_tags st ON st.song_id = s.id
-  GROUP BY s.id
 )
 SELECT json_build_object(
   'id', s.id,
@@ -524,10 +522,9 @@ SELECT json_build_object(
   'tag_count', existing_tags.tag_count
 )::text
 FROM ktv_songs s
-JOIN ktv_song_assets a ON a.song_id = s.id AND a.missing_at IS NULL
 JOIN existing_tags ON existing_tags.song_id = s.id
-WHERE existing_tags.tag_count <= {int(max_existing_tags)}
-GROUP BY s.id, s.title, s.primary_artist_name, s.updated_at, existing_tags.tag_count
+WHERE s.missing_at IS NULL
+  AND existing_tags.tag_count <= {int(max_existing_tags)}
 ORDER BY existing_tags.tag_count ASC, s.updated_at DESC, s.id ASC
 {limit_sql}
 """.strip()
@@ -612,14 +609,13 @@ def song_import_sql(row):
     if status == "tagged" and not tags:
         status = "empty"
     statements = []
-    for tag in tags:
-        tag_group = find_tag_group(tag)
+    if status == "tagged":
         statements.append(
             f"""
-INSERT INTO ktv_song_style_tags (song_id, tag_name, tag_group)
-VALUES ({sql_literal(song_id)}, {sql_literal(tag)}, {sql_literal(tag_group)})
-ON CONFLICT (song_id, tag_name, tag_group)
-DO UPDATE SET updated_at = now();
+UPDATE ktv_songs
+SET style_tags = {sql_text_array(tags)},
+    updated_at = now()
+WHERE id = {sql_literal(song_id)};
 """.strip()
         )
     return statements
@@ -631,6 +627,10 @@ def sql_literal(value):
     if isinstance(value, (int, float)):
         return str(value)
     return "'" + str(value).replace("'", "''") + "'"
+
+
+def sql_text_array(values):
+    return "ARRAY[" + ", ".join(sql_literal(value) for value in values) + "]::text[]"
 
 
 def append_result_rows(output, rows):

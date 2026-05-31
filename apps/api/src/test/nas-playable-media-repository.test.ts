@@ -7,7 +7,7 @@ describe("NasPlayableMediaRepository", () => {
     const db = new RecordingDb([
       createNasAssetRow({
         id: "ktv-asset-1",
-        song_id: "ktv-song-1",
+        song_id: "ktv-asset-1",
         title: "晴天",
         primary_artist_name: "周杰伦",
         file_name: "晴天.mkv",
@@ -37,10 +37,11 @@ describe("NasPlayableMediaRepository", () => {
     const repository = new NasPlayableMediaRepository(db);
     const asset = await repository.findPlayableBySource({ sourceType: "nas", assetId: "ktv-asset-1" });
 
-    expect(db.queries[0]).toContain("JOIN ktv_songs");
+    expect(db.queries[0]).toContain("FROM ktv_songs");
+    expect(db.queries[0]).not.toContain("ktv_song_assets");
     expect(asset).toMatchObject({
       sourceType: "nas",
-      songId: "ktv-song-1",
+      songId: "ktv-asset-1",
       assetId: "ktv-asset-1",
       title: "晴天",
       artistName: "周杰伦",

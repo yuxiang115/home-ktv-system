@@ -142,8 +142,8 @@ describe("candidate task repository", () => {
     expect(selected?.status).toBe("selected");
     expect(db.queries[0]?.text).toContain("WHERE room_id = $1");
     expect(db.queries[1]?.text).toContain("UPDATE candidate_tasks");
-    expect(db.queries[1]?.text).not.toContain("ready_asset_id");
-    expect(db.queries[1]?.text).toContain("ready_online_asset_id = COALESCE($5, ready_online_asset_id)");
+    expect(db.queries[1]?.text).toContain("ready_asset_id = COALESCE($5, ready_asset_id)");
+    expect(db.queries[1]?.text).not.toContain("ready_online_asset_id");
     expect(db.queries[1]?.values).toContain("selected");
   });
 });
@@ -374,8 +374,10 @@ function createCandidateTaskRow(input: Partial<CandidateTaskRow> = {}): Candidat
     failure_reason: "provider requires review",
     recent_event: { type: "discovered", message: "Found candidate" },
     provider_payload: { url: "https://example.invalid/watch" },
-    ready_source_type: null,
-    ready_online_asset_id: null,
+    ready_asset_id: null,
+    ready_media_url: null,
+    ready_cache_path: null,
+    ready_metadata: {},
     created_at: now,
     updated_at: now,
     selected_at: null,

@@ -2,10 +2,10 @@
 
 ## Contract
 
-Application code should query only active assets:
+Application code should query only active songs:
 
 ```sql
-where ktv_song_assets.missing_at is null
+where ktv_songs.missing_at is null
 ```
 
 Core fields for the KTV system:
@@ -13,17 +13,16 @@ Core fields for the KTV system:
 - `ktv_songs.id`
 - `ktv_songs.title`
 - `ktv_songs.primary_artist_name`
-- `ktv_song_assets.id`
-- `ktv_song_assets.file_path`
-- `ktv_song_assets.technical_metadata`
-- `ktv_song_style_tags.tag_name`
-- `ktv_song_style_tags.tag_group`
+- `ktv_songs.artist_names`
+- `ktv_songs.style_tags`
+- `ktv_songs.file_path`
+- `ktv_songs.technical_metadata`
 
-Do not depend on folder structure for search. Use indexed database fields, then use `file_path` only when handing the selected asset to the player.
+Do not depend on folder structure for search. Use indexed database fields, then use `file_path` only when handing the selected song to the player.
 
-The KTV index is an automatic admission path. Active assets are searchable and queueable without Admin approval. Admin can inspect and repair resources, but it is not a review gate.
+The KTV index is an automatic admission path. Active songs are searchable and queueable without Admin approval. Admin can inspect and repair resources, but it is not a review gate.
 
-`ktv_songs.category` has been removed from the durable read model. Category-style browsing should use the style tag tables.
+`ktv_songs.category` has been removed from the durable read model. Category-style browsing should use `ktv_songs.style_tags`.
 
 ## Query Examples
 
@@ -34,16 +33,15 @@ select
   s.id as song_id,
   s.title,
   s.primary_artist_name,
-  a.id as asset_id,
-  a.file_path,
-  a.extension,
-  a.size_bytes,
-  jsonb_array_length(coalesce(a.technical_metadata->'mediaInfoSummary'->'audioTracks', a.technical_metadata->'audioTracks', '[]'::jsonb)) as audio_track_count
+  s.id as asset_id,
+  s.file_path,
+  s.extension,
+  s.size_bytes,
+  jsonb_array_length(coalesce(s.technical_metadata->'mediaInfoSummary'->'audioTracks', s.technical_metadata->'audioTracks', '[]'::jsonb)) as audio_track_count
 from ktv_songs s
-join ktv_song_assets a on a.song_id = s.id
-where a.missing_at is null
+where s.missing_at is null
   and s.normalized_title = $1
-order by s.primary_artist_name, a.file_path;
+order by s.primary_artist_name, s.file_path;
 ```
 
 Find all versions by title and artist:
@@ -53,15 +51,14 @@ select
   s.id as song_id,
   s.title,
   s.primary_artist_name,
-  a.id as asset_id,
-  a.file_path,
-  a.size_bytes
+  s.id as asset_id,
+  s.file_path,
+  s.size_bytes
 from ktv_songs s
-join ktv_song_assets a on a.song_id = s.id
-where a.missing_at is null
+where s.missing_at is null
   and s.normalized_title = $1
   and s.normalized_primary_artist_name = $2
-order by a.file_path;
+order by s.file_path;
 ```
 
 Find all songs by artist:
@@ -71,15 +68,12 @@ select
   s.id as song_id,
   s.title,
   s.primary_artist_name,
-  a.id as asset_id,
-  a.file_path
-from ktv_artists ar
-join ktv_song_artists sa on sa.artist_id = ar.id
-join ktv_songs s on s.id = sa.song_id
-join ktv_song_assets a on a.song_id = s.id
-where a.missing_at is null
-  and ar.normalized_name = $1
-order by s.title, a.file_path;
+  s.id as asset_id,
+  s.file_path
+from ktv_songs s
+where s.missing_at is null
+  and $1 = any(s.artist_names)
+order by s.title, s.file_path;
 ```
 
 Find all songs under one style tag:
@@ -89,16 +83,13 @@ select
   s.id as song_id,
   s.title,
   s.primary_artist_name,
-  st.tag_name as style_tag,
-  st.tag_group as style_group,
-  a.id as asset_id,
-  a.file_path
-from ktv_song_style_tags st
-join ktv_songs s on s.id = st.song_id
-join ktv_song_assets a on a.song_id = s.id
-where a.missing_at is null
-  and st.tag_name = $1
-order by s.primary_artist_name, s.title, a.file_path;
+  $1 as style_tag,
+  s.id as asset_id,
+  s.file_path
+from ktv_songs s
+where s.missing_at is null
+  and $1 = any(s.style_tags)
+order by s.primary_artist_name, s.title, s.file_path;
 ```
 
 Fuzzy title search:
@@ -121,8 +112,8 @@ Use `normalizeSearchText()` from `apps/api/src/modules/catalog/search-normalizat
 
 Current read APIs are implemented under the API routes for discovery, Admin diagnostics, and queue commands. The important contract is:
 
-- Search results are grouped by song and expose playable assets/versions.
-- Queue commands can point at a real KTV index asset.
+- Search results are grouped by song and expose playable versions.
+- Queue commands can point at a real KTV index song.
 - Admin diagnostics can inspect raw index metrics and media readability.
 - Style browsing should use style tags, not the removed `category` field.
 
@@ -131,7 +122,7 @@ Implementation notes:
 - Put SQL in a read-only repository module.
 - Always use parameterized queries.
 - Always filter `missing_at is null`.
-- Return all matching assets first; automatic "best version" selection can be added later after enough playback evidence is collected.
+- Return all matching versions first; automatic "best version" selection can be added later after enough playback evidence is collected.
 - Expose audio track count when technical metadata is present. Controller UI uses `audioTrackCount = 1` to show the “单音轨歌曲源” label.
 - Technical probing is non-blocking. Failed probes should keep resources searchable and queueable; they only leave `audioTrackCount` unknown until a later retry.
 
@@ -159,7 +150,7 @@ The probe stores compact `mediaInfoSummary`, `mediaInfoProvenance`, and failure 
 
 ## Style Tagging
 
-当前不再保留风格字典表或独立运行态表。风格标签只写入 `ktv_song_style_tags(song_id, tag_name, tag_group)`，一首歌多个标签就写多行。
+当前不再保留风格字典表、风格关系表或独立运行态表。风格标签直接写入 `ktv_songs.style_tags`，一首歌多个标签就写入同一个数组。
 
 低覆盖补标签使用独立 Python runner。它会先把结果写到 JSONL 和 state 文件，再统一导入数据库：
 

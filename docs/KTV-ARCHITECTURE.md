@@ -36,17 +36,15 @@ scripts/*             本地开发、检查和运维工具
 
 ## 曲库模型
 
-真实曲库索引与旧演示目录分离：
+真实曲库索引与旧演示目录分离。当前 NAS 曲库已经压缩为最小运行模型：
 
-- `ktv_index_runs`: 每次全量索引运行。
-- `ktv_artists`: 歌手和搜索归一化字段。
-- `ktv_songs`: 歌曲标题、主歌手和搜索字段。
-- `ktv_song_artists`: 歌曲和歌手的多对多关系。
-- `ktv_song_assets`: 实际视频文件路径、大小、技术探测摘要和缺失标记。
-- `ktv_song_style_tags`: 多风格标签关系表，每个标签一行，按 `song_id + tag_name + tag_group` 去重。
+- `ktv_songs`: NAS 可播放文件表。一行就是一个可点播文件，同时保存歌名、歌手数组、风格数组、文件路径、技术探测、缺失标记和长期点歌计数。
+- `song_cover_cache`: 封面查询缓存，按 `source_kind + source_song_id` 关联曲库或线上候选。
+- `candidate_tasks`: 线上候选发现和拉取工作流。当前没有独立线上曲库表，ready 结果直接保存在任务表中。
 
-`ktv_songs.category` 已不再作为长期分类字段。风格分类走独立关系表，一首歌可以属于多个风格。
-当前不再保留标签字典表，风格标签由打标脚本直接写入关系表。
+`ktv_songs.category` 已不再作为长期分类字段。歌手分类读取 `ktv_songs.artist_names`，风格分类读取 `ktv_songs.style_tags`。一首歌有多个歌手或多个风格时，直接以数组保存。
+
+完整字段和关系以 [database-schema.md](database-schema.md) 为准。
 
 ## 媒体和播放
 

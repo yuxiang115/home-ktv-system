@@ -17,19 +17,15 @@ const simplificationMigrationSql = existsSync(simplificationMigrationUrl)
   : "";
 
 describe("KTV style tag schema", () => {
-  it("keeps only the simplified song style tag relation in the final schema", () => {
-    expect(schemaSql).toContain("CREATE TABLE IF NOT EXISTS ktv_song_style_tags");
-    expect(schemaSql).toContain("song_id text NOT NULL REFERENCES ktv_songs(id) ON DELETE CASCADE");
-    expect(schemaSql).toContain("tag_name text NOT NULL");
-    expect(schemaSql).toContain("tag_group text NOT NULL");
-    expect(schemaSql).toContain("created_at timestamptz NOT NULL DEFAULT now()");
-    expect(schemaSql).toContain("updated_at timestamptz NOT NULL DEFAULT now()");
-    expect(schemaSql).toContain("UNIQUE(song_id, tag_name, tag_group)");
-    expect(tableNames.ktvSongStyleTags).toBe("ktv_song_style_tags");
+  it("stores style tags directly on ktv_songs in the final schema", () => {
+    expect(schemaSql).toContain("style_tags text[] NOT NULL DEFAULT '{}'");
+    expect(schemaSql).not.toContain("CREATE TABLE IF NOT EXISTS ktv_song_style_tags");
+    expect(Object.values(tableNames)).not.toContain("ktv_song_style_tags");
 
     for (const removedTable of [
       "CREATE TABLE IF NOT EXISTS ktv_style_groups",
       "CREATE TABLE IF NOT EXISTS ktv_style_tags",
+      "CREATE TABLE IF NOT EXISTS ktv_song_style_tags",
       "CREATE TABLE IF NOT EXISTS ktv_song_tagging_runs",
       "CREATE TABLE IF NOT EXISTS ktv_song_tagging_status",
       "CREATE TABLE IF NOT EXISTS ktv_song_tagging_cache"
@@ -62,6 +58,7 @@ describe("KTV style tag schema", () => {
   it("removes the legacy ktv_songs category column from the final schema", () => {
     expect(schemaSql).not.toContain("category text NOT NULL");
     expect(schemaSql).not.toContain("UNIQUE (normalized_title, normalized_primary_artist_name, category)");
-    expect(schemaSql).toContain("ktv_songs_normalized_title_artist_uq");
+    expect(schemaSql).not.toContain("ktv_songs_normalized_title_artist_uq");
+    expect(schemaSql).toContain("ktv_songs_file_path_uq");
   });
 });

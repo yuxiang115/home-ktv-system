@@ -371,7 +371,7 @@ export interface SongDiscoverySongsResponse {
 }
 
 export interface KtvIndexTableAvailability {
-  tableName: "ktv_index_runs" | "ktv_artists" | "ktv_songs" | "ktv_song_artists" | "ktv_song_assets";
+  tableName: "ktv_songs";
   exists: boolean;
 }
 

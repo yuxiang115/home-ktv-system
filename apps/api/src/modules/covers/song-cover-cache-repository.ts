@@ -156,16 +156,15 @@ export class PgSongCoverCacheRepository implements SongCoverCacheRepository {
               s.title,
               s.primary_artist_name AS artist_name
        FROM ktv_songs s
-       JOIN ktv_song_assets a ON a.song_id = s.id AND a.missing_at IS NULL
        LEFT JOIN song_cover_cache c
          ON c.source_kind = 'nas'
         AND c.source_song_id = s.id
-       WHERE (
+       WHERE s.missing_at IS NULL
+         AND (
            c.source_song_id IS NULL
            OR c.status = 'pending'
            OR ($2::boolean = true AND c.status = 'failed')
          )
-       GROUP BY s.id, s.title, s.primary_artist_name, c.updated_at
        ORDER BY c.updated_at ASC NULLS FIRST, s.updated_at DESC, s.title ASC, s.primary_artist_name ASC
        LIMIT $1`,
       [input.limit, input.retryFailed === true]
@@ -176,7 +175,15 @@ export class PgSongCoverCacheRepository implements SongCoverCacheRepository {
   private async hasKtvIndexTables(): Promise<boolean> {
     const result = await this.db.query<{ exists: boolean }>(
       `SELECT to_regclass('public.ktv_songs') IS NOT NULL
-          AND to_regclass('public.ktv_song_assets') IS NOT NULL AS exists`
+          AND EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'ktv_songs'
+              AND column_name IN ('file_path', 'artist_names', 'style_tags')
+            GROUP BY table_name
+            HAVING count(*) = 3
+          ) AS exists`
     );
     return result.rows[0]?.exists === true;
   }
