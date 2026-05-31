@@ -9,8 +9,8 @@ import type {
   SongId,
   SongSearchIndexedResult
 } from "@home-ktv/domain";
-import { songCoverCacheKey } from "../modules/covers/types.js";
-import type { SongCoverCacheRepository } from "../modules/covers/song-cover-cache-repository.js";
+import { songCoverKey } from "../modules/covers/types.js";
+import type { SongCoverRepository } from "../modules/covers/song-cover-repository.js";
 import type { KtvIndexReadRepository } from "../modules/ktv-index/ktv-index-read-repository.js";
 import type { QueueEntryRepository } from "../modules/playback/repositories/queue-entry-repository.js";
 import type { RoomRepository } from "../modules/rooms/repositories/room-repository.js";
@@ -22,7 +22,7 @@ export interface SongDiscoveryRouteDependencies {
     KtvIndexReadRepository,
     "searchIndexedSongs" | "listDiscoveryArtists" | "listDiscoveryGenres" | "listIndexedSongsByArtist" | "listIndexedSongsByGenre"
   >;
-  coverCache?: Pick<SongCoverCacheRepository, "findBySongKeys">;
+  songCovers?: Pick<SongCoverRepository, "findBySongKeys">;
 }
 
 interface SongDiscoveryQuery {
@@ -60,7 +60,7 @@ export async function registerSongDiscoveryRoutes(
         listFullArtistModules(dependencies),
         listFullGenreModules(dependencies)
       ]);
-      const songsWithCovers = await attachCoverImageUrls(songs, dependencies.coverCache);
+      const songsWithCovers = await attachCoverImageUrls(songs, dependencies.songCovers);
       const weightedRecommendations = selectWeightedSongs(songsWithCovers, limit, seed);
       const artists = fullArtists ?? buildArtistModules(songsWithCovers);
       const genres = fullGenres ?? buildGenreModules(songsWithCovers);
@@ -101,7 +101,7 @@ export async function registerSongDiscoveryRoutes(
       });
       const songs = await songsFromIndexedRecords(records, dependencies);
       const response: SongDiscoverySongsResponse = {
-        songs: await attachCoverImageUrls(songs, dependencies.coverCache),
+        songs: await attachCoverImageUrls(songs, dependencies.songCovers),
         nextOffset: records.length >= page.limit ? page.offset + songs.length : null
       };
       await reply.send(response);
@@ -134,7 +134,7 @@ export async function registerSongDiscoveryRoutes(
       });
       const songs = await songsFromIndexedRecords(records, dependencies);
       const response: SongDiscoverySongsResponse = {
-        songs: await attachCoverImageUrls(songs, dependencies.coverCache),
+        songs: await attachCoverImageUrls(songs, dependencies.songCovers),
         nextOffset: records.length >= page.limit ? page.offset + songs.length : null
       };
       await reply.send(response);
@@ -144,9 +144,9 @@ export async function registerSongDiscoveryRoutes(
 
 async function attachCoverImageUrls(
   songs: readonly SongDiscoverySong[],
-  coverCache: Pick<SongCoverCacheRepository, "findBySongKeys"> | undefined
+  songCovers: Pick<SongCoverRepository, "findBySongKeys"> | undefined
 ): Promise<SongDiscoverySong[]> {
-  if (!coverCache || songs.length === 0) {
+  if (!songCovers || songs.length === 0) {
     return [...songs];
   }
 
@@ -154,11 +154,11 @@ async function attachCoverImageUrls(
     source: song.source,
     sourceSongId: discoverySourceSongId(song)
   }));
-  const covers = await coverCache.findBySongKeys(keys);
+  const covers = await songCovers.findBySongKeys(keys);
 
   return songs.map((song) => {
     const cover = covers.get(
-      songCoverCacheKey({
+      songCoverKey({
         source: song.source,
         sourceSongId: discoverySourceSongId(song)
       })

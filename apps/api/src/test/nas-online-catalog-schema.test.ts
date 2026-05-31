@@ -59,10 +59,11 @@ describe("NAS / online catalog final schema", () => {
     expect(schemaSql).not.toContain("ready_online_asset_id");
   });
 
-  it("uses nas and online as cover cache source kinds", () => {
-    expect(schemaSql).toContain("source_kind text NOT NULL CHECK (source_kind IN ('nas', 'online'))");
-    expect(schemaSql).not.toContain("'ktv-index'");
-    expect(schemaSql).not.toContain("'formal'");
+  it("stores cover URLs on ktv_songs instead of retaining cover source-kind tables", () => {
+    expect(schemaSql).toContain("cover_image_url text");
+    expect(schemaSql).toContain("cover_updated_at timestamptz");
+    expect(schemaSql).not.toContain("CREATE TABLE IF NOT EXISTS song_cover_cache");
+    expect(schemaSql).not.toContain("source_kind text NOT NULL CHECK");
   });
 });
 

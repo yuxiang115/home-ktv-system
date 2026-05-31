@@ -2,7 +2,7 @@
 
 最后更新：2026-05-31。
 
-本文面向项目维护和结构讨论，描述 `apps/api/src/db/schema.ts` 与迁移 `0021_catalog_schema_simplification.sql` 之后的目标结构。当前保留 6 张业务表；`schema_migrations` 是迁移工具表，不算业务表。
+本文面向项目维护和结构讨论，描述 `apps/api/src/db/schema.ts` 与迁移 `0022_merge_song_cover_cache_into_ktv_songs.sql` 之后的目标结构。当前保留 5 张业务表；`schema_migrations` 是迁移工具表，不算业务表。
 
 ## 总体分组
 
@@ -15,13 +15,9 @@ rooms
 NAS 曲库
 ktv_songs
   -> queue_entries
-  -> song_cover_cache
 
 线上候选工作流
 candidate_tasks
-
-封面缓存
-song_cover_cache
 ```
 
 ## 表总览
@@ -31,13 +27,12 @@ song_cover_cache
 | `rooms` | 房间元信息、配对 token、房间级播放状态。 |
 | `room_clients` | TV 端和控制端 session / 在线状态。 |
 | `queue_entries` | 当前点歌队列和短期可撤销记录。 |
-| `ktv_songs` | NAS 可播放歌曲文件。一个文件一行，同时保存歌手、风格、路径、技术探测和长期点歌计数。 |
+| `ktv_songs` | NAS 可播放歌曲文件。一个文件一行，同时保存歌手、风格、路径、技术探测、封面地址和长期点歌计数。 |
 | `candidate_tasks` | 线上候选歌曲发现、拉取、审核和 ready 结果记录。当前只是候选工作流，不再依赖线上曲库占位表。 |
-| `song_cover_cache` | NAS 或线上候选歌曲封面查询结果缓存。 |
 
 ## 已删除的业务表
 
-迁移 `0021_catalog_schema_simplification.sql` 会删除下面这些表：
+迁移 `0021_catalog_schema_simplification.sql` 和 `0022_merge_song_cover_cache_into_ktv_songs.sql` 会删除下面这些表：
 
 | 旧表 | 删除原因 |
 | --- | --- |
@@ -48,6 +43,7 @@ song_cover_cache
 | `ktv_song_style_tags` | 合并进 `ktv_songs.style_tags`。多风格用数组保存。 |
 | `online_songs` | 删除线上曲库占位表。当前没有真实线上曲库。 |
 | `online_song_assets` | 删除线上资源占位表。候选 ready 结果直接存在 `candidate_tasks`。 |
+| `song_cover_cache` | 合并进 `ktv_songs.cover_image_url`。当前只需要保存前端展示的封面图地址。 |
 
 ## 关系总览
 
@@ -66,11 +62,10 @@ song_cover_cache
 - NAS 队列要求 `nas_song_id = nas_asset_id`。这是兼容现有播放链路的过渡字段设计，因为现在歌曲 ID 和资源 ID 已经是同一个 ID。
 - `queue_entries_source_identity_ck` 保证一条队列记录只属于 NAS 或线上其中一种来源。
 
-### 线上候选与封面
+### 线上候选
 
 - `candidate_tasks.room_id -> rooms.id`，`ON DELETE CASCADE`。
 - `candidate_tasks` 的 ready 结果直接保存到 `ready_asset_id`、`ready_media_url`、`ready_cache_path` 和 `ready_metadata`，不再外键到线上资源表。
-- `song_cover_cache` 没有外键，靠 `(source_kind, source_song_id)` 定位 NAS 歌曲或线上候选歌曲。
 
 ## 迁移说明
 
@@ -90,6 +85,16 @@ song_cover_cache
 10. 删除旧 NAS 维表和线上占位表。
 
 部署前需要备份数据库。如果迁移后发现严重问题，回滚方式是恢复数据库备份并回退代码版本。
+
+### `0022_merge_song_cover_cache_into_ktv_songs.sql`
+
+这次迁移会继续减少业务表数量：
+
+1. 给 `ktv_songs` 增加 `cover_image_url` 和 `cover_updated_at`。
+2. 把旧 `song_cover_cache` 中 `source_kind = 'nas'`、`status = 'found'`、`image_url is not null` 的记录迁移到 `ktv_songs.cover_image_url`。
+3. 删除 `song_cover_cache`。
+
+迁移后不再保存封面 provider、置信度、错误信息和原始 payload。封面拉取脚本只负责尽量给 `ktv_songs.cover_image_url` 补图。
 
 ## 字段清单
 
@@ -201,6 +206,8 @@ NAS 曲库表。当前最重要的约定是：一条 `ktv_songs` 就是一个 NA
 | `missing_at timestamptz` | 文件在最近索引中消失的时间；为空表示当前可用。 |
 | `request_count integer` | 长期点歌次数，首页推荐权重来源。 |
 | `last_requested_at timestamptz` | 最近点歌时间。 |
+| `cover_image_url text` | 控制端展示的封面图片地址。可以是外部图片 URL，也可以是后续本地缓存文件的公开 URL。 |
+| `cover_updated_at timestamptz` | 最近一次封面处理时间。找到封面、未找到封面或查询失败都会更新。 |
 | `created_at timestamptz` | 创建时间。 |
 | `updated_at timestamptz` | 更新时间。 |
 
@@ -250,32 +257,6 @@ NAS 曲库表。当前最重要的约定是：一条 `ktv_songs` 就是一个 NA
 | `updated_at timestamptz` | 更新时间。 |
 
 关键约束：`UNIQUE(room_id, provider, provider_candidate_id)`。
-
-### `song_cover_cache`
-
-歌曲封面缓存表。它不直接保存图片二进制，只保存图片地址或缓存查询结果。实际封面文件可以由独立脚本下载到静态目录，再把可访问地址写入 `image_url`。
-
-| 字段 | 含义 |
-| --- | --- |
-| `id text` | 主键。 |
-| `source_kind text` | 来源类型：`nas` 或 `online`。 |
-| `source_song_id text` | 来源歌曲 ID。NAS 下对应 `ktv_songs.id`。 |
-| `title text` | 查询时使用的歌名。 |
-| `artist_name text` | 查询时使用的歌手。 |
-| `normalized_title text` | 归一化歌名。 |
-| `normalized_artist_name text` | 归一化歌手。 |
-| `provider text` | 封面来源。 |
-| `provider_song_id text` | 封面来源侧歌曲 ID。 |
-| `provider_payload jsonb` | 封面来源原始数据。 |
-| `image_url text` | 封面图片地址。 |
-| `status text` | 状态：`pending`、`found`、`not_found`、`failed`。 |
-| `confidence integer` | 匹配置信度，0 到 100。 |
-| `error_message text` | 失败信息。 |
-| `fetched_at timestamptz` | 抓取时间。 |
-| `created_at timestamptz` | 创建时间。 |
-| `updated_at timestamptz` | 更新时间。 |
-
-关键约束：`UNIQUE(source_kind, source_song_id)`。
 
 ## 运维表
 

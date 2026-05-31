@@ -11,8 +11,7 @@ The index keeps the NAS folder layout unchanged. Video files stay under `/mnt/na
 
 Tables:
 
-- `ktv_songs`: one row per playable NAS file. It stores title, artist array, style-tag array, file path, parse confidence, technical metadata, missing marker, and request counters.
-- `song_cover_cache`: cover lookup cache keyed by `source_kind + source_song_id`.
+- `ktv_songs`: one row per playable NAS file. It stores title, artist array, style-tag array, file path, parse confidence, technical metadata, cover image URL, missing marker, and request counters.
 
 The old artist, asset, index-run, and style relation tables were merged into `ktv_songs` by `0021_catalog_schema_simplification.sql`. This KTV index is the lookup layer for finding song versions, artist catalogs, style tags, and playable file paths.
 

@@ -8,11 +8,8 @@ export interface SongCoverLookupKey {
   sourceSongId: string;
 }
 
-export interface SongCoverCacheEntry extends SongCoverLookupKey {
+export interface SongCoverEntry extends SongCoverLookupKey {
   imageUrl: string;
-  provider: string;
-  providerSongId: string | null;
-  confidence: number;
 }
 
 export interface SongCoverBackfillCandidate extends SongCoverLookupKey {
@@ -35,6 +32,6 @@ export interface SongCoverProvider {
   findCover(song: SongCoverBackfillCandidate): Promise<SongCoverProviderResult | null>;
 }
 
-export function songCoverCacheKey(key: SongCoverLookupKey): string {
+export function songCoverKey(key: SongCoverLookupKey): string {
   return `${key.source}:${key.sourceSongId}`;
 }

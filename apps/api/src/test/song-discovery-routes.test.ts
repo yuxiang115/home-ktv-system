@@ -1,7 +1,7 @@
 import Fastify from "fastify";
 import type { QueueEntry, Room, SongDiscoveryResponse, SongSearchIndexedResult } from "@home-ktv/domain";
 import { describe, expect, it, vi } from "vitest";
-import type { SongCoverCacheRepository } from "../modules/covers/song-cover-cache-repository.js";
+import type { SongCoverRepository } from "../modules/covers/song-cover-repository.js";
 import type { SongCoverLookupKey } from "../modules/covers/types.js";
 import type { KtvIndexReadRepository, SearchKtvIndexedSongsInput } from "../modules/ktv-index/ktv-index-read-repository.js";
 import type { QueueEntryRepository } from "../modules/playback/repositories/queue-entry-repository.js";
@@ -269,15 +269,15 @@ async function createHarness(input: {
 } = {}) {
   const server = Fastify();
   const queueEntries = new FakeQueueEntryRepository(input.queueEntries ?? [], input.playCounts ?? {});
-  const coverCache = new FakeCoverCache(input.coverEntries ?? {});
+  const songCovers = new FakeSongCovers(input.coverEntries ?? {});
   await registerSongDiscoveryRoutes(server, {
     rooms: new FakeRoomRepository(input.room === undefined ? createRoom() : input.room),
     queueEntries,
     ...(input.ktvIndex ? { ktvIndex: input.ktvIndex } : {}),
-    coverCache
+    songCovers
   });
   await server.ready();
-  return { server, queueEntries, coverCache };
+  return { server, queueEntries, songCovers };
 }
 
 class FakeRoomRepository implements RoomRepository {
@@ -364,7 +364,7 @@ class FakeQueueEntryRepository implements QueueEntryRepository {
   }
 }
 
-class FakeCoverCache implements Pick<SongCoverCacheRepository, "findBySongKeys"> {
+class FakeSongCovers implements Pick<SongCoverRepository, "findBySongKeys"> {
   readonly lookupCalls: SongCoverLookupKey[][] = [];
 
   constructor(private readonly entries: Record<string, string>) {}
@@ -381,10 +381,7 @@ class FakeCoverCache implements Pick<SongCoverCacheRepository, "findBySongKeys">
                 {
                   source: key.source,
                   sourceSongId: key.sourceSongId,
-                  imageUrl,
-                  provider: "fixture",
-                  providerSongId: key.sourceSongId,
-                  confidence: 100
+                  imageUrl
                 }
               ] as const
             ]

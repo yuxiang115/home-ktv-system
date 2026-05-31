@@ -15,6 +15,7 @@ Online: candidate_tasks
 - 一条 `ktv_songs` 就是一个 NAS 可播放文件。
 - 歌手列表保存到 `ktv_songs.artist_names text[]`。
 - 风格标签保存到 `ktv_songs.style_tags text[]`。
+- 封面展示地址保存到 `ktv_songs.cover_image_url`。
 - 线上歌曲和线上资源占位表删除，候选 ready 结果直接保存到 `candidate_tasks`。
 - NAS 队列仍保留 `nas_song_id` 和 `nas_asset_id` 两个字段，但两者必须相等，并且都指向同一条 `ktv_songs.id`。
 
@@ -74,7 +75,7 @@ limit 20;
 
 期望无返回行。
 
-确认封面缓存来源分布：
+如果迁移前仍有旧封面缓存表，可以确认封面缓存来源分布：
 
 ```sql
 select source_kind, status, count(*)
@@ -118,8 +119,7 @@ where table_schema = 'public'
     'room_clients',
     'queue_entries',
     'ktv_songs',
-    'candidate_tasks',
-    'song_cover_cache'
+    'candidate_tasks'
   )
 order by table_name;
 ```
@@ -134,7 +134,8 @@ select
   to_regclass('public.ktv_index_runs') as ktv_index_runs,
   to_regclass('public.ktv_song_style_tags') as ktv_song_style_tags,
   to_regclass('public.online_songs') as online_songs,
-  to_regclass('public.online_song_assets') as online_song_assets;
+  to_regclass('public.online_song_assets') as online_song_assets,
+  to_regclass('public.song_cover_cache') as song_cover_cache;
 ```
 
 期望所有列都是 `NULL`。
@@ -165,7 +166,8 @@ select
   count(*) filter (where missing_at is null) as active_songs,
   count(*) filter (where missing_at is not null) as missing_songs,
   count(*) filter (where coalesce(array_length(artist_names, 1), 0) = 0) as songs_without_artist_array,
-  count(*) filter (where coalesce(array_length(style_tags, 1), 0) = 0) as songs_without_style_tags
+  count(*) filter (where coalesce(array_length(style_tags, 1), 0) = 0) as songs_without_style_tags,
+  count(*) filter (where cover_image_url is not null) as songs_with_cover
 from ktv_songs;
 ```
 

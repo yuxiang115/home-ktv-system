@@ -2,7 +2,7 @@ import { pathToFileURL } from "node:url";
 import { Pool } from "pg";
 import { backfillSongCovers } from "../modules/covers/cover-backfill-service.js";
 import { MetingCoverProvider, type MetingProviderId } from "../modules/covers/meting-cover-provider.js";
-import { PgSongCoverCacheRepository } from "../modules/covers/song-cover-cache-repository.js";
+import { PgSongCoverRepository } from "../modules/covers/song-cover-repository.js";
 import type { SongCoverSource } from "../modules/covers/types.js";
 
 interface CliOptions {
@@ -29,14 +29,14 @@ async function main() {
 
   const pool = new Pool({ connectionString: databaseUrl });
   try {
-    const cache = new PgSongCoverCacheRepository(pool);
+    const covers = new PgSongCoverRepository(pool);
     const provider = new MetingCoverProvider({
       providers: options.providers,
       imageSize: 300,
       searchLimit: 8
     });
     const result = await backfillSongCovers({
-      cache,
+      covers,
       provider,
       limit: options.limit,
       ...(options.source ? { source: options.source } : {}),
@@ -116,7 +116,7 @@ function printHelp() {
 Options:
   --limit <n>             Max songs to process, default 300
   --source <kind>         nas or online, default all available sources
-  --retry-failed          Retry rows currently marked failed
+  --retry-failed          Reprocess songs that were checked but still have no cover URL
   --delay-ms <n>          Delay between provider requests, default 600
   --providers <list>      Comma list, default tencent,kugou,netease,kuwo
 `);

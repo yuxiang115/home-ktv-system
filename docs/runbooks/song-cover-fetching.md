@@ -8,16 +8,19 @@
 
 - 使用国内音乐源查询封面：腾讯、酷狗、网易云、酷我。
 - 用歌名和歌手做匹配，拒绝弱匹配，并降低 Live、DJ、Remix、翻唱、现场等版本的得分。
-- 将查询结果写入 `song_cover_cache`。
-- `GET /rooms/:roomSlug/songs/discovery` 只读取 `song_cover_cache.image_url` 并返回 `coverImageUrl`。
+- 将查询结果写入 `ktv_songs.cover_image_url`。
+- `GET /rooms/:roomSlug/songs/discovery` 只读取歌曲行上的封面地址并返回 `coverImageUrl`。
 - 控制端推荐列表优先展示 `coverImageUrl`，图片失败时回退到本地生成样式。
 
 当前实现尚未完成：
 
 - 还没有把外部图片下载到本地文件缓存。
-- 目前 `image_url` 存的是外部平台图片地址。
+- 目前 `cover_image_url` 存的是外部平台图片地址。
 
-后续本地图片缓存应继续扩展 `song_cover_cache`，不要把封面字段放入 `ktv_songs` 主表。
+后续如果要把封面文件落地到本地缓存，可以继续沿用 `ktv_songs` 的这两个字段：
+
+- `cover_image_url`：返回给前端的公开地址。
+- `cover_updated_at`：最近一次封面处理时间。
 
 ## 代码位置
 
@@ -25,44 +28,12 @@
 apps/api/src/modules/covers/meting-cover-provider.ts
 apps/api/src/modules/covers/cover-matcher.ts
 apps/api/src/modules/covers/cover-backfill-service.ts
-apps/api/src/modules/covers/song-cover-cache-repository.ts
+apps/api/src/modules/covers/song-cover-repository.ts
 apps/api/src/scripts/song-covers.ts
 apps/api/src/scripts/song-cover-coverage.ts
-apps/api/src/db/migrations/0016_song_cover_cache.sql
+apps/api/src/db/migrations/0022_merge_song_cover_cache_into_ktv_songs.sql
 deploy/docker/ktv.sh
 ```
-
-## 数据表
-
-`song_cover_cache` 当前字段：
-
-```text
-source_kind            nas | online
-source_song_id         ktv_songs.id 或后续 online 歌曲 ID
-title
-artist_name
-normalized_title
-normalized_artist_name
-provider
-provider_song_id
-provider_payload
-image_url
-status                 pending | found | not_found | failed
-confidence
-error_message
-fetched_at
-created_at
-updated_at
-```
-
-当前真实曲库主要使用：
-
-```text
-source_kind = 'nas'
-source_song_id = ktv_songs.id
-```
-
-说明：物理 NAS 索引当前只保留 `ktv_songs` 单表；`source_kind` 是运行时和 API 层的来源语义，统一使用 `nas` / `online`。
 
 ## 拉取逻辑
 
@@ -91,32 +62,27 @@ artistName + " " + title
 7. 成功时写入：
 
 ```text
-status = found
-provider
-provider_song_id
-provider_payload
-image_url
-confidence
-fetched_at
+cover_image_url
+cover_updated_at
 ```
 
-8. 没有可靠匹配时写入：
+8. 没有可靠匹配时，保留 `cover_image_url = NULL`，只更新 `cover_updated_at`。
 
 ```text
-status = not_found
-error_message = "No reliable cover match found"
+cover_image_url = null
+cover_updated_at
 ```
 
-9. provider 网络错误或接口异常时写入：
+9. provider 网络错误或接口异常时，同样保留 `cover_image_url = NULL`，只更新 `cover_updated_at`。
 
 ```text
-status = failed
-error_message
+cover_image_url = null
+cover_updated_at
 ```
 
 ## 覆盖率测试
 
-覆盖率测试只读数据库，不写 `song_cover_cache`。
+覆盖率测试只读数据库，不写 `ktv_songs`。
 
 本地源码环境：
 
@@ -159,7 +125,7 @@ providerHits: tencent=78, kugou=13, netease=1
 
 另一次长样本跑到 120 首时命中 114 首，阶段性命中率为 95.0%。该长测没有完整 summary，正式结论以 100 首完整测试为准。
 
-## 批量写入缓存
+## 批量写入封面地址
 
 本地源码环境：
 
@@ -180,7 +146,7 @@ bash deploy/docker/ktv.sh fetch-covers -- --limit 300 --delay-ms 300
 bash deploy/docker/ktv.sh fetch-covers -- --source nas --limit 300 --delay-ms 300
 ```
 
-重试网络失败：
+重试已经处理过但仍没有封面的歌曲：
 
 ```bash
 bash deploy/docker/ktv.sh fetch-covers -- --retry-failed --limit 300 --delay-ms 300
@@ -208,15 +174,9 @@ bash deploy/docker/ktv.sh fetch-covers -- --source nas --limit 1000 --delay-ms 3
 ```bash
 docker compose --env-file deploy/docker/.env -f deploy/docker/compose.yml exec -T postgres \
   psql -U ktv -d home_ktv \
-  -c "SELECT source_kind, status, count(*) FROM song_cover_cache GROUP BY source_kind, status ORDER BY source_kind, status;"
-```
-
-按 provider 统计：
-
-```bash
-docker compose --env-file deploy/docker/.env -f deploy/docker/compose.yml exec -T postgres \
-  psql -U ktv -d home_ktv \
-  -c "SELECT provider, count(*) FROM song_cover_cache WHERE status = 'found' GROUP BY provider ORDER BY count(*) DESC;"
+  -c "SELECT count(*) FILTER (WHERE cover_image_url IS NOT NULL) AS covered,
+             count(*) FILTER (WHERE cover_image_url IS NULL) AS uncovered
+        FROM ktv_songs;"
 ```
 
 检查 discovery 是否返回封面：
@@ -225,41 +185,3 @@ docker compose --env-file deploy/docker/.env -f deploy/docker/compose.yml exec -
 curl -sS 'https://ktv-api.shaolongfei.com/rooms/living-room/songs/discovery?seed=cover-check&limit=30' \
   | jq '{recommended: (.recommended|length), covers: ([.recommended[] | select(.coverImageUrl != null)] | length), sample: [.recommended[] | select(.coverImageUrl != null) | {title, artistName, coverImageUrl}] | .[0:5]}'
 ```
-
-## 本地图片缓存方案
-
-下一步应把外部图片下载到持久化目录，例如：
-
-```text
-/data/home-ktv-media/covers/nas/<song-id>.jpg
-```
-
-API 对外暴露：
-
-```text
-https://ktv-api.shaolongfei.com/covers/nas/<song-id>.jpg
-```
-
-建议给 `song_cover_cache` 增加字段：
-
-```sql
-ALTER TABLE song_cover_cache
-  ADD COLUMN external_image_url text,
-  ADD COLUMN local_image_path text,
-  ADD COLUMN image_content_type text,
-  ADD COLUMN image_size_bytes bigint,
-  ADD COLUMN downloaded_at timestamptz;
-```
-
-字段职责：
-
-```text
-external_image_url     外部平台返回的原图地址
-local_image_path       本地持久化文件相对路径
-image_url              返回给前端的公开 URL
-image_content_type     image/jpeg 等
-image_size_bytes       下载后的文件大小
-downloaded_at          下载成功时间
-```
-
-落地后，`status = found` 应表示“已经找到并已缓存到本地”。如果只查到外链但下载失败，应保留 `external_image_url` 并把状态记为 `failed`，后续通过 `--retry-failed` 重试。

@@ -1,8 +1,8 @@
-import type { SongCoverCacheRepository } from "./song-cover-cache-repository.js";
+import type { SongCoverRepository } from "./song-cover-repository.js";
 import type { SongCoverProvider, SongCoverSource } from "./types.js";
 
 export interface BackfillSongCoversInput {
-  cache: SongCoverCacheRepository;
+  covers: SongCoverRepository;
   provider: SongCoverProvider;
   limit: number;
   source?: SongCoverSource;
@@ -20,7 +20,7 @@ export interface BackfillSongCoversResult {
 
 export async function backfillSongCovers(input: BackfillSongCoversInput): Promise<BackfillSongCoversResult> {
   const logger = input.logger ?? console;
-  const candidates = await input.cache.listCoverCandidates({
+  const candidates = await input.covers.listCoverCandidates({
     limit: input.limit,
     ...(input.source ? { source: input.source } : {}),
     ...(input.retryFailed === undefined ? {} : { retryFailed: input.retryFailed })
@@ -36,23 +36,17 @@ export async function backfillSongCovers(input: BackfillSongCoversInput): Promis
     try {
       const cover = await input.provider.findCover(candidate);
       if (!cover) {
-        await input.cache.upsertCoverResult({
+        await input.covers.upsertCoverResult({
           ...candidate,
-          status: "not_found",
-          confidence: 0,
-          errorMessage: "No reliable cover match found"
+          status: "not_found"
         });
         result.notFound += 1;
         logger.log(`[covers] ${index + 1}/${candidates.length} not_found ${candidate.artistName} - ${candidate.title}`);
       } else {
-        await input.cache.upsertCoverResult({
+        await input.covers.upsertCoverResult({
           ...candidate,
           status: "found",
-          imageUrl: cover.imageUrl,
-          provider: cover.provider,
-          providerSongId: cover.providerSongId,
-          providerPayload: cover.payload,
-          confidence: cover.confidence
+          imageUrl: cover.imageUrl
         });
         result.found += 1;
         logger.log(
@@ -60,11 +54,9 @@ export async function backfillSongCovers(input: BackfillSongCoversInput): Promis
         );
       }
     } catch (error) {
-      await input.cache.upsertCoverResult({
+      await input.covers.upsertCoverResult({
         ...candidate,
-        status: "failed",
-        confidence: 0,
-        errorMessage: error instanceof Error ? error.message : String(error)
+        status: "failed"
       });
       result.failed += 1;
       logger.error(

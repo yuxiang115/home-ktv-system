@@ -10,6 +10,8 @@
 
 ---
 
+> 更新：后续 `0022_merge_song_cover_cache_into_ktv_songs.sql` 又把 `song_cover_cache` 合并进 `ktv_songs.cover_image_url`，因此当前最终业务表不再包含 `song_cover_cache`。
+
 ## 目标结构
 
 保留业务表：
@@ -19,7 +21,6 @@
 - `queue_entries`
 - `ktv_songs`
 - `candidate_tasks`
-- `song_cover_cache`
 
 删除业务表：
 
@@ -78,7 +79,7 @@
 1. 先更新 schema/仓储/脚本测试，让它们断言最终 schema 不再包含被删除表。
 2. 运行相关测试确认先失败。
 3. 完成实现后运行：
-   - `pnpm -F @home-ktv/api test -- src/test/ktv-full-index.test.ts src/test/ktv-index-read-repository.test.ts src/test/ktv-index-technical-probe.test.ts src/test/nas-playable-media-repository.test.ts src/test/nas-online-catalog-schema.test.ts src/test/ktv-style-tags-schema.test.ts src/test/song-cover-cache-schema.test.ts src/test/online-candidate-task.test.ts`
+   - `pnpm -F @home-ktv/api test -- src/test/ktv-full-index.test.ts src/test/ktv-index-read-repository.test.ts src/test/ktv-index-technical-probe.test.ts src/test/nas-playable-media-repository.test.ts src/test/nas-online-catalog-schema.test.ts src/test/ktv-style-tags-schema.test.ts src/test/song-cover-schema.test.ts src/test/online-candidate-task.test.ts`
    - `python3 scripts/tools/run_style_tagging_llm_batch_test.py`
    - `pnpm -F @home-ktv/api typecheck`
    - `git diff --check`

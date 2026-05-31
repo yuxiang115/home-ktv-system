@@ -180,7 +180,7 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     rooms: repositories.rooms,
     queueEntries: repositories.queueEntries,
     ...(repositories.ktvIndex ? { ktvIndex: repositories.ktvIndex } : {}),
-    ...(repositories.songCovers ? { coverCache: repositories.songCovers } : {})
+    ...(repositories.songCovers ? { songCovers: repositories.songCovers } : {})
   });
   await registerRoomInteractionRoutes(server, {
     rooms: repositories.rooms,
