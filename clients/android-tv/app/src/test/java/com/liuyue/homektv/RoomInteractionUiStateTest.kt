@@ -37,6 +37,17 @@ class RoomInteractionUiStateTest {
     }
 
     @Test
+    fun selectsStableVariedBulletAccentColors() {
+        val first = bulletAccentColor("interaction-bullet-1")
+        val repeated = bulletAccentColor("interaction-bullet-1")
+        val accentColors = (1..8).map { index -> bulletAccentColor("interaction-bullet-$index").hex }
+
+        assertEquals(first, repeated)
+        assertTrue(accentColors.all { color -> color.matches(Regex("^#[0-9A-F]{6}$")) })
+        assertTrue(accentColors.toSet().size > 1)
+    }
+
+    @Test
     fun computesBulletMarqueeFromVisibleLayerBounds() {
         val plan = bulletMarqueePlan(
             id = "interaction-1",

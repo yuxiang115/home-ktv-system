@@ -42,6 +42,25 @@ describe("InteractionOverlay", () => {
     expect(bullet.style.getPropertyValue("--ktv-bullet-y")).toMatch(/vh$/u);
   });
 
+  it("renders bullet marquees with stable varied accent colors", () => {
+    render(
+      <InteractionOverlay
+        interactions={Array.from({ length: 8 }, (_, index) =>
+          interaction(`interaction-bullet-${index + 1}`, "bullet", `弹幕 ${index + 1}`)
+        )}
+      />
+    );
+
+    const bullets = screen.getAllByTestId("bullet-marquee");
+    const accentColors = bullets.map((bullet) => bullet.style.getPropertyValue("--ktv-bullet-accent"));
+    const firstGlow = bullets[0]?.querySelector("[aria-hidden='true']") as HTMLElement | null;
+
+    expect(accentColors).toHaveLength(8);
+    expect(accentColors.every((color) => /^#[0-9A-F]{6}$/u.test(color))).toBe(true);
+    expect(new Set(accentColors).size).toBeGreaterThan(1);
+    expect(firstGlow?.style.background).toContain("var(--ktv-bullet-accent");
+  });
+
   it("stacks blessings newest first so later blessings push earlier ones downward", () => {
     render(
       <InteractionOverlay

@@ -1438,6 +1438,7 @@ class MainActivity : Activity() {
             val layerWidth = interactionLayer.width.coerceAtLeast(dp(720))
             val layerHeight = interactionLayer.height.coerceAtLeast(dp(420))
             val ttl = interactionTtlFor(interaction, fallbackMs = 7_000L)
+            val accentColor = bulletAccentColor(interaction.id)
             val banner = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -1445,7 +1446,7 @@ class MainActivity : Activity() {
                 background = panelBackground(
                     color = Color.argb(190, 15, 23, 42),
                     radius = dp(999).toFloat(),
-                    strokeColor = Color.argb(76, 34, 211, 238),
+                    strokeColor = accentColor.argb(86),
                 )
                 elevation = dp(12).toFloat()
                 translationX = layerWidth + dp(48).toFloat()
@@ -1454,7 +1455,7 @@ class MainActivity : Activity() {
             }
             banner.addView(
                 View(this).apply {
-                    background = roundedBackground(Color.rgb(34, 211, 238), dp(999).toFloat())
+                    background = roundedBackground(accentColor.rgb(), dp(999).toFloat())
                 },
                 LinearLayout.LayoutParams(dp(7), dp(34)),
             )

@@ -138,8 +138,9 @@ function InteractionBody({ item }: { item: RenderedInteraction }) {
   }
 
   if (item.variant === "bullet-banner") {
+    const accentStyle = bulletAccentStyle(item.id);
     return (
-      <div role="status" style={{ ...baseStyle, ...styles.bulletBanner }}>
+      <div role="status" style={{ ...baseStyle, ...styles.bulletBanner, ...accentStyle }}>
         <span style={styles.bulletAccent} />
         <strong style={styles.bulletText}>{item.message}</strong>
       </div>
@@ -157,6 +158,7 @@ function InteractionBody({ item }: { item: RenderedInteraction }) {
 function BulletMarquee({ interaction }: { interaction: RoomInteractionEvent }) {
   const style = {
     ...styles.bulletMarquee,
+    ...bulletAccentStyle(interaction.id),
     "--ktv-bullet-y": `${bulletVerticalPosition(interaction.id)}vh`
   } as CSSProperties;
 
@@ -230,6 +232,43 @@ function bulletVerticalPosition(id: string): number {
   const lane = hash % 14;
   const laneOffset = (Math.floor(hash / 14) % 4) * 0.8;
   return 11 + lane * 4.6 + laneOffset;
+}
+
+interface BulletAccentTone {
+  end: string;
+  start: string;
+}
+
+const defaultBulletAccentTone: BulletAccentTone = { start: "#22D3EE", end: "#34D399" };
+
+const bulletAccentPalette: readonly BulletAccentTone[] = [
+  defaultBulletAccentTone,
+  { start: "#34D399", end: "#A7F3D0" },
+  { start: "#FACC15", end: "#FB923C" },
+  { start: "#F472B6", end: "#A78BFA" },
+  { start: "#A78BFA", end: "#60A5FA" },
+  { start: "#FB923C", end: "#F97316" },
+  { start: "#60A5FA", end: "#22D3EE" },
+  { start: "#F8FAFC", end: "#CBD5E1" }
+];
+
+function bulletAccentStyle(id: string): CSSProperties {
+  const tone = bulletAccentPalette[stableHash(id) % bulletAccentPalette.length] ?? defaultBulletAccentTone;
+  return {
+    "--ktv-bullet-accent": tone.start,
+    "--ktv-bullet-accent-border": hexToRgba(tone.start, 0.54),
+    "--ktv-bullet-accent-end": tone.end,
+    "--ktv-bullet-accent-glow": hexToRgba(tone.start, 0.58),
+    "--ktv-bullet-accent-halo": hexToRgba(tone.start, 0.2)
+  } as CSSProperties;
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const normalized = hex.replace("#", "");
+  const red = Number.parseInt(normalized.slice(0, 2), 16);
+  const green = Number.parseInt(normalized.slice(2, 4), 16);
+  const blue = Number.parseInt(normalized.slice(4, 6), 16);
+  return `rgba(${red},${green},${blue},${alpha})`;
 }
 
 function stableHash(value: string): number {
@@ -578,17 +617,18 @@ const styles = {
   bulletBanner: {
     backdropFilter: "blur(20px)",
     background: "linear-gradient(135deg, rgba(8,47,73,0.78), rgba(15,23,42,0.7))",
-    border: "1px solid rgba(34,211,238,0.55)",
+    border: "1px solid var(--ktv-bullet-accent-border, rgba(34,211,238,0.55))",
     borderRadius: tvTheme.radii.pill,
-    boxShadow: "0 30px 94px rgba(0,0,0,0.45), 0 0 36px rgba(34,211,238,0.2)",
+    boxShadow: "0 30px 94px rgba(0,0,0,0.45), 0 0 36px var(--ktv-bullet-accent-halo, rgba(34,211,238,0.2))",
     color: tvTheme.colors.text,
     gap: 16,
     padding: "0 30px"
   },
   bulletAccent: {
-    background: "linear-gradient(180deg, #22d3ee, #22c55e)",
+    background:
+      "linear-gradient(180deg, var(--ktv-bullet-accent, #22d3ee), var(--ktv-bullet-accent-end, #22c55e))",
     borderRadius: 999,
-    boxShadow: "0 0 22px rgba(34,211,238,0.58)",
+    boxShadow: "0 0 22px var(--ktv-bullet-accent-glow, rgba(34,211,238,0.58))",
     flex: "0 0 auto",
     height: "52%",
     width: 8
@@ -610,9 +650,9 @@ const styles = {
     animationTimingFunction: "linear",
     backdropFilter: "blur(16px)",
     background: "linear-gradient(135deg, rgba(8,47,73,0.82), rgba(15,23,42,0.72))",
-    border: "1px solid rgba(34,211,238,0.54)",
+    border: "1px solid var(--ktv-bullet-accent-border, rgba(34,211,238,0.54))",
     borderRadius: tvTheme.radii.pill,
-    boxShadow: "0 24px 72px rgba(0,0,0,0.42), 0 0 30px rgba(34,211,238,0.18)",
+    boxShadow: "0 24px 72px rgba(0,0,0,0.42), 0 0 30px var(--ktv-bullet-accent-halo, rgba(34,211,238,0.18))",
     color: tvTheme.colors.text,
     display: "inline-flex",
     gap: 14,
@@ -627,9 +667,10 @@ const styles = {
     willChange: "transform, opacity"
   },
   bulletMarqueeGlow: {
-    background: "linear-gradient(180deg, #22d3ee, #22c55e)",
+    background:
+      "linear-gradient(180deg, var(--ktv-bullet-accent, #22d3ee), var(--ktv-bullet-accent-end, #22c55e))",
     borderRadius: 999,
-    boxShadow: "0 0 20px rgba(34,211,238,0.58)",
+    boxShadow: "0 0 20px var(--ktv-bullet-accent-glow, rgba(34,211,238,0.58))",
     flex: "0 0 auto",
     height: 34,
     width: 7

@@ -28,6 +28,37 @@ fun bulletLaneTopPercent(id: String): Float {
     return 11f + lane * 4.6f + laneOffset
 }
 
+data class BulletAccentColor(
+    val hex: String,
+    val red: Int,
+    val green: Int,
+    val blue: Int,
+) {
+    fun rgb(): Int = argb(255)
+
+    fun argb(alpha: Int): Int {
+        return ((alpha.coerceIn(0, 255) and 0xFF) shl 24) or
+            ((red and 0xFF) shl 16) or
+            ((green and 0xFF) shl 8) or
+            (blue and 0xFF)
+    }
+}
+
+private val bulletAccentPalette = listOf(
+    BulletAccentColor("#22D3EE", 34, 211, 238),
+    BulletAccentColor("#34D399", 52, 211, 153),
+    BulletAccentColor("#FACC15", 250, 204, 21),
+    BulletAccentColor("#F472B6", 244, 114, 182),
+    BulletAccentColor("#A78BFA", 167, 139, 250),
+    BulletAccentColor("#FB923C", 251, 146, 60),
+    BulletAccentColor("#60A5FA", 96, 165, 250),
+    BulletAccentColor("#F8FAFC", 248, 250, 252),
+)
+
+fun bulletAccentColor(id: String): BulletAccentColor {
+    return bulletAccentPalette[stableHash(id) % bulletAccentPalette.size]
+}
+
 data class BulletMarqueePlan(
     val top: Int,
     val startTranslationX: Float,
