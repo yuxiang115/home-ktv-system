@@ -89,8 +89,9 @@ class RoomInteractionUiStateTest {
 
         assertTrue(plan.left in 0..1808)
         assertTrue(plan.top in 0..968)
-        assertTrue(kotlin.math.abs(plan.initialVelocityX) >= 1800f)
-        assertTrue(plan.initialVelocityY <= -3600f)
+        assertTrue(plan.launchAngleDegrees < 75f || plan.launchAngleDegrees > 115f)
+        assertTrue(plan.launchSpeed in 2_400f..3_700f)
+        assertTrue(plan.initialVelocityY < 0f)
         assertTrue(kotlin.math.abs(plan.angularVelocity) >= 8f)
         assertTrue(kotlin.math.abs(plan.angularVelocity) <= 16f)
     }

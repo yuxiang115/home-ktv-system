@@ -3,6 +3,8 @@ package com.liuyue.homektv
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
+import kotlin.math.cos
+import kotlin.math.sin
 
 fun interactionTtlMs(interaction: RoomInteractionEvent, fallbackMs: Long): Long {
     val createdAtMs = parseIsoUtcMs(interaction.createdAt)
@@ -110,6 +112,8 @@ data class EmojiPhysicsLaunchPlan(
     val initialVelocityY: Float,
     val initialRotation: Float,
     val angularVelocity: Float,
+    val launchAngleDegrees: Float,
+    val launchSpeed: Float,
 )
 
 data class EmojiPhysicsTuning(
@@ -117,7 +121,7 @@ data class EmojiPhysicsTuning(
     val pixelsPerMeter: Float = 34f,
     val density: Float = 0.0013f,
     val friction: Float = 0.035f,
-    val restitution: Float = 0.94f,
+    val restitution: Float = 0.47f,
     val linearDamping: Float = 0.08f,
     val angularDamping: Float = 0.04f,
 )
@@ -141,14 +145,21 @@ fun emojiPhysicsLaunchPlan(
         0,
         (safeLayerHeight - safeSize).coerceAtLeast(0),
     )
-    val velocityXDirection = if (hash % 2 == 0) 1f else -1f
+    val rightLaunch = hash % 2 == 0
+    val angleOffset = ((hash / 7) % 27).toFloat()
+    val launchAngleDegrees = if (rightLaunch) 48f + angleOffset else 116f + angleOffset
+    val launchRadians = Math.toRadians(launchAngleDegrees.toDouble())
+    val launchSpeed = 2_400f + ((hash / 19) % 1_300)
+    val angularDirection = if (rightLaunch) 1f else -1f
     return EmojiPhysicsLaunchPlan(
         left = left,
         top = top,
-        initialVelocityX = velocityXDirection * (2_300f + (hash % 1_700)),
-        initialVelocityY = -(4_300f + (hash % 2_100)),
+        initialVelocityX = (cos(launchRadians) * launchSpeed).toFloat(),
+        initialVelocityY = -(sin(launchRadians) * launchSpeed).toFloat(),
         initialRotation = ((hash % 42) - 21).toFloat(),
-        angularVelocity = velocityXDirection * (8.5f + (hash % 70) / 10f),
+        angularVelocity = angularDirection * (8.5f + (hash % 70) / 10f),
+        launchAngleDegrees = launchAngleDegrees,
+        launchSpeed = launchSpeed,
     )
 }
 
