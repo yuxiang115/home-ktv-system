@@ -91,16 +91,16 @@ song-covers.jsonl.state.json
 
 ```bash
 bash deploy/source/ktv.sh cover-status
-bash deploy/source/ktv.sh cover-coverage -- --limit 100 --delay-ms 300
-bash deploy/source/ktv.sh fetch-covers -- --limit 300 --delay-ms 300
+bash deploy/source/ktv.sh cover-coverage -- --limit 100 --concurrency 4 --delay-ms 200
+bash deploy/source/ktv.sh fetch-covers -- --limit 300 --concurrency 4 --delay-ms 200
 ```
 
 Docker 部署：
 
 ```bash
 bash deploy/docker/ktv.sh cover-status
-bash deploy/docker/ktv.sh cover-coverage -- --limit 100 --delay-ms 300
-bash deploy/docker/ktv.sh fetch-covers -- --limit 300 --delay-ms 300
+bash deploy/docker/ktv.sh cover-coverage -- --limit 100 --concurrency 4 --delay-ms 200
+bash deploy/docker/ktv.sh fetch-covers -- --limit 300 --concurrency 4 --delay-ms 200
 ```
 
 本机直接运行：
@@ -119,6 +119,7 @@ pnpm covers:songs -- --limit 300 --delay-ms 300
 --search-limit <n>          每个 provider 搜索结果数，默认 8
 --request-timeout-ms <n>    单次请求超时，默认 8000
 --delay-ms <n>              每首歌之间的延迟，默认 600
+--concurrency <n>           并发处理数量，默认 1；建议从 3 到 4 开始
 --progress-every <n>        进度输出间隔，默认 20
 --retry-failed              重新处理上次 failed 的歌曲
 --retry-not-found           重新处理上次 not_found 的歌曲
@@ -135,25 +136,25 @@ pnpm covers:songs -- --limit 300 --delay-ms 300
 日常补图：
 
 ```bash
-bash deploy/source/ktv.sh fetch-covers -- --limit 300 --delay-ms 300
+bash deploy/source/ktv.sh fetch-covers -- --limit 300 --concurrency 4 --delay-ms 200
 ```
 
 重试网络失败：
 
 ```bash
-bash deploy/source/ktv.sh fetch-covers -- --retry-failed --limit 300 --delay-ms 500
+bash deploy/source/ktv.sh fetch-covers -- --retry-failed --limit 300 --concurrency 3 --delay-ms 300
 ```
 
 重试没有找到封面的歌曲：
 
 ```bash
-bash deploy/source/ktv.sh fetch-covers -- --retry-not-found --limit 300 --delay-ms 500
+bash deploy/source/ktv.sh fetch-covers -- --retry-not-found --limit 300 --concurrency 3 --delay-ms 300
 ```
 
 重新拉取一批并覆盖本地缓存：
 
 ```bash
-bash deploy/source/ktv.sh fetch-covers -- --force --limit 300 --delay-ms 600
+bash deploy/source/ktv.sh fetch-covers -- --force --limit 300 --concurrency 2 --delay-ms 500
 ```
 
 ## 验证

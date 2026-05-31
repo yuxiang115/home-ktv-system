@@ -14,6 +14,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -62,6 +63,7 @@ def parse_args(argv):
             sub.add_argument("--search-limit", type=positive_int, default=8)
             sub.add_argument("--request-timeout-ms", type=positive_int, default=8000)
             sub.add_argument("--delay-ms", type=non_negative_int, default=600)
+            sub.add_argument("--concurrency", type=positive_int, default=1)
             sub.add_argument("--progress-every", type=positive_int, default=20)
         if command == "fetch":
             sub.add_argument("--retry-failed", action="store_true")
@@ -104,71 +106,15 @@ def fetch_covers(args):
         "failed": 0,
     }
     write_state(state_path, {**stats, "status": "running", "updatedAt": now_iso(), "output": str(output)})
-    print(f"selected={len(songs)} coverRoot={cover_root} output={output}", flush=True)
+    print(f"selected={len(songs)} concurrency={args.concurrency} coverRoot={cover_root} output={output}", flush=True)
 
     providers = read_provider_list(args.providers)
-    for index, song in enumerate(songs, start=1):
-        decision = decide_song_action(
-            song,
-            history,
-            cover_root,
-            public_base_url,
-            args.retry_failed,
-            args.retry_not_found,
-            args.force,
-        )
-        row = {
-            "songId": song["id"],
-            "title": song["title"],
-            "artistName": song["artistName"],
-            "createdAt": now_iso(),
-        }
-        try:
-            if decision.action == "skip":
-                stats["skipped"] += 1
-                append_jsonl(output, {**row, "status": "skipped", "reason": decision.reason})
-            elif decision.action == "repair":
-                update_cover_url(args, song["id"], decision.public_url)
-                stats["repaired"] += 1
-                append_jsonl(output, {**row, "status": "repaired", "publicUrl": decision.public_url})
-            else:
-                cover = None
-                if decision.external_url:
-                    cover = {
-                        "provider": "existing",
-                        "providerSongId": "",
-                        "imageUrl": decision.external_url,
-                        "confidence": 100,
-                    }
-                if not cover:
-                    cover = find_cover(song, providers, args.search_limit, args.request_timeout_ms, DEFAULT_IMAGE_SIZE)
-                if not cover:
-                    touch_cover_processed(args, song["id"])
-                    stats["notFound"] += 1
-                    append_jsonl(output, {**row, "status": "not_found"})
-                else:
-                    public_url = public_cover_url(public_base_url, song["id"])
-                    destination = cover_file_path(cover_root, song["id"])
-                    download_image(cover["imageUrl"], destination, args.request_timeout_ms)
-                    update_cover_url(args, song["id"], public_url)
-                    stats["found"] += 1
-                    append_jsonl(
-                        output,
-                        {
-                            **row,
-                            "status": "found",
-                            "provider": cover["provider"],
-                            "providerSongId": cover.get("providerSongId") or "",
-                            "confidence": cover.get("confidence"),
-                            "externalImageUrl": cover["imageUrl"],
-                            "publicUrl": public_url,
-                            "coverPath": str(destination),
-                        },
-                    )
-        except Exception as error:
-            touch_cover_processed(args, song["id"])
-            stats["failed"] += 1
-            append_jsonl(output, {**row, "status": "failed", "error": str(error)[:500]})
+    worker = lambda song: process_fetch_song(args, song, history, cover_root, public_base_url, providers)
+    for index, result in enumerate(iter_song_task_results(songs, worker, args.concurrency, args.delay_ms), start=1):
+        stat_key = fetch_status_stat_key(result.get("status"))
+        if stat_key:
+            stats[stat_key] += 1
+        append_jsonl(output, result)
 
         if index % args.progress_every == 0 or index == len(songs):
             remaining = len(songs) - index
@@ -189,32 +135,150 @@ def fetch_covers(args):
                     "output": str(output),
                 },
             )
-        if args.delay_ms and index < len(songs):
-            time.sleep(args.delay_ms / 1000)
+
+
+def process_fetch_song(args, song, history, cover_root, public_base_url, providers):
+    decision = decide_song_action(
+        song,
+        history,
+        cover_root,
+        public_base_url,
+        args.retry_failed,
+        args.retry_not_found,
+        args.force,
+    )
+    row = {
+        "songId": song["id"],
+        "title": song["title"],
+        "artistName": song["artistName"],
+        "createdAt": now_iso(),
+    }
+    try:
+        if decision.action == "skip":
+            return {**row, "status": "skipped", "reason": decision.reason}
+        if decision.action == "repair":
+            update_cover_url(args, song["id"], decision.public_url)
+            return {**row, "status": "repaired", "publicUrl": decision.public_url}
+
+        cover = None
+        if decision.external_url:
+            cover = {
+                "provider": "existing",
+                "providerSongId": "",
+                "imageUrl": decision.external_url,
+                "confidence": 100,
+            }
+        if not cover:
+            cover = find_cover(song, providers, args.search_limit, args.request_timeout_ms, DEFAULT_IMAGE_SIZE)
+        if not cover:
+            touch_cover_processed(args, song["id"])
+            return {**row, "status": "not_found"}
+
+        public_url = public_cover_url(public_base_url, song["id"])
+        destination = cover_file_path(cover_root, song["id"])
+        download_image(cover["imageUrl"], destination, args.request_timeout_ms)
+        update_cover_url(args, song["id"], public_url)
+        return {
+            **row,
+            "status": "found",
+            "provider": cover["provider"],
+            "providerSongId": cover.get("providerSongId") or "",
+            "confidence": cover.get("confidence"),
+            "externalImageUrl": cover["imageUrl"],
+            "publicUrl": public_url,
+            "coverPath": str(destination),
+        }
+    except Exception as error:
+        try:
+            touch_cover_processed(args, song["id"])
+        except Exception as touch_error:
+            detail = f"{str(error)[:350]}; touch failed: {str(touch_error)[:120]}"
+            return {**row, "status": "failed", "error": detail}
+        return {**row, "status": "failed", "error": str(error)[:500]}
+
+
+def fetch_status_stat_key(status):
+    return {
+        "found": "found",
+        "repaired": "repaired",
+        "skipped": "skipped",
+        "not_found": "notFound",
+        "failed": "failed",
+    }.get(clean(status))
 
 
 def run_coverage(args):
     songs = select_candidate_songs(args, random_order=True)
     providers = read_provider_list(args.providers)
     stats = {"sample": len(songs), "found": 0, "notFound": 0, "failed": 0, "providerHits": {}}
-    print(f"sample={len(songs)} providers={','.join(providers)}", flush=True)
-    for index, song in enumerate(songs, start=1):
-        try:
-            cover = find_cover(song, providers, args.search_limit, args.request_timeout_ms, DEFAULT_IMAGE_SIZE)
-            if cover:
-                stats["found"] += 1
-                provider = cover["provider"]
-                stats["providerHits"][provider] = stats["providerHits"].get(provider, 0) + 1
-            else:
-                stats["notFound"] += 1
-        except Exception:
+    print(f"sample={len(songs)} concurrency={args.concurrency} providers={','.join(providers)}", flush=True)
+
+    worker = lambda song: process_coverage_song(song, providers, args.search_limit, args.request_timeout_ms)
+    for index, result in enumerate(iter_song_task_results(songs, worker, args.concurrency, args.delay_ms), start=1):
+        if result["status"] == "found":
+            stats["found"] += 1
+            provider = result["provider"]
+            stats["providerHits"][provider] = stats["providerHits"].get(provider, 0) + 1
+        elif result["status"] == "not_found":
+            stats["notFound"] += 1
+        else:
             stats["failed"] += 1
+
         if index % args.progress_every == 0 or index == len(songs):
             print(json.dumps(stats, ensure_ascii=False, sort_keys=True), flush=True)
-        if args.delay_ms and index < len(songs):
-            time.sleep(args.delay_ms / 1000)
+
     hit_rate = 0 if stats["sample"] == 0 else round(stats["found"] / stats["sample"] * 100, 1)
     print(json.dumps({**stats, "hitRate": hit_rate}, ensure_ascii=False, sort_keys=True), flush=True)
+
+
+def process_coverage_song(song, providers, search_limit, request_timeout_ms):
+    try:
+        cover = find_cover(song, providers, search_limit, request_timeout_ms, DEFAULT_IMAGE_SIZE)
+        if cover:
+            return {"status": "found", "provider": cover["provider"]}
+        return {"status": "not_found"}
+    except Exception as error:
+        return {"status": "failed", "error": str(error)[:500]}
+
+
+def iter_song_task_results(songs, worker, concurrency=1, delay_ms=0):
+    concurrency = max(1, int(concurrency))
+    delay_seconds = max(0, int(delay_ms)) / 1000
+    if concurrency == 1:
+        for index, song in enumerate(songs):
+            yield worker(song)
+            if delay_seconds and index < len(songs) - 1:
+                time.sleep(delay_seconds)
+        return
+
+    song_iter = iter(songs)
+    in_flight = set()
+    submitted = 0
+
+    def submit_next(executor):
+        nonlocal submitted
+        try:
+            song = next(song_iter)
+        except StopIteration:
+            return False
+        if delay_seconds and submitted > 0:
+            time.sleep(delay_seconds)
+        in_flight.add(executor.submit(worker, song))
+        submitted += 1
+        return True
+
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        while len(in_flight) < concurrency and submit_next(executor):
+            pass
+        while in_flight:
+            done, in_flight = wait(in_flight, return_when=FIRST_COMPLETED)
+            for future in done:
+                yield future.result()
+                submit_next(executor)
+
+
+def run_song_tasks(songs, worker, concurrency=1, delay_ms=0):
+    return list(iter_song_task_results(songs, worker, concurrency, delay_ms))
 
 
 def print_status(args):

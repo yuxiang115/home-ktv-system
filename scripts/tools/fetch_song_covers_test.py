@@ -2,6 +2,8 @@
 import importlib.util
 import json
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -42,6 +44,33 @@ class FetchSongCoversTest(unittest.TestCase):
 
         self.assertEqual(covers.parse_args(["fetch"]).limit, 0)
         self.assertEqual(covers.parse_args(["coverage"]).limit, 100)
+
+    def test_fetch_and_coverage_accept_concurrency(self):
+        covers = load_module()
+
+        self.assertEqual(covers.parse_args(["fetch", "--concurrency", "4"]).concurrency, 4)
+        self.assertEqual(covers.parse_args(["coverage", "--concurrency", "3"]).concurrency, 3)
+
+    def test_runs_song_tasks_concurrently(self):
+        covers = load_module()
+        active = 0
+        max_active = 0
+        lock = threading.Lock()
+
+        def worker(song):
+            nonlocal active, max_active
+            with lock:
+                active += 1
+                max_active = max(max_active, active)
+            time.sleep(0.02)
+            with lock:
+                active -= 1
+            return {"songId": song["id"]}
+
+        results = covers.run_song_tasks([{"id": str(index)} for index in range(6)], worker, concurrency=3)
+
+        self.assertEqual({result["songId"] for result in results}, {"0", "1", "2", "3", "4", "5"})
+        self.assertGreater(max_active, 1)
 
     def test_accepts_pnpm_argument_separator(self):
         covers = load_module()
