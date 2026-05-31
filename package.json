@@ -15,6 +15,7 @@
     "ktv:tags:llm-batch:py": "python3 scripts/tools/run_style_tagging_llm_batch.py",
     "covers:songs": "pnpm -F @home-ktv/api covers:songs",
     "covers:coverage": "pnpm -F @home-ktv/api covers:coverage",
+    "covers:status": "pnpm -F @home-ktv/api covers:status",
     "deploy:doctor": "node scripts/tools/deploy-doctor.mjs",
     "repo:hygiene": "node scripts/tools/repo-hygiene-check.mjs",
     "deploy:docker": "bash deploy/docker/ktv.sh",

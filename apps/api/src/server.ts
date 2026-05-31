@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Pool } from "pg";
 import type { DeviceSession, PlaybackEvent, PlaybackSession, Room } from "@home-ktv/domain";
@@ -120,6 +121,7 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     snapshotEventName: protocolMessageNames.snapshotUpdated
   });
   await registerMediaRoutes(server, {
+    coverRoot: resolvedConfig.mediaRoot ? join(resolvedConfig.mediaRoot, "covers") : "",
     mediaGateway,
     ...(pool
       ? {

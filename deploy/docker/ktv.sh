@@ -21,8 +21,9 @@ Commands:
   logs [svc]  Follow logs for all services or one service
   doctor      Run deployment self-checks
   probe-index Probe indexed KTV media technical metadata inside the API container
-  fetch-covers Batch fetch song cover metadata inside the API container
+  fetch-covers Batch fetch and cache song cover images inside the API container
   cover-coverage Test cover lookup coverage without writing database rows
+  cover-status Show cover cache progress and database coverage
   stop        Stop services
   config      Render docker compose config
   help        Show this help
@@ -115,6 +116,13 @@ case "${command}" in
       shift
     fi
     compose exec -T api pnpm -F @home-ktv/api covers:coverage -- "$@"
+    ;;
+  cover-status)
+    ensure_env
+    if [[ "${1:-}" == "--" ]]; then
+      shift
+    fi
+    compose exec -T api pnpm -F @home-ktv/api covers:status -- "$@"
     ;;
   stop)
     ensure_env

@@ -24,6 +24,9 @@ bash deploy/source/ktv.sh status
 bash deploy/source/ktv.sh doctor
 bash deploy/source/ktv.sh smoke
 bash deploy/source/ktv.sh logs
+bash deploy/source/ktv.sh cover-status
+bash deploy/source/ktv.sh cover-coverage -- --limit 100
+bash deploy/source/ktv.sh fetch-covers -- --limit 300
 bash deploy/source/ktv.sh stop
 ```
 
