@@ -90,7 +90,7 @@ song_cover_cache
 - 长期点歌统计改为 `ktv_songs.request_count`，不再扫描历史队列表。
 
 迁移 `0019_runtime_db_simplification.sql` 会清空当前 `queue_entries`，并清空 TV 在线状态和控制端 session。真实曲库、封面缓存、风格标签和 `ktv_songs.request_count` 会保留。
-迁移 `0020_ktv_style_tags_simplification.sql` 会把旧风格字典和运行态表收敛到单一 `ktv_song_style_tags` 关系表。
+迁移 `0020_ktv_style_tags_simplification.sql` 会把旧风格字典、打标缓存、打标状态和打标任务表收敛到单一 `ktv_song_style_tags` 关系表。
 
 ## 字段清单
 

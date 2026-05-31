@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { schemaSql } from "../db/schema.js";
+import { schemaSql, tableNames } from "../db/schema.js";
 
 const migrationUrl = new URL("../db/migrations/0013_ktv_style_tags.sql", import.meta.url);
 const migrationSql = existsSync(migrationUrl) ? readFileSync(migrationUrl, "utf8") : "";
@@ -25,6 +25,7 @@ describe("KTV style tag schema", () => {
     expect(schemaSql).toContain("created_at timestamptz NOT NULL DEFAULT now()");
     expect(schemaSql).toContain("updated_at timestamptz NOT NULL DEFAULT now()");
     expect(schemaSql).toContain("UNIQUE(song_id, tag_name, tag_group)");
+    expect(tableNames.ktvSongStyleTags).toBe("ktv_song_style_tags");
 
     for (const removedTable of [
       "CREATE TABLE IF NOT EXISTS ktv_style_groups",

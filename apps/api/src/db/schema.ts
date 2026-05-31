@@ -16,7 +16,8 @@ export const tableNames = {
   ktvArtists: "ktv_artists",
   ktvSongs: "ktv_songs",
   ktvSongArtists: "ktv_song_artists",
-  ktvSongAssets: "ktv_song_assets"
+  ktvSongAssets: "ktv_song_assets",
+  ktvSongStyleTags: "ktv_song_style_tags"
 } as const;
 
 export const enumValues = {
