@@ -78,8 +78,8 @@ class RoomInteractionUiStateTest {
     }
 
     @Test
-    fun createsBoundedBouncyEmojiLaunchPlan() {
-        val plan = emojiLaunchPlan(
+    fun createsBouncyEmojiPhysicsLaunchPlan() {
+        val plan = emojiPhysicsLaunchPlan(
             id = "interaction-rocket",
             layerWidth = 1920,
             layerHeight = 1080,
@@ -89,13 +89,10 @@ class RoomInteractionUiStateTest {
 
         assertTrue(plan.left in 0..1808)
         assertTrue(plan.top in 0..968)
-        assertTrue(plan.targetTranslationY < -420f)
         assertTrue(kotlin.math.abs(plan.initialVelocityX) >= 1800f)
         assertTrue(plan.initialVelocityY <= -3600f)
-        assertTrue(plan.minTranslationX <= plan.targetTranslationX)
-        assertTrue(plan.maxTranslationX >= plan.targetTranslationX)
-        assertTrue(plan.minTranslationY <= plan.targetTranslationY)
-        assertTrue(plan.maxTranslationY >= 0f)
+        assertTrue(kotlin.math.abs(plan.angularVelocity) >= 8f)
+        assertTrue(kotlin.math.abs(plan.angularVelocity) <= 16f)
     }
 
     private fun interaction(

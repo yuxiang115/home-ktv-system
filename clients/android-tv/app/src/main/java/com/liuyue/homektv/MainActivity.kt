@@ -22,10 +22,15 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.dynamicanimation.animation.DynamicAnimation
-import androidx.dynamicanimation.animation.SpringAnimation
-import androidx.dynamicanimation.animation.SpringForce
+import com.jawnnypoo.physicslayout.Physics
+import com.jawnnypoo.physicslayout.PhysicsConfig
+import com.jawnnypoo.physicslayout.PhysicsFrameLayout
+import com.jawnnypoo.physicslayout.Shape
 import okhttp3.WebSocket
+import org.jbox2d.common.Vec2
+import org.jbox2d.dynamics.BodyDef
+import org.jbox2d.dynamics.BodyType
+import org.jbox2d.dynamics.FixtureDef
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
@@ -35,6 +40,7 @@ class MainActivity : Activity() {
     private lateinit var videoLayout: VLCVideoLayout
     private lateinit var idleBackgroundImage: ImageView
     private lateinit var interactionLayer: FrameLayout
+    private lateinit var emojiPhysicsLayer: PhysicsFrameLayout
     private lateinit var bottomPanel: LinearLayout
     private lateinit var idlePairingOverlay: LinearLayout
     private lateinit var idleQrImage: ImageView
@@ -251,6 +257,7 @@ class MainActivity : Activity() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
             ),
         )
+        installEmojiPhysicsLayer()
 
         buildPairingOverlays(root)
         buildStatusBanner(root)
@@ -1331,11 +1338,12 @@ class MainActivity : Activity() {
     }
 
     private fun renderEmojiInteraction(interaction: RoomInteractionEvent) {
-        interactionLayer.post {
-            val layerWidth = interactionLayer.width.coerceAtLeast(dp(720))
-            val layerHeight = interactionLayer.height.coerceAtLeast(dp(420))
+        val physicsLayer = ensureEmojiPhysicsLayer()
+        physicsLayer.post {
+            val layerWidth = physicsLayer.width.coerceAtLeast(dp(720))
+            val layerHeight = physicsLayer.height.coerceAtLeast(dp(420))
             val size = dp(104)
-            val plan = emojiLaunchPlan(
+            val plan = emojiPhysicsLaunchPlan(
                 id = interaction.id,
                 layerWidth = layerWidth,
                 layerHeight = layerHeight,
@@ -1346,6 +1354,7 @@ class MainActivity : Activity() {
             val ttl = interactionTtlFor(interaction, fallbackMs = 12_000L)
 
             val emojiView = TextView(this).apply {
+                id = View.generateViewId()
                 text = interaction.message
                 textSize = 58f
                 gravity = Gravity.CENTER
@@ -1353,10 +1362,11 @@ class MainActivity : Activity() {
                 background = roundedBackground(Color.argb(78, 15, 23, 42), dp(999).toFloat())
                 elevation = dp(10).toFloat()
                 rotation = plan.initialRotation
-                scaleX = 0.78f
-                scaleY = 0.78f
+                scaleX = 0.86f
+                scaleY = 0.86f
             }
-            interactionLayer.addView(
+            Physics.setPhysicsConfig(emojiView, createEmojiPhysicsConfig())
+            physicsLayer.addView(
                 emojiView,
                 FrameLayout.LayoutParams(size, size).apply {
                     leftMargin = plan.left
@@ -1365,36 +1375,104 @@ class MainActivity : Activity() {
             )
 
             renderEmojiConfetti(plan.left + size / 2, plan.top + size - dp(8), seed)
-            startEmojiSpring(emojiView, DynamicAnimation.TRANSLATION_X, plan.targetTranslationX, plan.initialVelocityX, plan.minTranslationX, plan.maxTranslationX)
-            startEmojiSpring(emojiView, DynamicAnimation.TRANSLATION_Y, plan.targetTranslationY, plan.initialVelocityY, plan.minTranslationY, plan.maxTranslationY)
+            launchEmojiPhysicsBody(physicsLayer, emojiView, plan)
             emojiView.animate()
-                .rotationBy(plan.rotationBy)
                 .scaleX(1f)
                 .scaleY(1f)
-                .setDuration(1_100L)
+                .setDuration(520L)
                 .setInterpolator(DecelerateInterpolator())
                 .start()
             fadeOutAndRemoveViewLater(emojiView, ttl)
         }
     }
 
-    private fun startEmojiSpring(
+    private fun installEmojiPhysicsLayer() {
+        val tuning = emojiPhysicsTuning()
+        emojiPhysicsLayer = PhysicsFrameLayout(this).apply {
+            isClickable = false
+            isFocusable = false
+            clipChildren = false
+            clipToPadding = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            physics.isFlingEnabled = false
+            physics.hasBounds = true
+            physics.pixelsPerMeter = dp(tuning.pixelsPerMeter.toInt()).toFloat()
+            physics.velocityIterations = 8
+            physics.positionIterations = 4
+            physics.setGravityY(tuning.gravityY)
+            addOnLayoutChangeListener(object : View.OnLayoutChangeListener {
+                override fun onLayoutChange(
+                    v: View,
+                    left: Int,
+                    top: Int,
+                    right: Int,
+                    bottom: Int,
+                    oldLeft: Int,
+                    oldTop: Int,
+                    oldRight: Int,
+                    oldBottom: Int,
+                ) {
+                    if (right <= left || bottom <= top || physics.world == null) {
+                        return
+                    }
+                    removeOnLayoutChangeListener(this)
+                    physics.setBoundsSize(28f)
+                }
+            })
+        }
+        interactionLayer.addView(
+            emojiPhysicsLayer,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            ),
+        )
+    }
+
+    private fun ensureEmojiPhysicsLayer(): PhysicsFrameLayout {
+        if (!::emojiPhysicsLayer.isInitialized || emojiPhysicsLayer.parent !== interactionLayer) {
+            installEmojiPhysicsLayer()
+        }
+        return emojiPhysicsLayer
+    }
+
+    private fun createEmojiPhysicsConfig(): PhysicsConfig {
+        val tuning = emojiPhysicsTuning()
+        return PhysicsConfig(
+            shape = Shape.CIRCLE,
+            fixtureDef = FixtureDef().apply {
+                density = tuning.density
+                friction = tuning.friction
+                restitution = tuning.restitution
+            },
+            bodyDef = BodyDef().apply {
+                type = BodyType.DYNAMIC
+                linearDamping = tuning.linearDamping
+                angularDamping = tuning.angularDamping
+            },
+        )
+    }
+
+    private fun launchEmojiPhysicsBody(
+        physicsLayer: PhysicsFrameLayout,
         view: View,
-        property: DynamicAnimation.ViewProperty,
-        finalPosition: Float,
-        startVelocity: Float,
-        minValue: Float,
-        maxValue: Float,
+        plan: EmojiPhysicsLaunchPlan,
+        attempt: Int = 0,
     ) {
-        SpringAnimation(view, property, finalPosition).apply {
-            setMinValue(minValue)
-            setMaxValue(maxValue)
-            setStartVelocity(startVelocity)
-            spring = SpringForce(finalPosition).apply {
-                dampingRatio = SpringForce.DAMPING_RATIO_LOW_BOUNCY
-                stiffness = SpringForce.STIFFNESS_LOW
+        physicsLayer.post {
+            val body = physicsLayer.physics.findBodyById(view.id)
+            if (body == null) {
+                if (attempt < 5) {
+                    physicsLayer.requestLayout()
+                    launchEmojiPhysicsBody(physicsLayer, view, plan, attempt + 1)
+                }
+                return@post
             }
-            start()
+            val pixelsPerMeter = physicsLayer.physics.pixelsPerMeter.takeIf { it > 0f }
+                ?: dp(emojiPhysicsTuning().pixelsPerMeter.toInt()).toFloat()
+            body.linearVelocity = Vec2(plan.initialVelocityX / pixelsPerMeter, plan.initialVelocityY / pixelsPerMeter)
+            body.angularVelocity = plan.angularVelocity
+            body.isAwake = true
         }
     }
 
@@ -1621,6 +1699,7 @@ class MainActivity : Activity() {
         interactionHandler.removeCallbacksAndMessages(null)
         if (::interactionLayer.isInitialized) {
             interactionLayer.removeAllViews()
+            installEmojiPhysicsLayer()
         }
     }
 

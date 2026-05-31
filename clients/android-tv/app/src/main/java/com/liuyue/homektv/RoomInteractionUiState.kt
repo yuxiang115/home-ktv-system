@@ -103,28 +103,34 @@ fun blessingStackTopMargins(
     return margins
 }
 
-data class EmojiLaunchPlan(
+data class EmojiPhysicsLaunchPlan(
     val left: Int,
     val top: Int,
-    val targetTranslationX: Float,
-    val targetTranslationY: Float,
-    val minTranslationX: Float,
-    val maxTranslationX: Float,
-    val minTranslationY: Float,
-    val maxTranslationY: Float,
     val initialVelocityX: Float,
     val initialVelocityY: Float,
     val initialRotation: Float,
-    val rotationBy: Float,
+    val angularVelocity: Float,
 )
 
-fun emojiLaunchPlan(
+data class EmojiPhysicsTuning(
+    val gravityY: Float = 16.5f,
+    val pixelsPerMeter: Float = 34f,
+    val density: Float = 0.0013f,
+    val friction: Float = 0.035f,
+    val restitution: Float = 0.94f,
+    val linearDamping: Float = 0.08f,
+    val angularDamping: Float = 0.04f,
+)
+
+fun emojiPhysicsTuning(): EmojiPhysicsTuning = EmojiPhysicsTuning()
+
+fun emojiPhysicsLaunchPlan(
     id: String,
     layerWidth: Int,
     layerHeight: Int,
     size: Int,
     margin: Int,
-): EmojiLaunchPlan {
+): EmojiPhysicsLaunchPlan {
     val safeLayerWidth = layerWidth.coerceAtLeast(size + 1)
     val safeLayerHeight = layerHeight.coerceAtLeast(size + 1)
     val safeSize = size.coerceAtLeast(1)
@@ -135,29 +141,14 @@ fun emojiLaunchPlan(
         0,
         (safeLayerHeight - safeSize).coerceAtLeast(0),
     )
-    val targetCenter = horizontalPositionFromHash(hash / 31 + 17, safeLayerWidth, margin)
-    val targetTranslationX = (targetCenter - startCenter).toFloat().coerceIn(
-        -left.toFloat(),
-        (safeLayerWidth - safeSize - left).toFloat(),
-    )
-    val targetTranslationY = (-(safeLayerHeight * (0.58f + (hash % 18) / 100f))).coerceIn(
-        -top.toFloat(),
-        (safeLayerHeight - safeSize - top).toFloat(),
-    )
     val velocityXDirection = if (hash % 2 == 0) 1f else -1f
-    return EmojiLaunchPlan(
+    return EmojiPhysicsLaunchPlan(
         left = left,
         top = top,
-        targetTranslationX = targetTranslationX,
-        targetTranslationY = targetTranslationY,
-        minTranslationX = -left.toFloat(),
-        maxTranslationX = (safeLayerWidth - safeSize - left).toFloat(),
-        minTranslationY = -top.toFloat(),
-        maxTranslationY = (safeLayerHeight - safeSize - top).toFloat(),
-        initialVelocityX = velocityXDirection * (1_900f + (hash % 1_400)),
-        initialVelocityY = -(3_800f + (hash % 1_800)),
+        initialVelocityX = velocityXDirection * (2_300f + (hash % 1_700)),
+        initialVelocityY = -(4_300f + (hash % 2_100)),
         initialRotation = ((hash % 42) - 21).toFloat(),
-        rotationBy = if (hash % 2 == 0) 720f else -720f,
+        angularVelocity = velocityXDirection * (8.5f + (hash % 70) / 10f),
     )
 }
 
