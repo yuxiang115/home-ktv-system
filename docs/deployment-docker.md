@@ -63,6 +63,7 @@ bash deploy/docker/ktv.sh doctor
 bash deploy/docker/ktv.sh logs
 bash deploy/docker/ktv.sh logs api
 bash deploy/docker/ktv.sh probe-index -- --limit 300 --concurrency 2
+bash deploy/docker/ktv.sh cover-status
 bash deploy/docker/ktv.sh fetch-covers -- --limit 300
 bash deploy/docker/ktv.sh cover-coverage -- --limit 100
 docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \

@@ -5,7 +5,7 @@ ENV PATH=$PNPM_HOME:$PATH
 
 RUN corepack enable \
   && apt-get update \
-  && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+  && apt-get install -y --no-install-recommends ffmpeg ca-certificates python3 postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -150,6 +150,21 @@ async function main(currentCommand, currentArg, currentArgs) {
       ensureDirs();
       await runForeground("pnpm", ["-F", "@home-ktv/api", "probe:ktv-index", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
       return;
+    case "fetch-covers":
+      requireEnvFile();
+      ensureDirs();
+      await runForeground("pnpm", ["-F", "@home-ktv/api", "covers:songs", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
+      return;
+    case "cover-coverage":
+      requireEnvFile();
+      ensureDirs();
+      await runForeground("pnpm", ["-F", "@home-ktv/api", "covers:coverage", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
+      return;
+    case "cover-status":
+      requireEnvFile();
+      ensureDirs();
+      await runForeground("pnpm", ["-F", "@home-ktv/api", "covers:status", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
+      return;
     case "help":
     case "-h":
     case "--help":
@@ -510,6 +525,9 @@ function printUsage(error = false) {
     "  doctor      Run deployment self-checks",
     "  smoke       Run public web deployment smoke checks",
     "  probe-index Probe indexed KTV media technical metadata",
+    "  fetch-covers Batch fetch and cache song cover images",
+    "  cover-coverage Test cover lookup coverage without writing database rows",
+    "  cover-status Show cover cache progress and database coverage",
     "  stop        Stop services",
     "  help        Show this help",
     "",
