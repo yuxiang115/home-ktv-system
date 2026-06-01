@@ -16,6 +16,7 @@
 | `web-deploy-smoke.mjs` | 部署后的公开入口 smoke，验证 CORS、TV bootstrap、heartbeat、控制端看到 TV 在线、推荐列表非空。 | `pnpm deploy:smoke` / `bash deploy/source/ktv.sh smoke` |
 | `repo-hygiene-check.mjs` | 提交前仓库卫生检查，区分 tracked dirty、高风险未跟踪文件和本地运行产物。 | `pnpm repo:hygiene` |
 | `fetch_song_covers.py` | 批量查询、下载并缓存歌曲封面，把本地公开封面 URL 写回 `ktv_songs.cover_image_url`。 | `bash deploy/source/ktv.sh fetch-covers -- ...` |
+| `query_music_tagger_cover.py` | 按 MusicTagger 的网易云旧接口和酷狗接口逻辑，查询单首歌封面 URL，可选下载图片。 | `python3 scripts/tools/query_music_tagger_cover.py 夜之光 花姐` |
 | `query_netease_cover.py` | 调用内部 NeteaseCloudMusicApi 服务，按歌名/歌手查询网易云候选歌曲和封面 URL。 | `python3 scripts/tools/query_netease_cover.py 冲动的惩罚 刀郎 --base-url http://127.0.0.1:4300` |
 | `run_style_tagging_llm_batch.py` | 离线批量给歌曲补风格标签，先生成 JSONL，再导入 `ktv_songs.style_tags`。 | `pnpm ktv:tags:llm-batch:py -- ...` |
 | `ui-visual-check.mjs` | 控制端和 Admin 的 Chrome 截图检查。 | `pnpm ui:visual-check` |
@@ -33,6 +34,7 @@
 | `web-deploy-smoke.test.mjs` | Web smoke 的 CORS、页面可达性、TV bootstrap/heartbeat、控制端 session 和 discovery 检查。 |
 | `repo-hygiene-check.test.mjs` | Git 状态解析、高风险未跟踪路径识别和 dirty 报告。 |
 | `fetch_song_covers_test.py` | 封面路径、公开 URL、并发调度、图片校验、历史跳过、匹配评分和 JSONL 历史读取。 |
+| `query_music_tagger_cover_test.py` | MusicTagger 封面探测脚本的候选解析、匹配排序、酷狗图片地址归一化和图片校验。 |
 | `query_netease_cover_test.py` | 网易云封面探测脚本的候选解析、匹配排序和 URL 编码。 |
 | `run_style_tagging_llm_batch_test.py` | LLM 标签批处理的短 ID prompt、返回校验、标签过滤和导入 SQL。 |
 | `ui-visual-check.test.mjs` | 控制端视觉截图 URL 的 pairing token 刷新和错误处理。 |
@@ -197,6 +199,29 @@ NETEASE_CLOUD_MUSIC_API_BASE_URL=http://127.0.0.1:4300 python3 scripts/tools/que
 
 ```bash
 python3 scripts/tools/query_netease_cover_test.py
+```
+
+## query_music_tagger_cover.py
+
+`query_music_tagger_cover.py` 是从 MusicTagger 的 `MusicTager/api` 目录里抽出的封面探测逻辑，当前只保留不需要凭据的两个来源：
+
+- `cloud`: MusicTagger 的 `CloudMusicWebApi`，使用网易云旧搜索接口和歌曲详情接口读取 `album.picUrl`。
+- `kugou`: MusicTagger 的 `KugouApi`，先搜索歌曲 hash，再调用 `getSongInfo.php` 读取 `album_img`。
+
+脚本默认只输出候选和最佳封面 URL，不写数据库。需要确认图片能下载时传 `--download`。
+
+常用命令：
+
+```bash
+python3 scripts/tools/query_music_tagger_cover.py 冲动的惩罚 刀郎
+python3 scripts/tools/query_music_tagger_cover.py 夜之光 花姐 --providers kugou
+python3 scripts/tools/query_music_tagger_cover.py 夜之光 花姐 --download runtime/probes/night-light.jpg
+```
+
+相关测试：
+
+```bash
+python3 scripts/tools/query_music_tagger_cover_test.py
 ```
 
 ## run_style_tagging_llm_batch.py
