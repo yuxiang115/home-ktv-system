@@ -79,7 +79,7 @@ withCoverUrl=3635
 withoutCoverUrl=30750
 ```
 
-这次全量脚本正常完成，失败只有少量网络错误；低覆盖率主要来自当前匹配策略偏保守。脚本要求歌名和歌手都匹配，当前默认 provider 为 `netease,cloud,tencent,kugou,kuwo,spotify`。下一轮继续提高覆盖率时，可考虑增加本地视频首帧兜底。
+这次全量脚本正常完成，失败只有少量网络错误；低覆盖率主要来自当前匹配策略偏保守。脚本会先按歌名和歌手严格匹配，严格命中为空时再退回只按歌名匹配；当前默认 provider 为 `netease,cloud,tencent,kugou,kuwo,spotify`。下一轮继续提高覆盖率时，可考虑增加本地视频首帧兜底。
 
 ## song-id 稳定性
 
@@ -113,7 +113,7 @@ python3 -m pip install --user spotifyscraper
 python3 -m pip install --user --break-system-packages spotifyscraper
 ```
 
-6. 用歌名和歌手计算匹配分，拒绝弱匹配，并降低 DJ、Live、Remix、翻唱、现场等版本的分数。
+6. 全部 provider 会先按歌名和歌手做严格匹配；严格匹配全都没有命中后，再按 provider 顺序退回歌名兜底匹配；同时降低 DJ、Live、Remix、翻唱、现场等版本的分数。
 7. 命中后下载图片到本地缓存，再写入本地公开 URL。
 8. 未命中或失败时不写 `cover_image_url`，只更新 `cover_updated_at` 并写入进度文件。
 

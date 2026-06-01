@@ -400,22 +400,32 @@ def looks_like_external_image_url(url, desired_url):
 def find_cover(song, providers, search_limit, timeout_ms, image_size, netease_base_url=DEFAULT_NETEASE_BASE_URL):
     last_error = None
     completed_provider_count = 0
+    searched = []
     for provider in providers:
         try:
             candidates = search_provider(provider, song, search_limit, timeout_ms, netease_base_url)
             completed_provider_count += 1
-            match = select_best_cover_candidate(song, candidates)
-            if not match:
-                continue
-            image_url = resolve_provider_image_url(provider, match, image_size, timeout_ms)
-            if not image_url:
-                continue
-            return {**match, "imageUrl": image_url}
+            searched.append({"provider": provider, "candidates": candidates})
+            cover = resolve_best_cover_for_modes(song, provider, candidates, ("title_artist",), image_size, timeout_ms)
+            if cover:
+                return cover
         except Exception as error:
             last_error = error
             continue
     if last_error and completed_provider_count == 0:
         raise last_error
+
+    for result in searched:
+        cover = resolve_best_cover_for_modes(
+            song,
+            result["provider"],
+            result["candidates"],
+            ("title",),
+            image_size,
+            timeout_ms,
+        )
+        if cover:
+            return cover
     return None
 
 
@@ -427,20 +437,35 @@ def probe_cover(title, artist, providers, search_limit, timeout_ms, image_size, 
         try:
             candidates = search_provider(provider, song, search_limit, timeout_ms, netease_base_url)
             candidates_by_provider.append({"provider": provider, "candidates": candidates})
-            match = select_best_cover_candidate(song, candidates)
-            if not match:
-                continue
-            image_url = resolve_provider_image_url(provider, match, image_size, timeout_ms)
-            if image_url:
+            cover = resolve_best_cover_for_modes(song, provider, candidates, ("title_artist",), image_size, timeout_ms)
+            if cover:
                 return {
                     "query": {"title": clean(title), "artist": clean(artist), "providers": providers},
-                    "best": {**match, "imageUrl": image_url},
+                    "best": cover,
                     "providers": candidates_by_provider,
                     "providerErrors": provider_errors,
                 }
         except Exception as error:
             provider_errors[provider] = str(error)[:300]
             continue
+
+    for result in candidates_by_provider:
+        cover = resolve_best_cover_for_modes(
+            song,
+            result["provider"],
+            result["candidates"],
+            ("title",),
+            image_size,
+            timeout_ms,
+        )
+        if cover:
+            return {
+                "query": {"title": clean(title), "artist": clean(artist), "providers": providers},
+                "best": cover,
+                "providers": candidates_by_provider,
+                "providerErrors": provider_errors,
+            }
+
     return {
         "query": {"title": clean(title), "artist": clean(artist), "providers": providers},
         "best": None,
@@ -892,26 +917,55 @@ def resolve_provider_image_url(provider, candidate, image_size, timeout_ms):
     return ""
 
 
-def select_best_cover_candidate(song, candidates):
+def resolve_best_cover_for_modes(song, provider, candidates, match_modes, image_size, timeout_ms):
+    match = select_best_cover_candidate(song, candidates, match_modes)
+    if not match:
+        return None
+    image_url = resolve_provider_image_url(provider, match, image_size, timeout_ms)
+    return {**match, "imageUrl": image_url} if image_url else None
+
+
+def select_best_cover_candidate(song, candidates, match_modes=("title_artist", "title")):
     scored = []
-    for candidate in candidates:
-        confidence = score_cover_candidate(song, candidate)
-        if confidence >= 75:
-            scored.append(({**candidate, "confidence": confidence}))
+    for match_mode in match_modes:
+        scored = score_cover_candidates(song, candidates, match_mode=match_mode)
+        if scored:
+            break
     scored.sort(key=lambda item: (-item["confidence"], item.get("title") or ""))
     return scored[0] if scored else None
 
 
-def score_cover_candidate(song, candidate):
-    title_score = score_title(song["title"], candidate.get("title") or "")
+def score_cover_candidates(song, candidates, match_mode):
+    scored = []
+    for candidate in candidates:
+        confidence = score_cover_candidate(song, candidate, match_mode)
+        if confidence >= cover_match_threshold(match_mode):
+            scored.append({**candidate, "confidence": confidence, "matchMode": match_mode})
+    return scored
+
+
+def score_cover_candidate(song, candidate, match_mode="title_artist"):
+    title_score = score_title(song.get("title") or "", candidate.get("title") or "")
     if title_score == 0:
         return 0
-    artist_score = score_artist(song["artistName"], candidate.get("artistNames") or [])
-    if artist_score == 0:
-        return 0
+
+    artist_score = 0
+    if match_mode == "title_artist":
+        artist_score = score_artist(song.get("artistName") or "", candidate.get("artistNames") or [])
+        if artist_score == 0:
+            return 0
+
     variant_penalty = 18 if looks_like_variant(candidate) and not looks_like_variant(song) else 0
-    missing_image_penalty = 0 if clean(candidate.get("picId") or candidate.get("imageUrl")) else 50
+    missing_image_penalty = 0 if candidate_has_cover_hint(candidate) else 50
     return max(0, min(100, title_score + artist_score - variant_penalty - missing_image_penalty))
+
+
+def cover_match_threshold(match_mode):
+    return 75 if match_mode == "title_artist" else 38
+
+
+def candidate_has_cover_hint(candidate):
+    return bool(clean(candidate.get("picId") or candidate.get("imageUrl") or candidate.get("trackUrl")))
 
 
 def score_title(target_title, candidate_title):

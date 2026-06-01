@@ -180,6 +180,54 @@ class FetchSongCoversTest(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(match["providerSongId"], "original")
 
+    def test_cover_matching_prefers_title_and_artist_before_title_only(self):
+        covers = load_module()
+
+        match = covers.select_best_cover_candidate(
+            {"title": "夜之光", "artistName": "花姐"},
+            [
+                {
+                    "provider": "spotify",
+                    "providerSongId": "title-only",
+                    "title": "夜之光",
+                    "artistNames": ["其他歌手"],
+                    "albumName": "夜之光",
+                    "imageUrl": "https://example.com/title-only.jpg",
+                },
+                {
+                    "provider": "spotify",
+                    "providerSongId": "strict",
+                    "title": "夜之光",
+                    "artistNames": ["花姐"],
+                    "albumName": "夜之光",
+                    "imageUrl": "https://example.com/strict.jpg",
+                },
+            ],
+        )
+
+        self.assertEqual(match["providerSongId"], "strict")
+        self.assertEqual(match["matchMode"], "title_artist")
+
+    def test_cover_matching_falls_back_to_title_only(self):
+        covers = load_module()
+
+        match = covers.select_best_cover_candidate(
+            {"title": "夜之光", "artistName": "花姐"},
+            [
+                {
+                    "provider": "spotify",
+                    "providerSongId": "wrong-artist",
+                    "title": "夜之光",
+                    "artistNames": ["其他歌手"],
+                    "albumName": "夜之光",
+                    "imageUrl": "https://example.com/title-only.jpg",
+                }
+            ],
+        )
+
+        self.assertEqual(match["providerSongId"], "wrong-artist")
+        self.assertEqual(match["matchMode"], "title")
+
     def test_search_netease_extracts_album_cover(self):
         covers = load_module()
         calls = []
@@ -469,6 +517,49 @@ class FetchSongCoversTest(unittest.TestCase):
             covers.search_provider = original_search_provider
 
         self.assertIsNone(match)
+
+    def test_find_cover_prefers_later_strict_match_over_earlier_title_only_match(self):
+        covers = load_module()
+
+        def fake_search_provider(provider, song, search_limit, timeout_ms, netease_base_url):
+            if provider == "first":
+                return [
+                    {
+                        "provider": "first",
+                        "providerSongId": "title-only",
+                        "title": "夜之光",
+                        "artistNames": ["其他歌手"],
+                        "albumName": "夜之光",
+                        "imageUrl": "https://example.com/title-only.jpg",
+                    }
+                ]
+            return [
+                {
+                    "provider": "second",
+                    "providerSongId": "strict",
+                    "title": "夜之光",
+                    "artistNames": ["花姐"],
+                    "albumName": "夜之光",
+                    "imageUrl": "https://example.com/strict.jpg",
+                }
+            ]
+
+        original_search_provider = covers.search_provider
+        covers.search_provider = fake_search_provider
+        try:
+            match = covers.find_cover(
+                {"title": "夜之光", "artistName": "花姐"},
+                ["first", "second"],
+                search_limit=3,
+                timeout_ms=5000,
+                image_size=300,
+                netease_base_url="http://127.0.0.1:4300",
+            )
+        finally:
+            covers.search_provider = original_search_provider
+
+        self.assertEqual(match["providerSongId"], "strict")
+        self.assertEqual(match["matchMode"], "title_artist")
 
     def test_probe_cover_uses_provider_fallback_order(self):
         covers = load_module()

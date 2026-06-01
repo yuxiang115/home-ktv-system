@@ -144,7 +144,7 @@ node --test scripts/tools/repo-hygiene-check.test.mjs
 3. 如果本地已有封面文件但数据库 URL 不一致，只修复数据库 URL。
 4. 如果数据库已有外部图片 URL，优先尝试下载该外链。
 5. 否则按 provider 顺序查询：`netease`、`cloud`、`tencent`、`kugou`、`kuwo`、`spotify`。
-6. 候选结果用歌名和歌手打分，当前要求歌名和歌手都匹配，置信度达到阈值才接受。
+6. 候选结果先在全部 provider 中按歌名和歌手严格匹配；严格匹配都没有命中时，再按 provider 顺序退回只按歌名匹配。
 7. 下载图片到 `$MEDIA_ROOT/covers/nas/<song-id>.jpg`。
 8. 写回 `ktv_songs.cover_image_url` 和 `cover_updated_at`。
 9. 每首歌向 JSONL 追加一行结果，并周期性刷新 state 文件。
