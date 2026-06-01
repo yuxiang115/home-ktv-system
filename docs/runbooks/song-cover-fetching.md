@@ -6,6 +6,31 @@
 
 当前实现只服务 NAS 曲库。线上曲库以后接入时，可以复用同一套缓存目录和公开路由，再扩展脚本筛选条件。
 
+## 网易云 API 内部服务
+
+`lxc-dev` 上已经部署 `NeteaseCloudMusicApiBackup` 作为内部查询服务，只用于后台脚本补封面和元数据，不对公网开放。
+
+```text
+代码目录：/opt/netease-cloud-music-api-backup
+systemd：netease-cloud-music-api.service
+监听地址：http://127.0.0.1:4300
+```
+
+常用检查：
+
+```bash
+systemctl status netease-cloud-music-api.service
+curl 'http://127.0.0.1:4300/cloudsearch?keywords=刀郎%20冲动的惩罚&type=1&limit=1'
+```
+
+单首歌封面探测：
+
+```bash
+python3 scripts/tools/query_netease_cover.py 冲动的惩罚 刀郎 --base-url http://127.0.0.1:4300
+```
+
+该脚本只查询并输出候选封面 URL，不写数据库、不下载图片。正式批量缓存仍由 `fetch_song_covers.py` 负责。
+
 ## 当前实现
 
 核心代码：
@@ -13,6 +38,7 @@
 ```text
 scripts/tools/fetch_song_covers.py
 scripts/tools/fetch_song_covers_test.py
+scripts/tools/query_netease_cover.py
 apps/api/src/routes/media.ts
 apps/api/src/modules/covers/song-cover-repository.ts
 ```
@@ -54,7 +80,7 @@ withCoverUrl=3635
 withoutCoverUrl=30750
 ```
 
-这次全量脚本正常完成，失败只有少量网络错误；低覆盖率主要来自当前匹配策略偏保守。脚本要求歌名和歌手都匹配，provider 为 `tencent,kugou,kuwo`。下一轮提高覆盖率时，优先考虑增加 NetEase/Baidu/Meting 等来源，或者增加本地视频首帧兜底。
+这次全量脚本正常完成，失败只有少量网络错误；低覆盖率主要来自当前匹配策略偏保守。脚本要求歌名和歌手都匹配，provider 为 `tencent,kugou,kuwo`。下一轮提高覆盖率时，优先考虑把已经部署的网易云 API 接入 `fetch_song_covers.py`，或者增加本地视频首帧兜底。
 
 ## song-id 稳定性
 
