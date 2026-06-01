@@ -107,6 +107,12 @@ netease -> cloud -> tencent -> kugou -> kuwo -> spotify
 python3 -m pip install --user spotifyscraper
 ```
 
+如果服务器 Python 是 PEP 668 的 externally managed 环境，使用：
+
+```bash
+python3 -m pip install --user --break-system-packages spotifyscraper
+```
+
 6. 用歌名和歌手计算匹配分，拒绝弱匹配，并降低 DJ、Live、Remix、翻唱、现场等版本的分数。
 7. 命中后下载图片到本地缓存，再写入本地公开 URL。
 8. 未命中或失败时不写 `cover_image_url`，只更新 `cover_updated_at` 并写入进度文件。

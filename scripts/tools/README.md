@@ -173,6 +173,12 @@ bash deploy/source/ktv.sh cover-coverage -- --providers netease,cloud,spotify --
 python3 -m pip install --user spotifyscraper
 ```
 
+服务器如果提示 `externally-managed-environment`，使用：
+
+```bash
+python3 -m pip install --user --break-system-packages spotifyscraper
+```
+
 详细运行和重跑策略见 [歌曲封面缓存 Runbook](../../docs/runbooks/song-cover-fetching.md)。
 
 相关测试：
