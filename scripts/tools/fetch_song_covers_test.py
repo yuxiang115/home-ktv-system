@@ -44,6 +44,7 @@ class FetchSongCoversTest(unittest.TestCase):
 
         self.assertEqual(covers.parse_args(["fetch"]).limit, 0)
         self.assertEqual(covers.parse_args(["coverage"]).limit, 100)
+        self.assertIn("netease", covers.parse_args(["coverage"]).providers.split(","))
 
     def test_fetch_and_coverage_accept_concurrency(self):
         covers = load_module()
@@ -167,6 +168,70 @@ class FetchSongCoversTest(unittest.TestCase):
 
         self.assertIsNotNone(match)
         self.assertEqual(match["providerSongId"], "original")
+
+    def test_search_netease_extracts_album_cover(self):
+        covers = load_module()
+        calls = []
+
+        def fake_fetch_json(url, params, headers=None, timeout_ms=8000):
+            calls.append((url, params, headers, timeout_ms))
+            return {
+                "result": {
+                    "songs": [
+                        {
+                            "id": 77469,
+                            "name": "冲动的惩罚",
+                            "ar": [{"name": "刀郎"}],
+                            "al": {
+                                "name": "2002年的第一场雪",
+                                "picUrl": "http://p1.music.126.net/example.jpg",
+                            },
+                        }
+                    ]
+                }
+            }
+
+        original_fetch_json = covers.fetch_json
+        covers.fetch_json = fake_fetch_json
+        try:
+            candidates = covers.search_netease(
+                {"title": "冲动的惩罚", "artistName": "刀郎"},
+                search_limit=3,
+                timeout_ms=5000,
+                base_url="http://127.0.0.1:4300/",
+            )
+        finally:
+            covers.fetch_json = original_fetch_json
+
+        self.assertEqual(calls[0][0], "http://127.0.0.1:4300/cloudsearch")
+        self.assertEqual(calls[0][1]["keywords"], "刀郎 冲动的惩罚")
+        self.assertEqual(candidates[0]["provider"], "netease")
+        self.assertEqual(candidates[0]["providerSongId"], "77469")
+        self.assertEqual(candidates[0]["imageUrl"], "http://p1.music.126.net/example.jpg")
+
+    def test_find_cover_ignores_failed_provider_when_another_provider_completed(self):
+        covers = load_module()
+
+        def fake_search_provider(provider, song, search_limit, timeout_ms, netease_base_url):
+            if provider == "netease":
+                raise RuntimeError("netease unavailable")
+            return []
+
+        original_search_provider = covers.search_provider
+        covers.search_provider = fake_search_provider
+        try:
+            match = covers.find_cover(
+                {"title": "晴天", "artistName": "周杰伦"},
+                ["netease", "tencent"],
+                search_limit=3,
+                timeout_ms=5000,
+                image_size=300,
+                netease_base_url="http://127.0.0.1:4300",
+            )
+        finally:
+            covers.search_provider = original_search_provider
+
+        self.assertIsNone(match)
 
     def test_reads_latest_history_row_per_song(self):
         covers = load_module()

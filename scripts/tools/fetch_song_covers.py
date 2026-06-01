@@ -20,7 +20,8 @@ from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_PROVIDERS = ["tencent", "kugou", "kuwo"]
+DEFAULT_NETEASE_BASE_URL = "http://127.0.0.1:4300"
+DEFAULT_PROVIDERS = ["netease", "tencent", "kugou", "kuwo"]
 DEFAULT_IMAGE_SIZE = 300
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 SAFE_SONG_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
@@ -60,6 +61,10 @@ def parse_args(argv):
             limit_default = 0 if command == "fetch" else 100
             sub.add_argument("--limit", type=non_negative_int, default=limit_default, help="0 means all selected songs.")
             sub.add_argument("--providers", default=",".join(DEFAULT_PROVIDERS))
+            sub.add_argument(
+                "--netease-base-url",
+                default=os.environ.get("NETEASE_CLOUD_MUSIC_API_BASE_URL", DEFAULT_NETEASE_BASE_URL),
+            )
             sub.add_argument("--search-limit", type=positive_int, default=8)
             sub.add_argument("--request-timeout-ms", type=positive_int, default=8000)
             sub.add_argument("--delay-ms", type=non_negative_int, default=600)
@@ -169,7 +174,14 @@ def process_fetch_song(args, song, history, cover_root, public_base_url, provide
                 "confidence": 100,
             }
         if not cover:
-            cover = find_cover(song, providers, args.search_limit, args.request_timeout_ms, DEFAULT_IMAGE_SIZE)
+            cover = find_cover(
+                song,
+                providers,
+                args.search_limit,
+                args.request_timeout_ms,
+                DEFAULT_IMAGE_SIZE,
+                args.netease_base_url,
+            )
         if not cover:
             touch_cover_processed(args, song["id"])
             return {**row, "status": "not_found"}
@@ -213,7 +225,13 @@ def run_coverage(args):
     stats = {"sample": len(songs), "found": 0, "notFound": 0, "failed": 0, "providerHits": {}}
     print(f"sample={len(songs)} concurrency={args.concurrency} providers={','.join(providers)}", flush=True)
 
-    worker = lambda song: process_coverage_song(song, providers, args.search_limit, args.request_timeout_ms)
+    worker = lambda song: process_coverage_song(
+        song,
+        providers,
+        args.search_limit,
+        args.request_timeout_ms,
+        args.netease_base_url,
+    )
     for index, result in enumerate(iter_song_task_results(songs, worker, args.concurrency, args.delay_ms), start=1):
         if result["status"] == "found":
             stats["found"] += 1
@@ -231,9 +249,9 @@ def run_coverage(args):
     print(json.dumps({**stats, "hitRate": hit_rate}, ensure_ascii=False, sort_keys=True), flush=True)
 
 
-def process_coverage_song(song, providers, search_limit, request_timeout_ms):
+def process_coverage_song(song, providers, search_limit, request_timeout_ms, netease_base_url=DEFAULT_NETEASE_BASE_URL):
     try:
-        cover = find_cover(song, providers, search_limit, request_timeout_ms, DEFAULT_IMAGE_SIZE)
+        cover = find_cover(song, providers, search_limit, request_timeout_ms, DEFAULT_IMAGE_SIZE, netease_base_url)
         if cover:
             return {"status": "found", "provider": cover["provider"]}
         return {"status": "not_found"}
@@ -348,11 +366,13 @@ def looks_like_external_image_url(url, desired_url):
     return (url.startswith("http://") or url.startswith("https://")) and url != desired_url
 
 
-def find_cover(song, providers, search_limit, timeout_ms, image_size):
+def find_cover(song, providers, search_limit, timeout_ms, image_size, netease_base_url=DEFAULT_NETEASE_BASE_URL):
     last_error = None
+    completed_provider_count = 0
     for provider in providers:
         try:
-            candidates = search_provider(provider, song, search_limit, timeout_ms)
+            candidates = search_provider(provider, song, search_limit, timeout_ms, netease_base_url)
+            completed_provider_count += 1
             match = select_best_cover_candidate(song, candidates)
             if not match:
                 continue
@@ -363,12 +383,14 @@ def find_cover(song, providers, search_limit, timeout_ms, image_size):
         except Exception as error:
             last_error = error
             continue
-    if last_error:
+    if last_error and completed_provider_count == 0:
         raise last_error
     return None
 
 
-def search_provider(provider, song, search_limit, timeout_ms):
+def search_provider(provider, song, search_limit, timeout_ms, netease_base_url=DEFAULT_NETEASE_BASE_URL):
+    if provider == "netease":
+        return search_netease(song, search_limit, timeout_ms, netease_base_url)
     if provider == "tencent":
         return search_tencent(song, search_limit, timeout_ms)
     if provider == "kugou":
@@ -376,6 +398,36 @@ def search_provider(provider, song, search_limit, timeout_ms):
     if provider == "kuwo":
         return search_kuwo(song, search_limit, timeout_ms)
     raise ValueError(f"Unsupported provider: {provider}")
+
+
+def search_netease(song, search_limit, timeout_ms, base_url=DEFAULT_NETEASE_BASE_URL):
+    payload = fetch_json(
+        f"{clean(base_url).rstrip('/')}/cloudsearch",
+        {
+            "keywords": f"{song['artistName']} {song['title']}",
+            "type": 1,
+            "limit": search_limit,
+        },
+        timeout_ms=timeout_ms,
+    )
+    rows = ((payload or {}).get("result") or {}).get("songs") or []
+    candidates = []
+    for row in rows:
+        album = row.get("al") or {}
+        singers = row.get("ar") or []
+        song_id = clean(row.get("id"))
+        candidates.append(
+            {
+                "provider": "netease",
+                "providerSongId": song_id,
+                "title": strip_html(clean(row.get("name"))),
+                "artistNames": [clean(item.get("name")) for item in singers if clean(item.get("name"))],
+                "albumName": strip_html(clean(album.get("name"))),
+                "picId": song_id,
+                "imageUrl": clean(album.get("picUrl")),
+            }
+        )
+    return candidates
 
 
 def search_tencent(song, search_limit, timeout_ms):
@@ -485,6 +537,8 @@ def search_kuwo(song, search_limit, timeout_ms):
 
 def resolve_provider_image_url(provider, candidate, image_size, timeout_ms):
     pic_id = clean(candidate.get("picId"))
+    if provider == "netease":
+        return clean(candidate.get("imageUrl"))
     if not pic_id:
         return ""
     if provider == "tencent":

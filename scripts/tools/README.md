@@ -145,7 +145,7 @@ node --test scripts/tools/repo-hygiene-check.test.mjs
 2. 读取历史 JSONL，默认跳过上次 `failed` 或 `not_found` 的歌曲，避免重复打外部源。
 3. 如果本地已有封面文件但数据库 URL 不一致，只修复数据库 URL。
 4. 如果数据库已有外部图片 URL，优先尝试下载该外链。
-5. 否则按 provider 顺序查询：`tencent`、`kugou`、`kuwo`。
+5. 否则按 provider 顺序查询：`netease`、`tencent`、`kugou`、`kuwo`。
 6. 候选结果用歌名和歌手打分，当前要求歌名和歌手都匹配，置信度达到阈值才接受。
 7. 下载图片到 `$MEDIA_ROOT/covers/nas/<song-id>.jpg`。
 8. 写回 `ktv_songs.cover_image_url` 和 `cover_updated_at`。
@@ -163,6 +163,7 @@ node --test scripts/tools/repo-hygiene-check.test.mjs
 bash deploy/source/ktv.sh cover-status
 bash deploy/source/ktv.sh cover-coverage -- --limit 100 --concurrency 4 --delay-ms 200
 bash deploy/source/ktv.sh fetch-covers -- --limit 1000 --concurrency 4 --delay-ms 150
+bash deploy/source/ktv.sh cover-coverage -- --providers netease --limit 100 --delay-ms 100
 ```
 
 详细运行和重跑策略见 [歌曲封面缓存 Runbook](../../docs/runbooks/song-cover-fetching.md)。

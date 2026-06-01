@@ -29,7 +29,7 @@ curl 'http://127.0.0.1:4300/cloudsearch?keywords=刀郎%20冲动的惩罚&type=1
 python3 scripts/tools/query_netease_cover.py 冲动的惩罚 刀郎 --base-url http://127.0.0.1:4300
 ```
 
-该脚本只查询并输出候选封面 URL，不写数据库、不下载图片。正式批量缓存仍由 `fetch_song_covers.py` 负责。
+该脚本只查询并输出候选封面 URL，不写数据库、不下载图片。正式批量缓存由 `fetch_song_covers.py` 负责，当前默认 provider 已包含 `netease`。
 
 ## 当前实现
 
@@ -80,7 +80,7 @@ withCoverUrl=3635
 withoutCoverUrl=30750
 ```
 
-这次全量脚本正常完成，失败只有少量网络错误；低覆盖率主要来自当前匹配策略偏保守。脚本要求歌名和歌手都匹配，provider 为 `tencent,kugou,kuwo`。下一轮提高覆盖率时，优先考虑把已经部署的网易云 API 接入 `fetch_song_covers.py`，或者增加本地视频首帧兜底。
+这次全量脚本正常完成，失败只有少量网络错误；低覆盖率主要来自当前匹配策略偏保守。脚本要求歌名和歌手都匹配，当前默认 provider 为 `netease,tencent,kugou,kuwo`。下一轮继续提高覆盖率时，可考虑增加本地视频首帧兜底。
 
 ## song-id 稳定性
 
@@ -97,7 +97,7 @@ withoutCoverUrl=30750
 5. 没有可用外链时，按 provider 顺序查询封面：
 
 ```text
-tencent -> kugou -> kuwo
+netease -> tencent -> kugou -> kuwo
 ```
 
 6. 用歌名和歌手计算匹配分，拒绝弱匹配，并降低 DJ、Live、Remix、翻唱、现场等版本的分数。
@@ -153,7 +153,8 @@ pnpm covers:songs -- --limit 300 --delay-ms 300
 
 ```text
 --limit <n>                 处理数量；0 表示全部，fetch 默认 0，coverage 默认 100
---providers <list>          provider 顺序，默认 tencent,kugou,kuwo
+--providers <list>          provider 顺序，默认 netease,tencent,kugou,kuwo
+--netease-base-url <url>    NeteaseCloudMusicApi 地址，默认 http://127.0.0.1:4300
 --search-limit <n>          每个 provider 搜索结果数，默认 8
 --request-timeout-ms <n>    单次请求超时，默认 8000
 --delay-ms <n>              每首歌之间的延迟，默认 600
