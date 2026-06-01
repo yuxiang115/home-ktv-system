@@ -45,6 +45,7 @@ class FetchSongCoversTest(unittest.TestCase):
         self.assertEqual(covers.parse_args(["fetch"]).limit, 0)
         self.assertEqual(covers.parse_args(["coverage"]).limit, 100)
         self.assertIn("netease", covers.parse_args(["coverage"]).providers.split(","))
+        self.assertIn("cloud", covers.parse_args(["coverage"]).providers.split(","))
 
     def test_fetch_and_coverage_accept_concurrency(self):
         covers = load_module()
@@ -77,6 +78,15 @@ class FetchSongCoversTest(unittest.TestCase):
         covers = load_module()
 
         self.assertEqual(covers.parse_args(["coverage", "--", "--limit", "5"]).limit, 5)
+
+    def test_probe_command_accepts_title_artist_and_providers(self):
+        covers = load_module()
+
+        args = covers.parse_args(["probe", "夜之光", "花姐", "--providers", "cloud,kugou"])
+
+        self.assertEqual(args.title, "夜之光")
+        self.assertEqual(args.artist, "花姐")
+        self.assertEqual(args.providers, "cloud,kugou")
 
     def test_image_validation_uses_bytes_not_only_content_type(self):
         covers = load_module()
@@ -209,6 +219,124 @@ class FetchSongCoversTest(unittest.TestCase):
         self.assertEqual(candidates[0]["providerSongId"], "77469")
         self.assertEqual(candidates[0]["imageUrl"], "http://p1.music.126.net/example.jpg")
 
+    def test_search_netease_falls_back_to_song_detail_cover(self):
+        covers = load_module()
+        calls = []
+
+        def fake_fetch_json(url, params, headers=None, timeout_ms=8000):
+            calls.append((url, params, headers, timeout_ms))
+            if url.endswith("/cloudsearch"):
+                return {
+                    "result": {
+                        "songs": [
+                            {
+                                "id": 77469,
+                                "name": "冲动的惩罚",
+                                "ar": [{"name": "刀郎"}],
+                                "al": {"name": "2002年的第一场雪", "picUrl": ""},
+                            }
+                        ]
+                    }
+                }
+            return {
+                "songs": [
+                    {
+                        "id": 77469,
+                        "name": "冲动的惩罚",
+                        "ar": [{"name": "刀郎"}],
+                        "al": {
+                            "name": "2002年的第一场雪",
+                            "picUrl": "http://p1.music.126.net/detail.jpg",
+                        },
+                    }
+                ]
+            }
+
+        original_fetch_json = covers.fetch_json
+        covers.fetch_json = fake_fetch_json
+        try:
+            candidates = covers.search_netease(
+                {"title": "冲动的惩罚", "artistName": "刀郎"},
+                search_limit=3,
+                timeout_ms=5000,
+                base_url="http://127.0.0.1:4300/",
+            )
+        finally:
+            covers.fetch_json = original_fetch_json
+
+        self.assertEqual(calls[1][0], "http://127.0.0.1:4300/song/detail")
+        self.assertEqual(calls[1][1]["ids"], "77469")
+        self.assertEqual(candidates[0]["imageUrl"], "http://p1.music.126.net/detail.jpg")
+
+    def test_search_cloud_extracts_album_cover_from_detail(self):
+        covers = load_module()
+        calls = []
+
+        def fake_fetch_json(url, params, headers=None, timeout_ms=8000, method="GET"):
+            calls.append((url, params, method))
+            if "search/get/web" in url:
+                return {
+                    "result": {
+                        "songs": [
+                            {
+                                "id": 77469,
+                                "name": "冲动的惩罚",
+                                "artists": [{"name": "刀郎"}],
+                            }
+                        ]
+                    }
+                }
+            return {
+                "songs": [
+                    {
+                        "id": 77469,
+                        "name": "冲动的惩罚",
+                        "artists": [{"name": "刀郎"}],
+                        "album": {
+                            "name": "2002年的第一场雪",
+                            "picUrl": "http://p1.music.126.net/cloud.jpg",
+                        },
+                    }
+                ]
+            }
+
+        original_fetch_json = covers.fetch_json
+        covers.fetch_json = fake_fetch_json
+        try:
+            candidates = covers.search_cloud(
+                {"title": "冲动的惩罚", "artistName": "刀郎"},
+                search_limit=3,
+                timeout_ms=5000,
+            )
+        finally:
+            covers.fetch_json = original_fetch_json
+
+        self.assertEqual(calls[0][0], "https://music.163.com/api/search/get/web")
+        self.assertEqual(calls[0][2], "POST")
+        self.assertEqual(candidates[0]["provider"], "cloud")
+        self.assertEqual(candidates[0]["providerSongId"], "77469")
+        self.assertEqual(candidates[0]["imageUrl"], "http://p1.music.126.net/cloud.jpg")
+
+    def test_kugou_image_resolution_accepts_music_tagger_album_img(self):
+        covers = load_module()
+
+        def fake_fetch_json(url, params, headers=None, timeout_ms=8000, method="GET"):
+            return {"album_img": "http://imge.kugou.com/stdmusic/{size}/cover.jpg"}
+
+        original_fetch_json = covers.fetch_json
+        covers.fetch_json = fake_fetch_json
+        try:
+            image_url = covers.resolve_provider_image_url(
+                "kugou",
+                {"picId": "abc123"},
+                image_size=300,
+                timeout_ms=5000,
+            )
+        finally:
+            covers.fetch_json = original_fetch_json
+
+        self.assertEqual(image_url, "http://imge.kugou.com/stdmusic/400/cover.jpg")
+
     def test_find_cover_ignores_failed_provider_when_another_provider_completed(self):
         covers = load_module()
 
@@ -232,6 +360,44 @@ class FetchSongCoversTest(unittest.TestCase):
             covers.search_provider = original_search_provider
 
         self.assertIsNone(match)
+
+    def test_probe_cover_uses_provider_fallback_order(self):
+        covers = load_module()
+        seen = []
+
+        def fake_search_provider(provider, song, search_limit, timeout_ms, netease_base_url):
+            seen.append(provider)
+            if provider == "cloud":
+                return []
+            return [
+                {
+                    "provider": "kugou",
+                    "providerSongId": "hash-1",
+                    "title": "夜之光",
+                    "artistNames": ["花姐"],
+                    "albumName": "夜之光",
+                    "imageUrl": "http://example.com/kugou.jpg",
+                }
+            ]
+
+        original_search_provider = covers.search_provider
+        covers.search_provider = fake_search_provider
+        try:
+            result = covers.probe_cover(
+                title="夜之光",
+                artist="花姐",
+                providers=["cloud", "kugou"],
+                search_limit=3,
+                timeout_ms=5000,
+                image_size=300,
+                netease_base_url="http://127.0.0.1:4300",
+            )
+        finally:
+            covers.search_provider = original_search_provider
+
+        self.assertEqual(seen, ["cloud", "kugou"])
+        self.assertEqual(result["best"]["provider"], "kugou")
+        self.assertEqual(result["best"]["imageUrl"], "http://example.com/kugou.jpg")
 
     def test_reads_latest_history_row_per_song(self):
         covers = load_module()

@@ -26,10 +26,10 @@ curl 'http://127.0.0.1:4300/cloudsearch?keywords=刀郎%20冲动的惩罚&type=1
 单首歌封面探测：
 
 ```bash
-python3 scripts/tools/query_netease_cover.py 冲动的惩罚 刀郎 --base-url http://127.0.0.1:4300
+python3 scripts/tools/fetch_song_covers.py probe 冲动的惩罚 刀郎 --providers netease --netease-base-url http://127.0.0.1:4300
 ```
 
-该脚本只查询并输出候选封面 URL，不写数据库、不下载图片。正式批量缓存由 `fetch_song_covers.py` 负责，当前默认 provider 已包含 `netease`。
+`probe` 子命令只查询并输出候选封面 URL，不写数据库；需要确认图片可下载时传 `--download`。正式批量缓存同样由 `fetch_song_covers.py` 负责，当前默认 provider 已包含 `netease`。
 
 ## 当前实现
 
@@ -38,7 +38,6 @@ python3 scripts/tools/query_netease_cover.py 冲动的惩罚 刀郎 --base-url h
 ```text
 scripts/tools/fetch_song_covers.py
 scripts/tools/fetch_song_covers_test.py
-scripts/tools/query_netease_cover.py
 apps/api/src/routes/media.ts
 apps/api/src/modules/covers/song-cover-repository.ts
 ```
@@ -80,7 +79,7 @@ withCoverUrl=3635
 withoutCoverUrl=30750
 ```
 
-这次全量脚本正常完成，失败只有少量网络错误；低覆盖率主要来自当前匹配策略偏保守。脚本要求歌名和歌手都匹配，当前默认 provider 为 `netease,tencent,kugou,kuwo`。下一轮继续提高覆盖率时，可考虑增加本地视频首帧兜底。
+这次全量脚本正常完成，失败只有少量网络错误；低覆盖率主要来自当前匹配策略偏保守。脚本要求歌名和歌手都匹配，当前默认 provider 为 `netease,cloud,tencent,kugou,kuwo`。下一轮继续提高覆盖率时，可考虑增加本地视频首帧兜底。
 
 ## song-id 稳定性
 
@@ -97,8 +96,10 @@ withoutCoverUrl=30750
 5. 没有可用外链时，按 provider 顺序查询封面：
 
 ```text
-netease -> tencent -> kugou -> kuwo
+netease -> cloud -> tencent -> kugou -> kuwo
 ```
+
+其中 `netease` 调用 `lxc-dev` 上的内部 `NeteaseCloudMusicApiBackup` 服务；`cloud` 是从 MusicTagger 里抽出的网易云旧接口兜底，不依赖本地服务；`kugou` 兼容 MusicTagger 使用的 `album_img` 返回字段。
 
 6. 用歌名和歌手计算匹配分，拒绝弱匹配，并降低 DJ、Live、Remix、翻唱、现场等版本的分数。
 7. 命中后下载图片到本地缓存，再写入本地公开 URL。
@@ -131,6 +132,7 @@ song-covers.jsonl.state.json
 bash deploy/source/ktv.sh cover-status
 bash deploy/source/ktv.sh cover-coverage -- --limit 100 --concurrency 4 --delay-ms 200
 bash deploy/source/ktv.sh fetch-covers -- --limit 300 --concurrency 4 --delay-ms 200
+python3 scripts/tools/fetch_song_covers.py probe 夜之光 花姐 --providers netease,cloud --netease-base-url http://127.0.0.1:4300
 ```
 
 Docker 部署：
@@ -153,7 +155,7 @@ pnpm covers:songs -- --limit 300 --delay-ms 300
 
 ```text
 --limit <n>                 处理数量；0 表示全部，fetch 默认 0，coverage 默认 100
---providers <list>          provider 顺序，默认 netease,tencent,kugou,kuwo
+--providers <list>          provider 顺序，默认 netease,cloud,tencent,kugou,kuwo
 --netease-base-url <url>    NeteaseCloudMusicApi 地址，默认 http://127.0.0.1:4300
 --search-limit <n>          每个 provider 搜索结果数，默认 8
 --request-timeout-ms <n>    单次请求超时，默认 8000

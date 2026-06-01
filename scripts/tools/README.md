@@ -15,9 +15,7 @@
 | `deploy-doctor.mjs` | 部署环境自检，检查 env、CORS、媒体路径、服务状态和公开 URL。 | `pnpm deploy:doctor` / `bash deploy/source/ktv.sh doctor` |
 | `web-deploy-smoke.mjs` | 部署后的公开入口 smoke，验证 CORS、TV bootstrap、heartbeat、控制端看到 TV 在线、推荐列表非空。 | `pnpm deploy:smoke` / `bash deploy/source/ktv.sh smoke` |
 | `repo-hygiene-check.mjs` | 提交前仓库卫生检查，区分 tracked dirty、高风险未跟踪文件和本地运行产物。 | `pnpm repo:hygiene` |
-| `fetch_song_covers.py` | 批量查询、下载并缓存歌曲封面，把本地公开封面 URL 写回 `ktv_songs.cover_image_url`。 | `bash deploy/source/ktv.sh fetch-covers -- ...` |
-| `query_music_tagger_cover.py` | 按 MusicTagger 的网易云旧接口和酷狗接口逻辑，查询单首歌封面 URL，可选下载图片。 | `python3 scripts/tools/query_music_tagger_cover.py 夜之光 花姐` |
-| `query_netease_cover.py` | 调用内部 NeteaseCloudMusicApi 服务，按歌名/歌手查询网易云候选歌曲和封面 URL。 | `python3 scripts/tools/query_netease_cover.py 冲动的惩罚 刀郎 --base-url http://127.0.0.1:4300` |
+| `fetch_song_covers.py` | 批量查询、下载并缓存歌曲封面，也支持单首歌封面探测；把本地公开封面 URL 写回 `ktv_songs.cover_image_url`。 | `bash deploy/source/ktv.sh fetch-covers -- ...` / `python3 scripts/tools/fetch_song_covers.py probe 夜之光 花姐` |
 | `run_style_tagging_llm_batch.py` | 离线批量给歌曲补风格标签，先生成 JSONL，再导入 `ktv_songs.style_tags`。 | `pnpm ktv:tags:llm-batch:py -- ...` |
 | `ui-visual-check.mjs` | 控制端和 Admin 的 Chrome 截图检查。 | `pnpm ui:visual-check` |
 | `tv-visual-check.mjs` | Web TV 的 Chrome 截图检查。 | `pnpm tv:visual-check` |
@@ -33,9 +31,7 @@
 | `deploy-doctor.test.mjs` | 部署 doctor 的 env 解析、CORS、媒体路径、网络重试、服务状态和 KTV 索引诊断输出。 |
 | `web-deploy-smoke.test.mjs` | Web smoke 的 CORS、页面可达性、TV bootstrap/heartbeat、控制端 session 和 discovery 检查。 |
 | `repo-hygiene-check.test.mjs` | Git 状态解析、高风险未跟踪路径识别和 dirty 报告。 |
-| `fetch_song_covers_test.py` | 封面路径、公开 URL、并发调度、图片校验、历史跳过、匹配评分和 JSONL 历史读取。 |
-| `query_music_tagger_cover_test.py` | MusicTagger 封面探测脚本的候选解析、匹配排序、酷狗图片地址归一化和图片校验。 |
-| `query_netease_cover_test.py` | 网易云封面探测脚本的候选解析、匹配排序和 URL 编码。 |
+| `fetch_song_covers_test.py` | 封面路径、公开 URL、并发调度、图片校验、历史跳过、匹配评分、provider fallback、单首探测和 JSONL 历史读取。 |
 | `run_style_tagging_llm_batch_test.py` | LLM 标签批处理的短 ID prompt、返回校验、标签过滤和导入 SQL。 |
 | `ui-visual-check.test.mjs` | 控制端视觉截图 URL 的 pairing token 刷新和错误处理。 |
 | `real-mv-playback-risk-spike.test.mjs` | MV 播放风险报告的 controlled/local sample 输出。 |
@@ -147,7 +143,7 @@ node --test scripts/tools/repo-hygiene-check.test.mjs
 2. 读取历史 JSONL，默认跳过上次 `failed` 或 `not_found` 的歌曲，避免重复打外部源。
 3. 如果本地已有封面文件但数据库 URL 不一致，只修复数据库 URL。
 4. 如果数据库已有外部图片 URL，优先尝试下载该外链。
-5. 否则按 provider 顺序查询：`netease`、`tencent`、`kugou`、`kuwo`。
+5. 否则按 provider 顺序查询：`netease`、`cloud`、`tencent`、`kugou`、`kuwo`。
 6. 候选结果用歌名和歌手打分，当前要求歌名和歌手都匹配，置信度达到阈值才接受。
 7. 下载图片到 `$MEDIA_ROOT/covers/nas/<song-id>.jpg`。
 8. 写回 `ktv_songs.cover_image_url` 和 `cover_updated_at`。
@@ -157,6 +153,7 @@ node --test scripts/tools/repo-hygiene-check.test.mjs
 
 - `fetch`：实际下载封面并写数据库。
 - `coverage`：只测 provider 覆盖率，不写数据库。
+- `probe`：单首歌探测，按同一套 provider 顺序返回首个可用封面，可选下载图片。
 - `status`：打印数据库覆盖情况和历史任务摘要。
 
 常用命令：
@@ -165,7 +162,9 @@ node --test scripts/tools/repo-hygiene-check.test.mjs
 bash deploy/source/ktv.sh cover-status
 bash deploy/source/ktv.sh cover-coverage -- --limit 100 --concurrency 4 --delay-ms 200
 bash deploy/source/ktv.sh fetch-covers -- --limit 1000 --concurrency 4 --delay-ms 150
-bash deploy/source/ktv.sh cover-coverage -- --providers netease --limit 100 --delay-ms 100
+python3 scripts/tools/fetch_song_covers.py probe 冲动的惩罚 刀郎 --providers netease,cloud --netease-base-url http://127.0.0.1:4300
+python3 scripts/tools/fetch_song_covers.py probe 夜之光 花姐 --providers cloud --download runtime/probes/night-light.jpg
+bash deploy/source/ktv.sh cover-coverage -- --providers netease,cloud --limit 100 --delay-ms 100
 ```
 
 详细运行和重跑策略见 [歌曲封面缓存 Runbook](../../docs/runbooks/song-cover-fetching.md)。
@@ -174,54 +173,6 @@ bash deploy/source/ktv.sh cover-coverage -- --providers netease --limit 100 --de
 
 ```bash
 python3 scripts/tools/fetch_song_covers_test.py
-```
-
-## query_netease_cover.py
-
-`query_netease_cover.py` 是接入网易云 API 前的探测工具。它不会写数据库，也不会下载图片，只调用内部 `NeteaseCloudMusicApi` 服务并输出最匹配候选的封面 URL。
-
-当前 `lxc-dev` 上的内部服务监听：
-
-```text
-http://127.0.0.1:4300
-```
-
-常用命令：
-
-```bash
-python3 scripts/tools/query_netease_cover.py 冲动的惩罚 刀郎 --base-url http://127.0.0.1:4300
-NETEASE_CLOUD_MUSIC_API_BASE_URL=http://127.0.0.1:4300 python3 scripts/tools/query_netease_cover.py 夜之光 花姐
-```
-
-脚本使用 `/cloudsearch` 搜索歌曲候选，优先选择歌名和歌手都匹配的结果，并读取候选专辑字段里的 `picUrl`。如果搜索结果没有封面，会再调用 `/song/detail` 补一次详情。
-
-相关测试：
-
-```bash
-python3 scripts/tools/query_netease_cover_test.py
-```
-
-## query_music_tagger_cover.py
-
-`query_music_tagger_cover.py` 是从 MusicTagger 的 `MusicTager/api` 目录里抽出的封面探测逻辑，当前只保留不需要凭据的两个来源：
-
-- `cloud`: MusicTagger 的 `CloudMusicWebApi`，使用网易云旧搜索接口和歌曲详情接口读取 `album.picUrl`。
-- `kugou`: MusicTagger 的 `KugouApi`，先搜索歌曲 hash，再调用 `getSongInfo.php` 读取 `album_img`。
-
-脚本默认只输出候选和最佳封面 URL，不写数据库。需要确认图片能下载时传 `--download`。
-
-常用命令：
-
-```bash
-python3 scripts/tools/query_music_tagger_cover.py 冲动的惩罚 刀郎
-python3 scripts/tools/query_music_tagger_cover.py 夜之光 花姐 --providers kugou
-python3 scripts/tools/query_music_tagger_cover.py 夜之光 花姐 --download runtime/probes/night-light.jpg
-```
-
-相关测试：
-
-```bash
-python3 scripts/tools/query_music_tagger_cover_test.py
 ```
 
 ## run_style_tagging_llm_batch.py
