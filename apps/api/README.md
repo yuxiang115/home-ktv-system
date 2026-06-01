@@ -1,14 +1,14 @@
 # HomeKTV API
 
-`apps/api` 是 HomeKTV 的后端服务。它负责房间状态、播放队列、控制命令、媒体网关、曲库接入、导入扫描、TV 心跳和播放遥测。
+`apps/api` 是 HomeKTV 的后端服务。它负责房间状态、播放队列、控制命令、媒体网关、NAS 曲库接入、在线候选任务、TV 心跳和播放遥测。
 
 ## 职责
 
 - 管理房间、配对 token、控制器会话和 TV 在线状态。
 - 接收手机控制器命令：点歌、顶歌、切歌、原唱/伴唱切换、音量调整。
 - 为 TV 端生成 `room snapshot`、`playback target` 和媒体播放 URL。
-- 通过 `/media/:assetId` 把本地或 NAS 媒体文件以 HTTP Range 方式提供给 TV。
-- 接入 PostgreSQL 曲库、真实 KTV 索引和导入任务。
+- 通过 `/media/nas/:assetId` 把 NAS 媒体文件以 HTTP Range 方式提供给 TV。
+- 接入 PostgreSQL 曲库、真实 KTV 索引和在线候选任务。
 
 ## 关键目录
 
@@ -64,7 +64,8 @@ POST /rooms/:roomSlug/commands/set-volume
 POST /player/bootstrap
 POST /player/heartbeat
 POST /player/telemetry
-GET  /media/:assetId
+GET  /media/nas/:assetId
+GET  /media/covers/nas/*
 ```
 
 ## 相关文档
@@ -72,4 +73,4 @@ GET  /media/:assetId
 - [部署说明](../../docs/deployment.md)
 - [项目结构](../../docs/project-structure.md)
 - [KTV 全量索引](../../docs/KTV-FULL-INDEX.md)
-- [KTV 索引接入](../../docs/KTV-FULL-INDEX-INTEGRATION.md)
+- [数据库结构](../../docs/database-schema.md)

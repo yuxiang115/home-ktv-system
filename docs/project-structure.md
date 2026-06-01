@@ -18,7 +18,7 @@ home-ktv-system/
 └── home-ktv-media/
 ```
 
-`runtime/`、`logs/`、`home-ktv-media/` 是本地或服务器运行产物，不进入版本库。`.planning/` 是 GSD 过程档案，不是运行时必需目录。
+`runtime/`、`logs/`、`home-ktv-media/` 是本地或服务器运行产物，不进入版本库。`.planning/` 是 GSD 过程档案，不是运行时必需目录，也不作为当前实现说明入口。
 
 ## 应用层
 
@@ -29,9 +29,9 @@ apps/controller/
 apps/tv-web/
 ```
 
-`apps/api` 是系统后端，提供房间、队列、媒体、曲库、导入、TV 心跳、控制器会话、真实 KTV 索引接入等 API。
+`apps/api` 是系统后端，提供房间、队列、媒体、NAS 曲库、在线候选任务、TV 心跳、控制器会话、真实 KTV 索引接入等 API。
 
-`apps/admin` 是后台管理界面，面向维护者，用于查看房间状态、曲库、导入结果和诊断信息。
+`apps/admin` 是后台管理界面，面向维护者，用于查看房间状态、NAS 曲库、在线候选任务和诊断信息。
 
 `apps/controller` 是手机扫码后的点歌界面。它面向用户，负责搜索、点歌、顶歌、切歌、原唱/伴唱切换和音量控制。
 
@@ -78,25 +78,23 @@ scripts/tools/
 
 `scripts/dev` 是本地开发入口，负责启动 API、后台、Web TV 和手机控制器，并把日志写到 `logs/dev/`。
 
-`scripts/tools` 放 demo 数据、视觉检查、真实 MV 风险扫描等工具。
+`scripts/tools` 放部署自检、视觉检查、封面拉取、风格标签批处理、真实 MV 风险扫描等工具。说明见 [../scripts/tools/README.md](../scripts/tools/README.md)。
 
 ## 文档
 
 ```text
 docs/
-docs/archive/
-docs/plans/
-docs/reports/
+docs/runbooks/
 ```
 
-`docs/` 放长期有效的架构、部署、曲库和产品说明。`docs/archive/` 放已过期但仍有参考价值的历史设计。`docs/plans/` 放阶段性设计和实施计划。`docs/reports/` 放验证报告和分析结果。
+`docs/` 只放当前有效的架构、部署、数据库、曲库和运维说明。历史实施计划、旧迁移过程和阶段性调研记录不放在当前文档主路径中；需要追溯时使用 Git 记录。
 
 日常入口优先级：
 
 1. `README.md`
-2. `docs/KTV-ARCHITECTURE.md`
-3. `docs/deployment.md`
-4. `docs/KTV-FULL-INDEX.md`
-5. `docs/runbooks/`
-
-`docs/plans/` 和 `.planning/` 中可能保留旧路径、旧决策或历史 UAT 记录，不应直接作为当前实现依据。
+2. `docs/README.md`
+3. `docs/KTV-ARCHITECTURE.md`
+4. `docs/deployment.md`
+5. `docs/database-schema.md`
+6. `docs/KTV-FULL-INDEX.md`
+7. `docs/runbooks/`

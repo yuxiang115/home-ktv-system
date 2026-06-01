@@ -44,6 +44,18 @@ ktv_songs.cover_updated_at
 
 `PUBLIC_BASE_URL` 必须配置为 API 地址，例如 `http://<server-ip>:4000`。控制端会直接使用 `coverImageUrl` 作为图片地址，如果写成相对路径，浏览器会请求到控制端自己的端口。
 
+## 当前覆盖情况
+
+截至 2026-06-01，`lxc-dev` 已跑完一次全量封面拉取：
+
+```text
+activeSongs=34385
+withCoverUrl=3635
+withoutCoverUrl=30750
+```
+
+这次全量脚本正常完成，失败只有少量网络错误；低覆盖率主要来自当前匹配策略偏保守。脚本要求歌名和歌手都匹配，provider 为 `tencent,kugou,kuwo`。下一轮提高覆盖率时，优先考虑增加 NetEase/Baidu/Meting 等来源，或者增加本地视频首帧兜底。
+
 ## song-id 稳定性
 
 `ktv_songs.id` 是主键，默认由 PostgreSQL `gen_random_uuid()` 生成。正常索引 NAS 曲库时，代码按 `file_path` 做 upsert：同一个文件再次扫描会更新原来的歌曲行，并保留原来的 `id`。

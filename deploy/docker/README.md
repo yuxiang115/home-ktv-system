@@ -37,4 +37,4 @@ docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -
 
 风格标签现在只走 `scripts/tools/run_style_tagging_llm_batch.py`，不再保留旧的 Docker 独立任务入口或 JSONL wrapper。run 阶段只追加 JSONL 和 state 文件，全部完成后才统一 import 写库；整批失败时不写入数据库，由外层脚本等待后重试。
 
-完整配置、NAS 路径映射、公网入口和验证步骤见 [../../docs/deployment-docker.md](../../docs/deployment-docker.md)。歌曲封面拉取流程见 [../../docs/runbooks/song-cover-fetching.md](../../docs/runbooks/song-cover-fetching.md)。从旧曲库桥接结构升级到 NAS/online 曲库模型时，先按 [../../docs/runbooks/nas-online-catalog-migration.md](../../docs/runbooks/nas-online-catalog-migration.md) 做备份、迁移和回滚准备。
+完整配置、NAS 路径映射、公网入口和验证步骤见 [../../docs/deployment-docker.md](../../docs/deployment-docker.md)。歌曲封面拉取流程见 [../../docs/runbooks/song-cover-fetching.md](../../docs/runbooks/song-cover-fetching.md)。当前数据库结构见 [../../docs/database-schema.md](../../docs/database-schema.md)。

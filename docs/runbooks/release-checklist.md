@@ -50,7 +50,7 @@ bash deploy/source/ktv.sh smoke
 
 人工验证：
 
-1. Web TV 待机页显示二维码。
+1. Android TV 待机页显示二维码。
 2. 手机扫码能进入控制器。
 3. 搜索一首真实歌曲并点歌。
 4. TV 进入播放状态。

@@ -16,7 +16,7 @@ home-ktv-system/
 ├── packages/                # 共享领域模型、协议、会话引擎、热门歌曲工具
 ├── deploy/                  # Docker 和源码部署入口
 ├── scripts/                 # 本地开发和工具脚本
-├── docs/                    # 当前架构、部署、曲库接入和产品化文档
+├── docs/                    # 当前架构、部署、曲库和运维文档
 └── runtime/                 # 源码部署运行时目录，生成产物不入库
 ```
 
@@ -38,7 +38,7 @@ home-ktv-system/
 - 后台管理界面: [apps/admin](apps/admin/README.md)
 - 共享领域模型和播放契约: `packages/domain`、`packages/player-contracts`、`packages/protocol`、`packages/session-engine`
 
-后端负责 PostgreSQL 数据、房间状态、队列命令、媒体文件访问、TV 心跳和控制器会话。后台提供房间、曲库、导入、诊断和管理操作。
+后端负责 PostgreSQL 数据、房间状态、队列命令、媒体文件访问、TV 心跳和控制器会话。后台提供房间、NAS 曲库、在线候选任务、诊断和管理操作。
 
 ### TV 端
 
@@ -90,7 +90,7 @@ bash deploy/docker/ktv.sh logs
 
 ```bash
 bash deploy/source/ktv.sh setup
-bash deploy/source/ktv.sh start
+bash deploy/source/ktv.sh deploy
 bash deploy/source/ktv.sh status
 bash deploy/source/ktv.sh doctor
 bash deploy/source/ktv.sh logs
@@ -101,11 +101,12 @@ bash deploy/source/ktv.sh logs
 
 ## 文档入口
 
+- [文档总入口](docs/README.md)
 - [当前架构](docs/KTV-ARCHITECTURE.md)
 - [项目结构](docs/project-structure.md)
 - [部署说明](docs/deployment.md)
 - [真实曲库索引](docs/KTV-FULL-INDEX.md)
-- [真实曲库接入](docs/KTV-FULL-INDEX-INTEGRATION.md)
+- [数据库结构](docs/database-schema.md)
 
 ## Android TV
 
@@ -130,7 +131,7 @@ pnpm hot-songs:update
 
 ## 真实曲库维护
 
-真实曲库索引、技术探测、封面拉取和风格标签流程见 [docs/KTV-FULL-INDEX.md](docs/KTV-FULL-INDEX.md)。风格标签现在只保留 `ktv_song_style_tags` 关系表，批量补标签使用独立 Python runner：
+真实曲库索引、技术探测、封面拉取和风格标签流程见 [docs/KTV-FULL-INDEX.md](docs/KTV-FULL-INDEX.md)。风格标签直接保存在 `ktv_songs.style_tags` 数组字段中，批量补标签使用独立 Python runner：
 
 ```bash
 python3 scripts/tools/run_style_tagging_llm_batch.py run --max-existing-tags 1 --batch-size 30 --output runtime/tagging/llm/llm-style-tags.jsonl
@@ -142,10 +143,10 @@ python3 scripts/tools/run_style_tagging_llm_batch.py import --output runtime/tag
 
 这些目录是本地运行资源或生成产物，默认不提交：
 
-- `home-ktv-media/`: 本地媒体、demo 歌曲和可选生成文件。
+- `home-ktv-media/`: 本地媒体缓存、封面缓存和可选测试媒体。
 - `logs/`: `pnpm dev:local` 生成的服务日志。
 - `runtime/`: 源码部署运行时日志、pid 和静态产物。
 - `songs-sample/`: 本地 MV 样本文件。
-- `.planning/reports/`: GSD 工作流和调研报告。
+- `.planning/reports/`: GSD 工作流和临时调研报告。
 
-`.planning/` 和 `docs/plans/` 是历史规划、讨论和验证记录。日常开发、部署和排障优先看上面的文档入口。
+`.planning/` 是过程档案，不作为当前实现、部署或排障依据。当前说明优先看 [docs/README.md](docs/README.md) 中列出的文档入口。

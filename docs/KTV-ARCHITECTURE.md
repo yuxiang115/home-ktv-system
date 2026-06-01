@@ -1,6 +1,6 @@
 # 当前架构
 
-这份文档描述当前 HomeKTV 的有效架构。早期探索性设计已归档到 [archive/initial-architecture-notes.md](archive/initial-architecture-notes.md)，不再作为实现和部署依据。
+这份文档描述当前 HomeKTV 的有效架构。历史探索和阶段计划不再放在当前文档主路径中，需要追溯时使用 Git 记录。
 
 ## 产品边界
 
@@ -78,11 +78,12 @@ bash deploy/docker/ktv.sh doctor
 ## 文档分层
 
 - `README.md`: 项目入口和常用命令。
+- `docs/README.md`: 文档入口。
 - `docs/project-structure.md`: 当前目录结构。
 - `docs/deployment*.md`: 部署说明。
-- `docs/KTV-FULL-INDEX*.md`: 真实曲库索引和接入说明。
-- `docs/plans/`: 历史实施计划。
-- `.planning/`: GSD 过程档案，不作为部署入口。
+- `docs/database-schema.md`: 当前数据库结构。
+- `docs/KTV-FULL-INDEX.md`: 真实曲库索引和维护说明。
+- `.planning/`: GSD 过程档案，不作为部署或排障入口。
 
 ## 暂不处理
 

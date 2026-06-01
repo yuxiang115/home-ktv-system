@@ -57,22 +57,28 @@ pnpm repo:hygiene -- --fail-on-dirty
 - 提交前至少运行受影响包的测试和构建；改动跨包协议时优先跑 API、controller、tv-web 的相关测试。
 - 每次重新编译部署 Web TV / Controller / API 后，必须先跑 `pnpm deploy:smoke -- ...` 验证 CORS、TV bootstrap/heartbeat、控制端看到 TV 在线、推荐列表非空，再通知测试。
 
-## 真实歌库索引
+## 真实曲库相关文件
 
-KTV full-index 相关迁移、脚本、测试和文档属于正式能力，原因是它们让 `/mnt/nas/KTV歌曲` 的真实歌库索引可以从 Git 拉取后重新建立：
+真实 NAS 曲库、技术探测、封面缓存和风格标签属于正式能力。相关改动通常至少涉及这些稳定入口：
 
-- `apps/api/src/db/migrations/0008_ktv_full_index.sql`
-- `apps/api/src/db/migrations/0009_ktv_active_asset_indexes.sql`
-- `apps/api/src/modules/ingest/ktv-sample-index.ts`
+- `apps/api/src/db/schema.ts`
+- `apps/api/src/db/migrations/`
 - `apps/api/src/modules/ingest/ktv-full-index.ts`
-- `apps/api/src/scripts/ktv-sample-index.ts`
-- `apps/api/src/scripts/ktv-full-index.ts`
+- `apps/api/src/modules/ktv-index/`
+- `apps/api/src/routes/song-search.ts`
+- `apps/api/src/routes/song-discovery.ts`
+- `scripts/tools/fetch_song_covers.py`
+- `scripts/tools/run_style_tagging_llm_batch.py`
 - `docs/KTV-FULL-INDEX.md`
-- `docs/KTV-FULL-INDEX-INTEGRATION.md`
+- `docs/runbooks/song-cover-fetching.md`
 
-验证命令：
+不要把某个历史迁移编号当作当前结构说明；当前数据库结构以 `apps/api/src/db/schema.ts` 和 [数据库结构](../database-schema.md) 为准。
+
+常用验证命令：
 
 ```bash
-pnpm -F @home-ktv/api exec vitest run src/test/ktv-sample-index.test.ts src/test/ktv-full-index.test.ts
+pnpm -F @home-ktv/api exec vitest run src/test/ktv-full-index.test.ts src/test/ktv-index-read-repository.test.ts src/test/song-search-routes.test.ts src/test/song-discovery-routes.test.ts
 pnpm -F @home-ktv/api typecheck
+python3 scripts/tools/fetch_song_covers_test.py
+python3 scripts/tools/run_style_tagging_llm_batch_test.py
 ```

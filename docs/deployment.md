@@ -90,3 +90,16 @@ adb shell am start -W \
   --es room living-room \
   --es deviceName "Living Room TV"
 ```
+
+## 真实 Android TV 基线验证
+
+每次修改 Android TV 播放、后端播放状态、控制器或部署脚本后，至少验证：
+
+1. Android TV 空闲页显示二维码。
+2. 手机扫码进入控制器。
+3. 搜索真实歌曲并点歌。
+4. Android TV 播放真实 MV。
+5. 切歌、顶歌、删除队列。
+6. 双音轨歌曲的原唱/伴唱切换。
+7. 房间音量控制。
+8. 控制器关闭后重新进入，房间状态仍正确。

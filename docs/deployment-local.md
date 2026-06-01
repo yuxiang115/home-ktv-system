@@ -54,13 +54,6 @@ pnpm dev:local tail tv-web
 pnpm dev:local stop
 ```
 
-兼容旧日志别名：
-
-```bash
-pnpm dev:local tail mobile-controller
-pnpm dev:local tail tv-player
-```
-
 ## 默认端口
 
 ```text

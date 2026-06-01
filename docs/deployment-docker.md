@@ -23,7 +23,6 @@ CONTROLLER_BASE_URL=http://<server-ip>:5176
 TV_WEB_BASE_URL=http://<server-ip>:5173
 CORS_ALLOWED_ORIGINS=http://<server-ip>:5174,http://<server-ip>:5176,http://<server-ip>:5173
 KTV_NAS_HOST_PATH=/mnt/nas/KTV歌曲
-NETEASE_API_BASE_URL=http://<netease-api-host>:3301
 ```
 
 当前安全边界保持轻量：Admin 暂不加登录鉴权，公网媒体流暂不做访问控制。生产暴露范围需要通过 Caddy、域名、网络入口和服务器访问策略控制。

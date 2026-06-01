@@ -106,5 +106,5 @@ instrumental 伴唱/伴奏
 ## 相关文档
 
 - [部署说明](../../docs/deployment.md)
-- [Android TV libVLC 调研](../../docs/plans/2026-05-21-android-tv-libvlc-spike.md)
-- [Android TV 真机客户端设计](../../docs/plans/2026-05-21-android-tv-real-client-design.md)
+- [当前架构](../../docs/KTV-ARCHITECTURE.md)
+- [真实曲库索引](../../docs/KTV-FULL-INDEX.md)

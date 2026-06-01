@@ -83,7 +83,6 @@ TV_WEB_BASE_URL=http://<server-ip>:5173
 CORS_ALLOWED_ORIGINS=http://<server-ip>:5174,http://<server-ip>:5176,http://<server-ip>:5173
 MEDIA_ROOT=./runtime/media
 MEDIA_PATH_MAPPINGS=/mnt/nas/KTV歌曲=/mnt/nas/KTV歌曲
-NETEASE_API_BASE_URL=http://<netease-api-host>:3301
 TV_ROOM_SLUG=living-room
 ```
 
