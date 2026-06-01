@@ -16,6 +16,7 @@
 | `web-deploy-smoke.mjs` | 部署后的公开入口 smoke，验证 CORS、TV bootstrap、heartbeat、控制端看到 TV 在线、推荐列表非空。 | `pnpm deploy:smoke` / `bash deploy/source/ktv.sh smoke` |
 | `repo-hygiene-check.mjs` | 提交前仓库卫生检查，区分 tracked dirty、高风险未跟踪文件和本地运行产物。 | `pnpm repo:hygiene` |
 | `fetch_song_covers.py` | 批量查询、下载并缓存歌曲封面，把本地公开封面 URL 写回 `ktv_songs.cover_image_url`。 | `bash deploy/source/ktv.sh fetch-covers -- ...` |
+| `query_netease_cover.py` | 调用内部 NeteaseCloudMusicApi 服务，按歌名/歌手查询网易云候选歌曲和封面 URL。 | `python3 scripts/tools/query_netease_cover.py 冲动的惩罚 刀郎 --base-url http://127.0.0.1:4300` |
 | `run_style_tagging_llm_batch.py` | 离线批量给歌曲补风格标签，先生成 JSONL，再导入 `ktv_songs.style_tags`。 | `pnpm ktv:tags:llm-batch:py -- ...` |
 | `ui-visual-check.mjs` | 控制端和 Admin 的 Chrome 截图检查。 | `pnpm ui:visual-check` |
 | `tv-visual-check.mjs` | Web TV 的 Chrome 截图检查。 | `pnpm tv:visual-check` |
@@ -32,6 +33,7 @@
 | `web-deploy-smoke.test.mjs` | Web smoke 的 CORS、页面可达性、TV bootstrap/heartbeat、控制端 session 和 discovery 检查。 |
 | `repo-hygiene-check.test.mjs` | Git 状态解析、高风险未跟踪路径识别和 dirty 报告。 |
 | `fetch_song_covers_test.py` | 封面路径、公开 URL、并发调度、图片校验、历史跳过、匹配评分和 JSONL 历史读取。 |
+| `query_netease_cover_test.py` | 网易云封面探测脚本的候选解析、匹配排序和 URL 编码。 |
 | `run_style_tagging_llm_batch_test.py` | LLM 标签批处理的短 ID prompt、返回校验、标签过滤和导入 SQL。 |
 | `ui-visual-check.test.mjs` | 控制端视觉截图 URL 的 pairing token 刷新和错误处理。 |
 | `real-mv-playback-risk-spike.test.mjs` | MV 播放风险报告的 controlled/local sample 输出。 |
@@ -169,6 +171,31 @@ bash deploy/source/ktv.sh fetch-covers -- --limit 1000 --concurrency 4 --delay-m
 
 ```bash
 python3 scripts/tools/fetch_song_covers_test.py
+```
+
+## query_netease_cover.py
+
+`query_netease_cover.py` 是接入网易云 API 前的探测工具。它不会写数据库，也不会下载图片，只调用内部 `NeteaseCloudMusicApi` 服务并输出最匹配候选的封面 URL。
+
+当前 `lxc-dev` 上的内部服务监听：
+
+```text
+http://127.0.0.1:4300
+```
+
+常用命令：
+
+```bash
+python3 scripts/tools/query_netease_cover.py 冲动的惩罚 刀郎 --base-url http://127.0.0.1:4300
+NETEASE_CLOUD_MUSIC_API_BASE_URL=http://127.0.0.1:4300 python3 scripts/tools/query_netease_cover.py 夜之光 花姐
+```
+
+脚本使用 `/cloudsearch` 搜索歌曲候选，优先选择歌名和歌手都匹配的结果，并读取候选专辑字段里的 `picUrl`。如果搜索结果没有封面，会再调用 `/song/detail` 补一次详情。
+
+相关测试：
+
+```bash
+python3 scripts/tools/query_netease_cover_test.py
 ```
 
 ## run_style_tagging_llm_batch.py
