@@ -79,7 +79,7 @@ withCoverUrl=3635
 withoutCoverUrl=30750
 ```
 
-这次全量脚本正常完成，失败只有少量网络错误；低覆盖率主要来自当前匹配策略偏保守。脚本要求歌名和歌手都匹配，当前默认 provider 为 `netease,cloud,tencent,kugou,kuwo`。下一轮继续提高覆盖率时，可考虑增加本地视频首帧兜底。
+这次全量脚本正常完成，失败只有少量网络错误；低覆盖率主要来自当前匹配策略偏保守。脚本要求歌名和歌手都匹配，当前默认 provider 为 `netease,cloud,tencent,kugou,kuwo,spotify`。下一轮继续提高覆盖率时，可考虑增加本地视频首帧兜底。
 
 ## song-id 稳定性
 
@@ -96,10 +96,16 @@ withoutCoverUrl=30750
 5. 没有可用外链时，按 provider 顺序查询封面：
 
 ```text
-netease -> cloud -> tencent -> kugou -> kuwo
+netease -> cloud -> tencent -> kugou -> kuwo -> spotify
 ```
 
-其中 `netease` 调用 `lxc-dev` 上的内部 `NeteaseCloudMusicApiBackup` 服务；`cloud` 是从 MusicTagger 里抽出的网易云旧接口兜底，不依赖本地服务；`kugou` 兼容 MusicTagger 使用的 `album_img` 返回字段。
+其中 `netease` 调用 `lxc-dev` 上的内部 `NeteaseCloudMusicApiBackup` 服务；`cloud` 是从 MusicTagger 里抽出的网易云旧接口兜底，不依赖本地服务；`kugou` 兼容 MusicTagger 使用的 `album_img` 返回字段；`spotify` 优先使用 `SpotifyScraper` 的公开 `SpotifyClient` 获取 track 信息和专辑封面。
+
+`spotify` 是最后兜底源。需要完整启用 SpotifyScraper 时，先在运行脚本的 Python 环境安装：
+
+```bash
+python3 -m pip install --user spotifyscraper
+```
 
 6. 用歌名和歌手计算匹配分，拒绝弱匹配，并降低 DJ、Live、Remix、翻唱、现场等版本的分数。
 7. 命中后下载图片到本地缓存，再写入本地公开 URL。
@@ -155,7 +161,7 @@ pnpm covers:songs -- --limit 300 --delay-ms 300
 
 ```text
 --limit <n>                 处理数量；0 表示全部，fetch 默认 0，coverage 默认 100
---providers <list>          provider 顺序，默认 netease,cloud,tencent,kugou,kuwo
+--providers <list>          provider 顺序，默认 netease,cloud,tencent,kugou,kuwo,spotify
 --netease-base-url <url>    NeteaseCloudMusicApi 地址，默认 http://127.0.0.1:4300
 --search-limit <n>          每个 provider 搜索结果数，默认 8
 --request-timeout-ms <n>    单次请求超时，默认 8000

@@ -21,10 +21,15 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_NETEASE_BASE_URL = "http://127.0.0.1:4300"
-DEFAULT_PROVIDERS = ["netease", "cloud", "tencent", "kugou", "kuwo"]
+DEFAULT_PROVIDERS = ["netease", "cloud", "tencent", "kugou", "kuwo", "spotify"]
 DEFAULT_IMAGE_SIZE = 300
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 SAFE_SONG_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+SPOTIFY_PATHFINDER_URL = "https://api-partner.spotify.com/pathfinder/v1/query"
+SPOTIFY_SEARCH_OPERATION = "searchSuggestions"
+SPOTIFY_SEARCH_HASH = "556f5a15b2fdd3a7113ffd377ad9805e38a3a27b8bb1ca7d6d76bad54aa8ee12"
+SPOTIFY_TOKEN_TRACK_ID = "4iV5W9uYEdYUVa79Axb7Rh"
+SPOTIFY_ACCESS_TOKEN_CACHE = {"token": "", "expiresAt": 0}
 
 
 class SongActionDecision:
@@ -455,6 +460,8 @@ def search_provider(provider, song, search_limit, timeout_ms, netease_base_url=D
         return search_kugou(song, search_limit, timeout_ms)
     if provider == "kuwo":
         return search_kuwo(song, search_limit, timeout_ms)
+    if provider == "spotify":
+        return search_spotify(song, search_limit, timeout_ms)
     raise ValueError(f"Unsupported provider: {provider}")
 
 
@@ -657,12 +664,209 @@ def search_kuwo(song, search_limit, timeout_ms):
     return candidates
 
 
+def search_spotify(song, search_limit, timeout_ms):
+    candidates = fetch_spotify_search_tracks(song, search_limit, timeout_ms)
+    if not candidates:
+        return []
+
+    try:
+        client = create_spotify_client()
+    except Exception:
+        return candidates
+
+    hydrated = []
+    try:
+        for candidate in candidates[:search_limit]:
+            try:
+                track_data = client.get_track_info(candidate["trackUrl"])
+                hydrated.append(parse_spotify_track_info(track_data, candidate))
+            except Exception:
+                hydrated.append(candidate)
+    finally:
+        close = getattr(client, "close", None)
+        if callable(close):
+            close()
+    return hydrated
+
+
+def create_spotify_client():
+    try:
+        from spotify_scraper import SpotifyClient
+    except ImportError as error:
+        raise RuntimeError("spotifyscraper is not installed; run: python3 -m pip install spotifyscraper") from error
+    return SpotifyClient(browser_type="requests", log_level="ERROR")
+
+
+def fetch_spotify_search_tracks(song, search_limit, timeout_ms):
+    token = fetch_spotify_access_token(timeout_ms)
+    payload = fetch_json_body(
+        SPOTIFY_PATHFINDER_URL,
+        {
+            "variables": {
+                "query": sanitize_keyword(f"{song['artistName']} {song['title']}"),
+                "limit": search_limit,
+                "numberOfTopResults": max(search_limit, 10),
+                "offset": 0,
+                "includeAuthors": False,
+                "includeAlbumPreReleases": False,
+                "includeEpisodeContentRatingsV2": False,
+            },
+            "operationName": SPOTIFY_SEARCH_OPERATION,
+            "extensions": {"persistedQuery": {"version": 1, "sha256Hash": SPOTIFY_SEARCH_HASH}},
+        },
+        headers={
+            "Authorization": f"Bearer {token}",
+            "App-Platform": "WebPlayer",
+            "Referer": "https://open.spotify.com/",
+        },
+        timeout_ms=timeout_ms,
+    )
+    return parse_spotify_search_tracks(payload, search_limit)
+
+
+def fetch_spotify_access_token(timeout_ms):
+    now_ms = int(time.time() * 1000)
+    if SPOTIFY_ACCESS_TOKEN_CACHE["token"] and SPOTIFY_ACCESS_TOKEN_CACHE["expiresAt"] > now_ms + 60000:
+        return SPOTIFY_ACCESS_TOKEN_CACHE["token"]
+    token_data = parse_spotify_access_token(
+        fetch_text(
+            f"https://open.spotify.com/embed/track/{SPOTIFY_TOKEN_TRACK_ID}",
+            headers={"Accept": "text/html,*/*"},
+            timeout_ms=timeout_ms,
+        )
+    )
+    SPOTIFY_ACCESS_TOKEN_CACHE["token"] = token_data["token"]
+    SPOTIFY_ACCESS_TOKEN_CACHE["expiresAt"] = token_data.get("expiresAt") or 0
+    return token_data["token"]
+
+
+def parse_spotify_access_token(html_text):
+    match = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', html_text, re.S)
+    if not match:
+        raise RuntimeError("Spotify embed page did not include __NEXT_DATA__")
+    payload = json.loads(html.unescape(match.group(1)))
+    session = (
+        (((payload.get("props") or {}).get("pageProps") or {}).get("state") or {}).get("settings") or {}
+    ).get("session") or {}
+    token = clean(session.get("accessToken"))
+    if not token:
+        raise RuntimeError("Spotify embed page did not include an anonymous access token")
+    return {"token": token, "expiresAt": int(session.get("accessTokenExpirationTimestampMs") or 0)}
+
+
+def parse_spotify_search_tracks(payload, search_limit):
+    search = ((payload or {}).get("data") or {}).get("searchV2") or {}
+    nodes = []
+    for row in (((search.get("topResultsV2") or {}).get("itemsV2")) or []):
+        node = (((row or {}).get("item") or {}).get("data")) or {}
+        if node.get("__typename") == "Track":
+            nodes.append(node)
+    for row in (((search.get("tracksV2") or {}).get("items")) or []):
+        node = (((row or {}).get("item") or {}).get("data")) or {}
+        if node.get("__typename") == "Track":
+            nodes.append(node)
+
+    candidates = []
+    seen = set()
+    for node in nodes:
+        candidate = parse_spotify_track_node(node)
+        song_id = candidate.get("providerSongId")
+        if not song_id or song_id in seen:
+            continue
+        seen.add(song_id)
+        candidates.append(candidate)
+        if len(candidates) >= search_limit:
+            break
+    return candidates
+
+
+def parse_spotify_track_node(node):
+    song_id = clean(node.get("id")) or spotify_id_from_uri(node.get("uri"))
+    album = node.get("albumOfTrack") or node.get("album") or {}
+    artist_names = []
+    artists = node.get("artists") or {}
+    if isinstance(artists, dict):
+        artist_rows = artists.get("items") or []
+    else:
+        artist_rows = artists if isinstance(artists, list) else []
+    for artist in artist_rows:
+        profile = artist.get("profile") or {}
+        name = clean(profile.get("name") or artist.get("name"))
+        if name:
+            artist_names.append(name)
+    return {
+        "provider": "spotify",
+        "providerSongId": song_id,
+        "title": strip_html(clean(node.get("name"))),
+        "artistNames": artist_names,
+        "albumName": strip_html(clean(album.get("name"))),
+        "imageUrl": select_largest_image_url(((album.get("coverArt") or {}).get("sources")) or album.get("images") or []),
+        "trackUrl": spotify_track_url(song_id),
+    }
+
+
+def parse_spotify_track_info(track_data, fallback=None):
+    fallback = fallback or {}
+    song_id = clean(track_data.get("id")) or spotify_id_from_uri(track_data.get("uri")) or clean(fallback.get("providerSongId"))
+    album = track_data.get("album") or {}
+    return {
+        "provider": "spotify",
+        "providerSongId": song_id,
+        "title": strip_html(clean(track_data.get("name") or track_data.get("title") or fallback.get("title"))),
+        "artistNames": spotify_track_artist_names(track_data) or list(fallback.get("artistNames") or []),
+        "albumName": strip_html(clean(album.get("name") or fallback.get("albumName"))),
+        "imageUrl": select_largest_image_url(album.get("images") or spotify_visual_identity_images(track_data))
+        or clean(fallback.get("imageUrl")),
+        "trackUrl": clean(fallback.get("trackUrl")) or spotify_track_url(song_id),
+    }
+
+
+def spotify_track_artist_names(track_data):
+    names = []
+    for artist in track_data.get("artists") or []:
+        profile = artist.get("profile") or {}
+        name = clean(artist.get("name") or profile.get("name"))
+        if name:
+            names.append(name)
+    return names
+
+
+def spotify_visual_identity_images(track_data):
+    visual_identity = track_data.get("visualIdentity") or {}
+    rows = visual_identity.get("image") or []
+    return [
+        {
+            "url": row.get("url"),
+            "width": row.get("width") or row.get("maxWidth"),
+            "height": row.get("height") or row.get("maxHeight"),
+        }
+        for row in rows
+    ]
+
+
+def select_largest_image_url(images):
+    if not isinstance(images, list):
+        return ""
+    valid = [row for row in images if isinstance(row, dict) and clean(row.get("url"))]
+    valid.sort(key=lambda row: int(row.get("width") or row.get("maxWidth") or row.get("height") or row.get("maxHeight") or 0))
+    return clean(valid[-1].get("url")) if valid else ""
+
+
+def spotify_track_url(song_id):
+    return f"https://open.spotify.com/track/{urllib.parse.quote(clean(song_id))}" if clean(song_id) else ""
+
+
+def spotify_id_from_uri(uri):
+    value = clean(uri)
+    return value.rsplit(":", 1)[-1] if value.startswith("spotify:track:") else ""
+
+
 def resolve_provider_image_url(provider, candidate, image_size, timeout_ms):
     direct_image_url = clean(candidate.get("imageUrl"))
     if direct_image_url:
         return direct_image_url
     pic_id = clean(candidate.get("picId"))
-    if provider in ("netease", "cloud"):
+    if provider in ("netease", "cloud", "spotify"):
         return ""
     if not pic_id:
         return ""
@@ -833,6 +1037,45 @@ def fetch_json(url, params, headers=None, timeout_ms=8000, method="GET"):
         detail = error.read().decode("utf-8", errors="replace")[:300]
         raise RuntimeError(f"HTTP {error.code} from {url}: {detail}") from error
     return json.loads(text)
+
+
+def fetch_json_body(url, body, headers=None, timeout_ms=8000):
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "User-Agent": "Mozilla/5.0 HomeKTVCoverFetcher/0.1",
+            "Accept": "application/json,text/plain,*/*",
+            "Content-Type": "application/json;charset=UTF-8",
+            **(headers or {}),
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_ms / 1000) as response:
+            text = response.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")[:300]
+        raise RuntimeError(f"HTTP {error.code} from {url}: {detail}") from error
+    return json.loads(text)
+
+
+def fetch_text(url, headers=None, timeout_ms=8000):
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 HomeKTVCoverFetcher/0.1",
+            "Accept": "text/html,*/*",
+            **(headers or {}),
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_ms / 1000) as response:
+            return response.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")[:300]
+        raise RuntimeError(f"HTTP {error.code} from {url}: {detail}") from error
 
 
 def kuwo_headers():

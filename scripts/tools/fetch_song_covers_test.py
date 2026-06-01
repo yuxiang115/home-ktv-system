@@ -46,6 +46,7 @@ class FetchSongCoversTest(unittest.TestCase):
         self.assertEqual(covers.parse_args(["coverage"]).limit, 100)
         self.assertIn("netease", covers.parse_args(["coverage"]).providers.split(","))
         self.assertIn("cloud", covers.parse_args(["coverage"]).providers.split(","))
+        self.assertEqual(covers.parse_args(["coverage"]).providers.split(",")[-1], "spotify")
 
     def test_fetch_and_coverage_accept_concurrency(self):
         covers = load_module()
@@ -316,6 +317,114 @@ class FetchSongCoversTest(unittest.TestCase):
         self.assertEqual(candidates[0]["provider"], "cloud")
         self.assertEqual(candidates[0]["providerSongId"], "77469")
         self.assertEqual(candidates[0]["imageUrl"], "http://p1.music.126.net/cloud.jpg")
+
+    def test_spotify_search_parser_extracts_track_candidates(self):
+        covers = load_module()
+        payload = {
+            "data": {
+                "searchV2": {
+                    "tracksV2": {
+                        "items": [
+                            {
+                                "item": {
+                                    "data": {
+                                        "__typename": "Track",
+                                        "id": "3yKaEc5oDoDShhzRNmnOpn",
+                                        "name": "冲动的惩罚",
+                                        "artists": {
+                                            "items": [
+                                                {"profile": {"name": "刀郎"}, "uri": "spotify:artist:0EU"}
+                                            ]
+                                        },
+                                        "albumOfTrack": {
+                                            "name": "2002年的第一场雪",
+                                            "coverArt": {
+                                                "sources": [
+                                                    {
+                                                        "height": 64,
+                                                        "width": 64,
+                                                        "url": "https://i.scdn.co/image/small",
+                                                    },
+                                                    {
+                                                        "height": 640,
+                                                        "width": 640,
+                                                        "url": "https://i.scdn.co/image/large",
+                                                    },
+                                                ]
+                                            },
+                                        },
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+
+        candidates = covers.parse_spotify_search_tracks(payload, search_limit=3)
+
+        self.assertEqual(candidates[0]["providerSongId"], "3yKaEc5oDoDShhzRNmnOpn")
+        self.assertEqual(candidates[0]["trackUrl"], "https://open.spotify.com/track/3yKaEc5oDoDShhzRNmnOpn")
+        self.assertEqual(candidates[0]["imageUrl"], "https://i.scdn.co/image/large")
+
+    def test_search_spotify_uses_spotify_scraper_track_info(self):
+        covers = load_module()
+        calls = {"closed": False, "urls": []}
+
+        def fake_fetch_spotify_search_tracks(song, search_limit, timeout_ms):
+            return [
+                {
+                    "provider": "spotify",
+                    "providerSongId": "3yKaEc5oDoDShhzRNmnOpn",
+                    "title": "冲动的惩罚",
+                    "artistNames": ["刀郎"],
+                    "albumName": "谢谢你",
+                    "imageUrl": "https://i.scdn.co/image/search",
+                    "trackUrl": "https://open.spotify.com/track/3yKaEc5oDoDShhzRNmnOpn",
+                }
+            ]
+
+        class FakeSpotifyClient:
+            def get_track_info(self, url):
+                calls["urls"].append(url)
+                return {
+                    "id": "3yKaEc5oDoDShhzRNmnOpn",
+                    "name": "冲动的惩罚",
+                    "artists": [{"name": "刀郎"}],
+                    "album": {
+                        "name": "2002年的第一场雪",
+                        "images": [
+                            {"width": 64, "url": "https://i.scdn.co/image/small"},
+                            {"width": 640, "url": "https://i.scdn.co/image/large"},
+                        ],
+                    },
+                }
+
+            def close(self):
+                calls["closed"] = True
+
+        original_fetch_spotify_search_tracks = covers.fetch_spotify_search_tracks
+        original_create_spotify_client = covers.create_spotify_client
+        covers.fetch_spotify_search_tracks = fake_fetch_spotify_search_tracks
+        covers.create_spotify_client = lambda: FakeSpotifyClient()
+        try:
+            candidates = covers.search_spotify(
+                {"title": "冲动的惩罚", "artistName": "刀郎"},
+                search_limit=3,
+                timeout_ms=5000,
+            )
+        finally:
+            covers.fetch_spotify_search_tracks = original_fetch_spotify_search_tracks
+            covers.create_spotify_client = original_create_spotify_client
+
+        self.assertEqual(calls["urls"], ["https://open.spotify.com/track/3yKaEc5oDoDShhzRNmnOpn"])
+        self.assertTrue(calls["closed"])
+        self.assertEqual(candidates[0]["provider"], "spotify")
+        self.assertEqual(candidates[0]["providerSongId"], "3yKaEc5oDoDShhzRNmnOpn")
+        self.assertEqual(candidates[0]["artistNames"], ["刀郎"])
+        self.assertEqual(candidates[0]["albumName"], "2002年的第一场雪")
+        self.assertEqual(candidates[0]["imageUrl"], "https://i.scdn.co/image/large")
 
     def test_kugou_image_resolution_accepts_music_tagger_album_img(self):
         covers = load_module()

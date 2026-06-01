@@ -143,7 +143,7 @@ node --test scripts/tools/repo-hygiene-check.test.mjs
 2. 读取历史 JSONL，默认跳过上次 `failed` 或 `not_found` 的歌曲，避免重复打外部源。
 3. 如果本地已有封面文件但数据库 URL 不一致，只修复数据库 URL。
 4. 如果数据库已有外部图片 URL，优先尝试下载该外链。
-5. 否则按 provider 顺序查询：`netease`、`cloud`、`tencent`、`kugou`、`kuwo`。
+5. 否则按 provider 顺序查询：`netease`、`cloud`、`tencent`、`kugou`、`kuwo`、`spotify`。
 6. 候选结果用歌名和歌手打分，当前要求歌名和歌手都匹配，置信度达到阈值才接受。
 7. 下载图片到 `$MEDIA_ROOT/covers/nas/<song-id>.jpg`。
 8. 写回 `ktv_songs.cover_image_url` 和 `cover_updated_at`。
@@ -164,7 +164,13 @@ bash deploy/source/ktv.sh cover-coverage -- --limit 100 --concurrency 4 --delay-
 bash deploy/source/ktv.sh fetch-covers -- --limit 1000 --concurrency 4 --delay-ms 150
 python3 scripts/tools/fetch_song_covers.py probe 冲动的惩罚 刀郎 --providers netease,cloud --netease-base-url http://127.0.0.1:4300
 python3 scripts/tools/fetch_song_covers.py probe 夜之光 花姐 --providers cloud --download runtime/probes/night-light.jpg
-bash deploy/source/ktv.sh cover-coverage -- --providers netease,cloud --limit 100 --delay-ms 100
+bash deploy/source/ktv.sh cover-coverage -- --providers netease,cloud,spotify --limit 100 --delay-ms 100
+```
+
+`spotify` provider 会优先使用 `SpotifyScraper` 的公开接口读取 track 信息和专辑图片。如果当前 Python 环境未安装该库，脚本仍可使用 Spotify 搜索结果里的封面 URL 作为兜底；需要启用完整能力时安装：
+
+```bash
+python3 -m pip install --user spotifyscraper
 ```
 
 详细运行和重跑策略见 [歌曲封面缓存 Runbook](../../docs/runbooks/song-cover-fetching.md)。
