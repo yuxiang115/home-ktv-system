@@ -411,6 +411,7 @@ function InteractionComposer({
   t: TFunction;
 }) {
   const presets = interactionPresets(kind, t);
+  const visiblePresets = kind === "emoji" ? presets : presets.slice(0, 9);
   const [message, setMessage] = useState(presets[0] ?? "");
   const title = interactionTitle(kind, t);
   const isPending = controller.pendingInteractionKind === kind;
@@ -562,7 +563,7 @@ function InteractionComposer({
 
         <div className="interaction-sheet__body">
           <div className={kind === "emoji" ? "interaction-preset-grid emoji-grid" : "interaction-preset-grid"}>
-            {presets.map((preset) => (
+            {visiblePresets.map((preset) => (
               <button
                 className={kind === "emoji" ? "interaction-option interaction-option--emoji" : "interaction-option"}
                 key={preset}
@@ -714,39 +715,16 @@ function interactionPresets(kind: RoomInteractionKind, t: TFunction): string[] {
     return [t("interaction.bulletPreset1"), t("interaction.bulletPreset2"), t("interaction.bulletPreset3")];
   }
   if (kind === "rainbow_praise") {
-    return [
-      t("interaction.rainbowPraisePreset1"),
-      t("interaction.rainbowPraisePreset2"),
-      t("interaction.rainbowPraisePreset3"),
-      t("interaction.rainbowPraisePreset4"),
-      t("interaction.rainbowPraisePreset5"),
-      t("interaction.rainbowPraisePreset6"),
-      t("interaction.rainbowPraisePreset7"),
-      t("interaction.rainbowPraisePreset8")
-    ];
+    return translatedInteractionPresets("rainbowPraise", 30, t);
   }
   if (kind === "roast") {
-    return [
-      t("interaction.roastPreset1"),
-      t("interaction.roastPreset2"),
-      t("interaction.roastPreset3"),
-      t("interaction.roastPreset4"),
-      t("interaction.roastPreset5"),
-      t("interaction.roastPreset6"),
-      t("interaction.roastPreset7"),
-      t("interaction.roastPreset8")
-    ];
+    return translatedInteractionPresets("roast", 30, t);
   }
-  return [
-    t("interaction.blessingPreset1"),
-    t("interaction.blessingPreset2"),
-    t("interaction.blessingPreset3"),
-    t("interaction.blessingPreset4"),
-    t("interaction.blessingPreset5"),
-    t("interaction.blessingPreset6"),
-    t("interaction.blessingPreset7"),
-    t("interaction.blessingPreset8")
-  ];
+  return translatedInteractionPresets("blessing", 30, t);
+}
+
+function translatedInteractionPresets(prefix: "rainbowPraise" | "roast" | "blessing", count: number, t: TFunction): string[] {
+  return Array.from({ length: count }, (_, index) => t(`interaction.${prefix}Preset${index + 1}`));
 }
 
 function randomInteractionPreset(presets: readonly string[], current: string): string {

@@ -458,6 +458,7 @@ describe("mobile controller runtime", () => {
     const rainbowDialog = screen.getByRole("dialog", { name: "彩虹屁" });
     expect(rainbowDialog.className).toContain("interaction-sheet");
     expect(rainbowDialog.querySelector(".interaction-sheet__footer")).toBeTruthy();
+    expect(rainbowDialog.querySelectorAll(".interaction-option")).toHaveLength(9);
     await user.clear(within(rainbowDialog).getByLabelText("互动内容"));
     await user.click(within(rainbowDialog).getByRole("button", { name: "随机彩虹屁" }));
     expect((within(rainbowDialog).getByLabelText("互动内容") as HTMLTextAreaElement).value).toBe("这一开嗓，客厅都亮了");
@@ -467,6 +468,7 @@ describe("mobile controller runtime", () => {
 
     await user.click(screen.getByRole("button", { name: "神吐槽" }));
     const roastDialog = screen.getByRole("dialog", { name: "神吐槽" });
+    expect(roastDialog.querySelectorAll(".interaction-option")).toHaveLength(9);
     await user.clear(within(roastDialog).getByLabelText("互动内容"));
     await user.click(within(roastDialog).getByRole("button", { name: "随机神吐槽" }));
     expect((within(roastDialog).getByLabelText("互动内容") as HTMLTextAreaElement).value).toBe("这调跑得很有探索精神");
@@ -476,6 +478,7 @@ describe("mobile controller runtime", () => {
 
     await user.click(screen.getByRole("button", { name: "送祝福" }));
     const blessingDialog = screen.getByRole("dialog", { name: "送祝福" });
+    expect(blessingDialog.querySelectorAll(".interaction-option")).toHaveLength(9);
     await user.clear(within(blessingDialog).getByLabelText("互动内容"));
     await user.click(within(blessingDialog).getByRole("button", { name: "随机祝福" }));
     expect((within(blessingDialog).getByLabelText("互动内容") as HTMLTextAreaElement).value).toBe("祝大家今晚玩得开心");
