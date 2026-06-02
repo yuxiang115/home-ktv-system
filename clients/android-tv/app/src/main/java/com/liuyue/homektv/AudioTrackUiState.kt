@@ -16,9 +16,8 @@ fun describeAudioTrackState(rawTracks: List<AudioTrackOption>?, currentTrackId: 
     }
 
     val currentIndex = tracks.indexOfFirst { it.id == currentTrackId }
-    val current = tracks.getOrNull(currentIndex.coerceAtLeast(0))
-    val trackText = if (current != null) {
-        "音轨 ${currentIndex + 1}/${tracks.size} · ${current.displayName(currentIndex)}"
+    val trackText = if (currentIndex >= 0) {
+        "音轨 ${currentIndex + 1}/${tracks.size}"
     } else {
         "音轨 ${tracks.size} 条"
     }

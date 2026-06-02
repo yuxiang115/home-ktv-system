@@ -24,7 +24,8 @@ describe("PlayingScreen", () => {
 
     expect(screen.getByText("播放中")).toBeTruthy();
     expect(screen.getByText("伴唱")).toBeTruthy();
-    expect(screen.getByText("音轨 2 · Instrumental")).toBeTruthy();
+    expect(screen.getByText("音轨 2")).toBeTruthy();
+    expect(screen.queryByText("Instrumental")).toBeNull();
     expect(screen.getByText("00:12 / 03:00")).toBeTruthy();
     expect(screen.getByLabelText("corner pairing QR")).toBeTruthy();
     expect(screen.queryByText("七里香")).toBeNull();
@@ -113,7 +114,8 @@ describe("PlayingScreen", () => {
 
     expect(screen.queryByText(longTitle)).toBeNull();
     expect(screen.getAllByText("00:12 / 03:00").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("音轨 2 · Instrumental").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("音轨 2").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Instrumental")).toBeNull();
   });
 });
 

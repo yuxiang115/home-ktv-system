@@ -25,7 +25,7 @@ class AudioTrackUiStateTest {
             currentTrackId = 3,
         )
 
-        assertEquals("音轨 2/2 · 伴唱", label)
+        assertEquals("音轨 2/2", label)
     }
 
     @Test
@@ -39,7 +39,7 @@ class AudioTrackUiStateTest {
             vocalMode = "original",
         )
 
-        assertEquals("原唱 · 音轨 1/2 · SoundHandler", label)
+        assertEquals("原唱 · 音轨 1/2", label)
     }
 
     @Test

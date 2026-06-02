@@ -68,16 +68,11 @@ function audioTrackLabelFor(trackRef: NonNullable<RoomSnapshot["currentTarget"]>
   }
 
   const displayIndex = Number.isFinite(trackRef.index) ? trackRef.index + 1 : null;
-  const label = trackRef.label.trim();
-  if (displayIndex !== null && label) {
-    return `音轨 ${displayIndex} · ${label}`;
-  }
-
   if (displayIndex !== null) {
     return `音轨 ${displayIndex}`;
   }
 
-  return label || "音轨待确认";
+  return "音轨待确认";
 }
 
 function modeAccent(vocalMode: string): CSSProperties {
