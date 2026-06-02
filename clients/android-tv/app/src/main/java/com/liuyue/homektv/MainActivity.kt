@@ -102,6 +102,7 @@ class MainActivity : Activity() {
     private var renderedNoticeMessage: String? = null
     private val sentTelemetryKeys = mutableSetOf<String>()
     private val blessingInteractions = linkedMapOf<String, Pair<RoomInteractionEvent, View>>()
+    private val rainbowPraiseCards = linkedMapOf<String, View>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -1516,8 +1517,20 @@ class MainActivity : Activity() {
     private fun renderRainbowPraiseInteraction(interaction: RoomInteractionEvent) {
         interactionLayer.post {
             val layerWidth = interactionLayer.width.coerceAtLeast(dp(720))
+            val layerHeight = interactionLayer.height.coerceAtLeast(dp(420))
             val seed = stableHash(interaction.id)
-            val cardTopMargin = dp(116 + seed % 38)
+            val estimatedCardHeight = dp(170)
+            rainbowPraiseCards.remove(interaction.id)?.let { existingView ->
+                interactionLayer.removeView(existingView)
+            }
+            val cardTopMargin = rainbowPraiseTopMargin(
+                id = interaction.id,
+                layerHeight = layerHeight,
+                cardHeight = estimatedCardHeight,
+                minTop = dp(96),
+                maxTop = (layerHeight - estimatedCardHeight - dp(96)).coerceAtLeast(dp(96)),
+                existing = currentRainbowPraiseBounds(estimatedCardHeight),
+            )
             val ttl = interactionTtlFor(interaction, fallbackMs = 7_000L)
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -1573,6 +1586,7 @@ class MainActivity : Activity() {
                     this.topMargin = cardTopMargin
                 },
             )
+            rainbowPraiseCards[interaction.id] = card
             card.post {
                 val originY = cardTopMargin + card.height / 2
                 renderRainbowPraiseRibbons(originY, seed)
@@ -1594,9 +1608,25 @@ class MainActivity : Activity() {
                     .scaleY(0.98f)
                     .setDuration(320L)
                     .setInterpolator(DecelerateInterpolator())
-                    .withEndAction { interactionLayer.removeView(card) }
+                    .withEndAction {
+                        if (rainbowPraiseCards[interaction.id] === card) {
+                            rainbowPraiseCards.remove(interaction.id)
+                        }
+                        interactionLayer.removeView(card)
+                    }
                     .start()
             }, (ttl - 320L).coerceAtLeast(1_000L))
+        }
+    }
+
+    private fun currentRainbowPraiseBounds(fallbackHeight: Int): List<RainbowPraiseCardBounds> {
+        return rainbowPraiseCards.values.mapNotNull { view ->
+            val params = view.layoutParams as? FrameLayout.LayoutParams ?: return@mapNotNull null
+            val height = view.height
+                .takeIf { it > 0 }
+                ?: view.measuredHeight.takeIf { it > 0 }
+                ?: fallbackHeight
+            RainbowPraiseCardBounds(top = params.topMargin, height = height)
         }
     }
 
@@ -1853,6 +1883,7 @@ class MainActivity : Activity() {
 
     private fun clearRoomInteractions() {
         blessingInteractions.clear()
+        rainbowPraiseCards.clear()
         interactionHandler.removeCallbacksAndMessages(null)
         if (::interactionLayer.isInitialized) {
             interactionLayer.removeAllViews()

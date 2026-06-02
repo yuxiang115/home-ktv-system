@@ -411,7 +411,7 @@ function InteractionComposer({
   t: TFunction;
 }) {
   const presets = interactionPresets(kind, t);
-  const visiblePresets = kind === "emoji" ? presets : presets.slice(0, 9);
+  const visiblePresets = kind === "emoji" ? presets : presets.slice(0, 6);
   const [message, setMessage] = useState(presets[0] ?? "");
   const title = interactionTitle(kind, t);
   const isPending = controller.pendingInteractionKind === kind;
@@ -539,9 +539,10 @@ function InteractionComposer({
     await submit(normalized, { closeAfterSend: false });
   };
 
-  const randomizeMessage = useCallback(() => {
-    setMessage((current) => randomInteractionPreset(presets, current));
-  }, [presets]);
+  const sendRandomMessage = useCallback(() => {
+    const randomPreset = randomInteractionPreset(presets, "");
+    void submit(randomPreset, { closeAfterSend: false });
+  }, [presets, submit]);
 
   return (
     <div className="modal-backdrop modal-backdrop--sheet">
@@ -599,7 +600,7 @@ function InteractionComposer({
               placeholder={t("interaction.placeholder")}
             />
             <div className="interaction-form__actions">
-              <button className="secondary-button interaction-random-button" type="button" disabled={isPending} onClick={randomizeMessage}>
+              <button className="secondary-button interaction-random-button" type="button" disabled={isPending} onClick={sendRandomMessage}>
                 {interactionRandomLabel(kind, t)}
               </button>
               <button className="primary-button" type="submit" disabled={isPending || message.trim().length === 0}>

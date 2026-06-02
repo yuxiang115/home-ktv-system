@@ -78,6 +78,40 @@ class RoomInteractionUiStateTest {
     }
 
     @Test
+    fun placesRainbowPraiseCardsWithLowOverlapWhenSpaceAllows() {
+        val existing = listOf(RainbowPraiseCardBounds(top = 120, height = 160))
+
+        val top = rainbowPraiseTopMargin(
+            id = "interaction-rainbow-next",
+            layerHeight = 1080,
+            cardHeight = 160,
+            minTop = 96,
+            maxTop = 760,
+            existing = existing,
+        )
+
+        val overlapRatio = rainbowPraiseOverlapRatio(RainbowPraiseCardBounds(top, 160), existing[0])
+        assertTrue(overlapRatio <= 0.2f)
+    }
+
+    @Test
+    fun fallsBackWithinBoundsWhenRainbowPraiseSpaceIsConstrained() {
+        val top = rainbowPraiseTopMargin(
+            id = "interaction-rainbow-packed",
+            layerHeight = 320,
+            cardHeight = 180,
+            minTop = 96,
+            maxTop = 110,
+            existing = listOf(
+                RainbowPraiseCardBounds(96, 180),
+                RainbowPraiseCardBounds(108, 180),
+            ),
+        )
+
+        assertTrue(top in 96..110)
+    }
+
+    @Test
     fun createsBouncyEmojiPhysicsLaunchPlan() {
         val plan = emojiPhysicsLaunchPlan(
             id = "interaction-rocket",

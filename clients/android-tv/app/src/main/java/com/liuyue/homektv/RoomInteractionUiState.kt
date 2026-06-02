@@ -4,6 +4,8 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 import kotlin.math.cos
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sin
 
 fun interactionTtlMs(interaction: RoomInteractionEvent, fallbackMs: Long): Long {
@@ -103,6 +105,52 @@ fun blessingStackTopMargins(
         nextTop += height.coerceAtLeast(minCardHeight) + gap
     }
     return margins
+}
+
+data class RainbowPraiseCardBounds(
+    val top: Int,
+    val height: Int,
+)
+
+fun rainbowPraiseOverlapRatio(a: RainbowPraiseCardBounds, b: RainbowPraiseCardBounds): Float {
+    val overlap = (min(a.top + a.height, b.top + b.height) - max(a.top, b.top)).coerceAtLeast(0)
+    val baseHeight = min(a.height, b.height).coerceAtLeast(1)
+    return overlap.toFloat() / baseHeight.toFloat()
+}
+
+fun rainbowPraiseTopMargin(
+    id: String,
+    layerHeight: Int,
+    cardHeight: Int,
+    minTop: Int,
+    maxTop: Int,
+    existing: List<RainbowPraiseCardBounds>,
+    maxOverlapRatio: Float = 0.2f,
+): Int {
+    val safeMinTop = minTop.coerceAtLeast(0)
+    val safeCardHeight = cardHeight.coerceAtLeast(1)
+    val layerBoundMaxTop = (layerHeight.coerceAtLeast(safeCardHeight) - safeCardHeight).coerceAtLeast(safeMinTop)
+    val safeMaxTop = maxTop.coerceAtMost(layerBoundMaxTop).coerceAtLeast(safeMinTop)
+    val range = (safeMaxTop - safeMinTop + 1).coerceAtLeast(1)
+    val hash = stableHash(id)
+    val fallback = safeMinTop + hash % range
+    if (existing.isEmpty()) {
+        return fallback
+    }
+
+    val step = (safeCardHeight * 0.84f).toInt().coerceAtLeast(1)
+    val rowCount = ((safeMaxTop - safeMinTop) / step + 1).coerceAtLeast(1)
+    val start = hash % rowCount
+    val candidates = ((0 until rowCount).map { index ->
+        safeMinTop + ((start + index) % rowCount) * step
+    }.map { candidate ->
+        candidate.coerceIn(safeMinTop, safeMaxTop)
+    }.distinct() + fallback).distinct()
+
+    return candidates.firstOrNull { candidate ->
+        val current = RainbowPraiseCardBounds(candidate, safeCardHeight)
+        existing.all { item -> rainbowPraiseOverlapRatio(current, item) <= maxOverlapRatio }
+    } ?: fallback
 }
 
 data class EmojiPhysicsLaunchPlan(

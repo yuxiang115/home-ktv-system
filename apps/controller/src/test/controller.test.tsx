@@ -458,32 +458,29 @@ describe("mobile controller runtime", () => {
     const rainbowDialog = screen.getByRole("dialog", { name: "彩虹屁" });
     expect(rainbowDialog.className).toContain("interaction-sheet");
     expect(rainbowDialog.querySelector(".interaction-sheet__footer")).toBeTruthy();
-    expect(rainbowDialog.querySelectorAll(".interaction-option")).toHaveLength(9);
+    expect(rainbowDialog.querySelectorAll(".interaction-option")).toHaveLength(6);
     await user.clear(within(rainbowDialog).getByLabelText("互动内容"));
-    await user.click(within(rainbowDialog).getByRole("button", { name: "随机彩虹屁" }));
-    expect((within(rainbowDialog).getByLabelText("互动内容") as HTMLTextAreaElement).value).toBe("这一开嗓，客厅都亮了");
-    await user.click(within(rainbowDialog).getByRole("button", { name: "发送" }));
+    await user.click(within(rainbowDialog).getByRole("button", { name: "随机发送" }));
     await flush();
+    expect((within(rainbowDialog).getByLabelText("互动内容") as HTMLTextAreaElement).value).toBe("");
     expect(screen.getByRole("dialog", { name: "彩虹屁" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "神吐槽" }));
     const roastDialog = screen.getByRole("dialog", { name: "神吐槽" });
-    expect(roastDialog.querySelectorAll(".interaction-option")).toHaveLength(9);
+    expect(roastDialog.querySelectorAll(".interaction-option")).toHaveLength(6);
     await user.clear(within(roastDialog).getByLabelText("互动内容"));
-    await user.click(within(roastDialog).getByRole("button", { name: "随机神吐槽" }));
-    expect((within(roastDialog).getByLabelText("互动内容") as HTMLTextAreaElement).value).toBe("这调跑得很有探索精神");
-    await user.click(within(roastDialog).getByRole("button", { name: "发送" }));
+    await user.click(within(roastDialog).getByRole("button", { name: "随机发送" }));
     await flush();
+    expect((within(roastDialog).getByLabelText("互动内容") as HTMLTextAreaElement).value).toBe("");
     expect(screen.getByRole("dialog", { name: "神吐槽" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "送祝福" }));
     const blessingDialog = screen.getByRole("dialog", { name: "送祝福" });
-    expect(blessingDialog.querySelectorAll(".interaction-option")).toHaveLength(9);
+    expect(blessingDialog.querySelectorAll(".interaction-option")).toHaveLength(6);
     await user.clear(within(blessingDialog).getByLabelText("互动内容"));
-    await user.click(within(blessingDialog).getByRole("button", { name: "随机祝福" }));
-    expect((within(blessingDialog).getByLabelText("互动内容") as HTMLTextAreaElement).value).toBe("祝大家今晚玩得开心");
-    await user.click(within(blessingDialog).getByRole("button", { name: "发送" }));
+    await user.click(within(blessingDialog).getByRole("button", { name: "随机发送" }));
     await flush();
+    expect((within(blessingDialog).getByLabelText("互动内容") as HTMLTextAreaElement).value).toBe("");
     expect(screen.getByRole("dialog", { name: "送祝福" })).toBeTruthy();
 
     const interactionRequests = requests.filter((request) => request.url === "/rooms/living-room/interactions");
