@@ -1333,6 +1333,8 @@ class MainActivity : Activity() {
         when (interaction.kind) {
             "emoji" -> renderEmojiInteraction(interaction)
             "bullet" -> renderBulletInteraction(interaction)
+            "rainbow_praise" -> renderRainbowPraiseInteraction(interaction)
+            "roast" -> renderBulletInteraction(interaction)
             "blessing" -> renderBlessingInteraction(interaction)
         }
     }
@@ -1507,6 +1509,161 @@ class MainActivity : Activity() {
                 .setDuration((820 + index * 28).toLong())
                 .setInterpolator(DecelerateInterpolator())
                 .withEndAction { interactionLayer.removeView(particle) }
+                .start()
+        }
+    }
+
+    private fun renderRainbowPraiseInteraction(interaction: RoomInteractionEvent) {
+        interactionLayer.post {
+            val layerWidth = interactionLayer.width.coerceAtLeast(dp(720))
+            val seed = stableHash(interaction.id)
+            val cardTopMargin = dp(116 + seed % 38)
+            val ttl = interactionTtlFor(interaction, fallbackMs = 7_000L)
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(38), dp(20), dp(38), dp(24))
+                background = rainbowPraiseBackground()
+                alpha = 0f
+                scaleX = 0.88f
+                scaleY = 0.88f
+                translationY = dp(42).toFloat()
+                rotation = ((seed % 9) - 4) * 0.35f
+                elevation = dp(18).toFloat()
+            }
+            card.addView(TextView(this).apply {
+                text = "彩虹屁"
+                textSize = 18f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.rgb(3, 18, 11))
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                background = GradientDrawable(
+                    GradientDrawable.Orientation.LEFT_RIGHT,
+                    intArrayOf(
+                        Color.rgb(251, 113, 133),
+                        Color.rgb(250, 204, 21),
+                        Color.rgb(52, 211, 153),
+                        Color.rgb(34, 211, 238),
+                    ),
+                ).apply {
+                    cornerRadius = dp(999).toFloat()
+                    setStroke(dp(1), Color.argb(108, 248, 250, 252))
+                }
+                setPadding(dp(16), dp(8), dp(16), dp(8))
+            })
+            card.addView(TextView(this).apply {
+                text = interaction.message
+                textSize = 38f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.rgb(248, 250, 252))
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                maxLines = 2
+                ellipsize = TextUtils.TruncateAt.END
+                maxWidth = (layerWidth * 0.58f).toInt().coerceAtMost(dp(980))
+                setShadowLayer(dp(4).toFloat(), 0f, dp(3).toFloat(), Color.argb(128, 0, 0, 0))
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                this.topMargin = dp(14)
+            })
+
+            interactionLayer.addView(
+                card,
+                FrameLayout.LayoutParams((layerWidth * 0.52f).toInt().coerceIn(dp(620), dp(980)), FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+                    this.topMargin = cardTopMargin
+                },
+            )
+            card.post {
+                val originY = cardTopMargin + card.height / 2
+                renderRainbowPraiseRibbons(originY, seed)
+                renderRainbowPraiseSparks(layerWidth / 2, originY, seed)
+                card.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .translationY(0f)
+                    .setDuration(360L)
+                    .setInterpolator(DecelerateInterpolator())
+                    .start()
+            }
+            interactionHandler.postDelayed({
+                card.animate()
+                    .alpha(0f)
+                    .translationYBy(-dp(18).toFloat())
+                    .scaleX(0.98f)
+                    .scaleY(0.98f)
+                    .setDuration(320L)
+                    .setInterpolator(DecelerateInterpolator())
+                    .withEndAction { interactionLayer.removeView(card) }
+                    .start()
+            }, (ttl - 320L).coerceAtLeast(1_000L))
+        }
+    }
+
+    private fun renderRainbowPraiseRibbons(centerY: Int, seed: Int) {
+        val colors = intArrayOf(
+            Color.rgb(251, 113, 133),
+            Color.rgb(250, 204, 21),
+            Color.rgb(52, 211, 153),
+            Color.rgb(34, 211, 238),
+            Color.rgb(167, 139, 250),
+        )
+        repeat(5) { index ->
+            val ribbon = View(this).apply {
+                background = roundedBackground(colors[index % colors.size], dp(999).toFloat())
+                alpha = 0f
+                rotation = -8f + index * 4f
+                translationX = -dp(420 + index * 16).toFloat()
+            }
+            interactionLayer.addView(
+                ribbon,
+                FrameLayout.LayoutParams(dp(520 + (seed + index * 31) % 180), dp(8 + index % 2 * 3), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+                    topMargin = centerY - dp(70) + index * dp(22)
+                },
+            )
+            ribbon.animate()
+                .alpha(0.78f)
+                .translationX(dp(420 + index * 20).toFloat())
+                .setDuration((1_050 + index * 120).toLong())
+                .setInterpolator(LinearInterpolator())
+                .withEndAction { interactionLayer.removeView(ribbon) }
+                .start()
+        }
+    }
+
+    private fun renderRainbowPraiseSparks(originX: Int, originY: Int, seed: Int) {
+        val colors = intArrayOf(
+            Color.rgb(251, 113, 133),
+            Color.rgb(250, 204, 21),
+            Color.rgb(52, 211, 153),
+            Color.rgb(34, 211, 238),
+            Color.rgb(167, 139, 250),
+            Color.rgb(248, 250, 252),
+        )
+        repeat(16) { index ->
+            val spark = View(this).apply {
+                background = roundedBackground(colors[index % colors.size], dp(999).toFloat())
+                alpha = 0f
+            }
+            interactionLayer.addView(
+                spark,
+                FrameLayout.LayoutParams(dp(8 + index % 3 * 2), dp(8 + index % 3 * 2)).apply {
+                    leftMargin = originX
+                    topMargin = originY
+                },
+            )
+            val direction = if (index % 2 == 0) 1 else -1
+            val travelX = direction * dp(70 + (seed + index * 37) % 190).toFloat()
+            val travelY = -dp(42 + (seed + index * 29) % 120).toFloat()
+            spark.animate()
+                .alpha(1f)
+                .translationX(travelX)
+                .translationY(travelY)
+                .rotationBy(direction * 260f)
+                .setStartDelay((index * 42).toLong())
+                .setDuration((980 + index * 38).toLong())
+                .setInterpolator(DecelerateInterpolator())
+                .withEndAction { interactionLayer.removeView(spark) }
                 .start()
         }
     }
@@ -1912,6 +2069,21 @@ class MainActivity : Activity() {
             setColor(color)
             cornerRadius = radius
             setStroke(dp(1), strokeColor)
+        }
+    }
+
+    private fun rainbowPraiseBackground(): GradientDrawable {
+        return GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            intArrayOf(
+                Color.argb(224, 251, 113, 133),
+                Color.argb(218, 250, 204, 21),
+                Color.argb(218, 34, 211, 238),
+                Color.argb(224, 52, 211, 153),
+            ),
+        ).apply {
+            cornerRadius = dp(26).toFloat()
+            setStroke(dp(1), Color.argb(122, 248, 250, 252))
         }
     }
 

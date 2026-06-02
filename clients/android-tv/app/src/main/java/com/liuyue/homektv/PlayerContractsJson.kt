@@ -142,7 +142,7 @@ object PlayerContractsJson {
 
     private fun roomInteractionFromJson(json: JSONObject): RoomInteractionEvent? {
         val kind = json.optString("kind", "")
-        if (kind != "emoji" && kind != "bullet" && kind != "blessing") {
+        if (kind != "emoji" && kind != "bullet" && kind != "rainbow_praise" && kind != "roast" && kind != "blessing") {
             return null
         }
         val id = json.optString("id", "")

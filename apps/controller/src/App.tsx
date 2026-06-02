@@ -313,7 +313,13 @@ function HomeScreen({
 
       <section className="home-shortcut-section" aria-label={t("shortcut.aria")}>
         <ShortcutAction className="shortcut-action--emoji" label={t("shortcut.emoji")} icon="emoji" onClick={() => setInteractionComposer("emoji")} />
-        <ShortcutAction className="shortcut-action--bullet" label={t("shortcut.bullet")} icon="bullet" onClick={() => setInteractionComposer("bullet")} />
+        <ShortcutAction
+          className="shortcut-action--rainbow"
+          label={t("shortcut.rainbowPraise")}
+          icon="rainbow"
+          onClick={() => setInteractionComposer("rainbow_praise")}
+        />
+        <ShortcutAction className="shortcut-action--roast" label={t("shortcut.roast")} icon="roast" onClick={() => setInteractionComposer("roast")} />
         <ShortcutAction className="shortcut-action--blessing" label={t("shortcut.blessing")} icon="blessing" onClick={() => setInteractionComposer("blessing")} />
       </section>
 
@@ -381,7 +387,7 @@ function ShortcutAction({
   onClick
 }: {
   className: string;
-  icon: "emoji" | "bullet" | "blessing";
+  icon: "emoji" | "rainbow" | "roast" | "blessing";
   label: string;
   onClick(): void;
 }) {
@@ -408,7 +414,7 @@ function InteractionComposer({
   const [message, setMessage] = useState(presets[0] ?? "");
   const title = interactionTitle(kind, t);
   const isPending = controller.pendingInteractionKind === kind;
-  const maxLength = kind === "emoji" ? 8 : kind === "bullet" ? 60 : 80;
+  const maxLength = interactionMaxLength(kind);
   const emojiPressState = useRef<{
     intervalId: number | null;
     repeatActive: boolean;
@@ -532,6 +538,10 @@ function InteractionComposer({
     await submit(normalized, { closeAfterSend: false });
   };
 
+  const randomizeMessage = useCallback(() => {
+    setMessage((current) => randomInteractionPreset(presets, current));
+  }, [presets]);
+
   return (
     <div className="modal-backdrop modal-backdrop--sheet">
       <section
@@ -578,17 +588,23 @@ function InteractionComposer({
               void submitForm();
             }}
           >
-            <input
+            <textarea
               aria-label={t("interaction.inputAria")}
               className="interaction-input"
               maxLength={maxLength}
+              rows={2}
               value={message}
               onChange={(event) => setMessage(event.currentTarget.value)}
               placeholder={t("interaction.placeholder")}
             />
-            <button className="primary-button" type="submit" disabled={isPending || message.trim().length === 0}>
-              {isPending ? t("button.submitting") : t("interaction.send")}
-            </button>
+            <div className="interaction-form__actions">
+              <button className="secondary-button interaction-random-button" type="button" disabled={isPending} onClick={randomizeMessage}>
+                {interactionRandomLabel(kind, t)}
+              </button>
+              <button className="primary-button" type="submit" disabled={isPending || message.trim().length === 0}>
+                {isPending ? t("button.submitting") : t("interaction.send")}
+              </button>
+            </div>
           </form>
         ) : (
           <footer className="interaction-sheet__footer interaction-sheet__footer--emoji">
@@ -609,7 +625,36 @@ function interactionTitle(kind: RoomInteractionKind, t: TFunction): string {
   if (kind === "bullet") {
     return t("interaction.bulletTitle");
   }
+  if (kind === "rainbow_praise") {
+    return t("interaction.rainbowPraiseTitle");
+  }
+  if (kind === "roast") {
+    return t("interaction.roastTitle");
+  }
   return t("interaction.blessingTitle");
+}
+
+function interactionRandomLabel(kind: RoomInteractionKind, t: TFunction): string {
+  if (kind === "rainbow_praise") {
+    return t("interaction.randomRainbowPraise");
+  }
+  if (kind === "roast") {
+    return t("interaction.randomRoast");
+  }
+  if (kind === "blessing") {
+    return t("interaction.randomBlessing");
+  }
+  return t("interaction.randomMessage");
+}
+
+function interactionMaxLength(kind: RoomInteractionKind): number {
+  if (kind === "emoji") {
+    return 8;
+  }
+  if (kind === "bullet") {
+    return 60;
+  }
+  return 80;
 }
 
 function interactionPresets(kind: RoomInteractionKind, t: TFunction): string[] {
@@ -668,7 +713,50 @@ function interactionPresets(kind: RoomInteractionKind, t: TFunction): string[] {
   if (kind === "bullet") {
     return [t("interaction.bulletPreset1"), t("interaction.bulletPreset2"), t("interaction.bulletPreset3")];
   }
-  return [t("interaction.blessingPreset1"), t("interaction.blessingPreset2"), t("interaction.blessingPreset3")];
+  if (kind === "rainbow_praise") {
+    return [
+      t("interaction.rainbowPraisePreset1"),
+      t("interaction.rainbowPraisePreset2"),
+      t("interaction.rainbowPraisePreset3"),
+      t("interaction.rainbowPraisePreset4"),
+      t("interaction.rainbowPraisePreset5"),
+      t("interaction.rainbowPraisePreset6"),
+      t("interaction.rainbowPraisePreset7"),
+      t("interaction.rainbowPraisePreset8")
+    ];
+  }
+  if (kind === "roast") {
+    return [
+      t("interaction.roastPreset1"),
+      t("interaction.roastPreset2"),
+      t("interaction.roastPreset3"),
+      t("interaction.roastPreset4"),
+      t("interaction.roastPreset5"),
+      t("interaction.roastPreset6"),
+      t("interaction.roastPreset7"),
+      t("interaction.roastPreset8")
+    ];
+  }
+  return [
+    t("interaction.blessingPreset1"),
+    t("interaction.blessingPreset2"),
+    t("interaction.blessingPreset3"),
+    t("interaction.blessingPreset4"),
+    t("interaction.blessingPreset5"),
+    t("interaction.blessingPreset6"),
+    t("interaction.blessingPreset7"),
+    t("interaction.blessingPreset8")
+  ];
+}
+
+function randomInteractionPreset(presets: readonly string[], current: string): string {
+  if (presets.length === 0) {
+    return current;
+  }
+
+  const candidates = presets.filter((preset) => preset !== current);
+  const pool = candidates.length > 0 ? candidates : presets;
+  return pool[Math.floor(Math.random() * pool.length)] ?? current;
 }
 
 function ControlScreen({

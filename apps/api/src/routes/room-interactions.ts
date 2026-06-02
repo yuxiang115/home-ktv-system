@@ -21,11 +21,15 @@ interface RoomInteractionBody {
 const interactionTtlMsByKind = {
   emoji: 12_000,
   bullet: 7_000,
+  rainbow_praise: 7_000,
+  roast: 7_000,
   blessing: 7_000
 } as const satisfies Record<RoomInteractionKind, number>;
 const maxMessageLengthByKind = {
   emoji: 8,
   bullet: 60,
+  rainbow_praise: 80,
+  roast: 80,
   blessing: 80
 } as const satisfies Record<RoomInteractionKind, number>;
 
@@ -104,7 +108,7 @@ function trimmedText(value: unknown): string | null {
 }
 
 function isInteractionKind(value: unknown): value is RoomInteractionKind {
-  return value === "emoji" || value === "bullet" || value === "blessing";
+  return value === "emoji" || value === "bullet" || value === "rainbow_praise" || value === "roast" || value === "blessing";
 }
 
 function normalizeMessage(value: unknown, maxLength: number): string | null {

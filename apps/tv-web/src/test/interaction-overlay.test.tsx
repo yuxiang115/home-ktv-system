@@ -8,12 +8,14 @@ afterEach(() => {
 });
 
 describe("InteractionOverlay", () => {
-  it("renders emoji, bullet, and blessing interactions", () => {
+  it("renders emoji, text, rainbow praise, roast, and blessing interactions", () => {
     render(
       <InteractionOverlay
         interactions={[
           interaction("interaction-emoji", "emoji", "👏"),
           interaction("interaction-bullet", "bullet", "唱得太好了"),
+          interaction("interaction-rainbow", "rainbow_praise", "这一开嗓，客厅都亮了"),
+          interaction("interaction-roast", "roast", "这调跑得很有探索精神"),
           interaction("interaction-blessing", "blessing", "祝大家今晚玩得开心")
         ]}
       />
@@ -21,7 +23,10 @@ describe("InteractionOverlay", () => {
 
     expect(screen.getByText("👏")).toBeTruthy();
     expect(screen.getByText("唱得太好了")).toBeTruthy();
+    expect(screen.getByText("这一开嗓，客厅都亮了")).toBeTruthy();
+    expect(screen.getByText("这调跑得很有探索精神")).toBeTruthy();
     expect(screen.getByText("祝大家今晚玩得开心")).toBeTruthy();
+    expect(screen.getByTestId("rainbow-praise")).toBeTruthy();
     expect(screen.getByText("祝福")).toBeTruthy();
   });
 
@@ -40,6 +45,26 @@ describe("InteractionOverlay", () => {
     expect(bullet.style.animationDuration).toBe("7000ms");
     expect(bullet.style.animationName).toBe("ktv-bullet-marquee");
     expect(bullet.style.getPropertyValue("--ktv-bullet-y")).toMatch(/vh$/u);
+  });
+
+  it("renders rainbow praise as a dedicated seven second celebration overlay", () => {
+    render(<InteractionOverlay interactions={[interaction("interaction-rainbow", "rainbow_praise", "这一开嗓，客厅都亮了")]} />);
+
+    const rainbow = screen.getByTestId("rainbow-praise");
+    expect(rainbow.textContent).toContain("彩虹屁");
+    expect(rainbow.textContent).toContain("这一开嗓，客厅都亮了");
+    expect(rainbow.style.animationDuration).toBe("7000ms");
+    expect(rainbow.style.animationName).toBe("ktv-rainbow-praise-card");
+    expect(screen.getAllByTestId("rainbow-spark")).toHaveLength(14);
+  });
+
+  it("renders roast messages on the marquee track with their own kind marker", () => {
+    render(<InteractionOverlay interactions={[interaction("interaction-roast", "roast", "这调跑得很有探索精神")]} />);
+
+    const roast = screen.getByTestId("bullet-marquee");
+    expect(roast.getAttribute("data-kind")).toBe("roast");
+    expect(roast.textContent).toContain("这调跑得很有探索精神");
+    expect(roast.style.animationName).toBe("ktv-bullet-marquee");
   });
 
   it("renders bullet marquees with stable varied accent colors", () => {

@@ -68,7 +68,11 @@ function AnimatedInteractionOverlay({ interactions }: { interactions: readonly R
     [interactions]
   );
   const bulletItems = useMemo(
-    () => interactions.filter((interaction) => interaction.kind === "bullet"),
+    () => interactions.filter((interaction) => interaction.kind === "bullet" || interaction.kind === "roast"),
+    [interactions]
+  );
+  const rainbowPraiseItems = useMemo(
+    () => sortNewestFirst(interactions.filter((interaction) => interaction.kind === "rainbow_praise")),
     [interactions]
   );
   const blessingItems = useMemo(
@@ -88,6 +92,9 @@ function AnimatedInteractionOverlay({ interactions }: { interactions: readonly R
       ))}
       {bulletItems.map((interaction) => (
         <BulletMarquee interaction={interaction} key={interaction.id} />
+      ))}
+      {rainbowPraiseItems.map((interaction, index) => (
+        <RainbowPraiseOverlay interaction={interaction} key={interaction.id} stackIndex={index} />
       ))}
       {blessingItems.length > 0 ? (
         <div style={styles.blessingStack}>
@@ -158,16 +165,53 @@ function InteractionBody({ item }: { item: RenderedInteraction }) {
 function BulletMarquee({ interaction }: { interaction: RoomInteractionEvent }) {
   const style = {
     ...styles.bulletMarquee,
-    ...bulletAccentStyle(interaction.id),
+    ...(interaction.kind === "roast" ? styles.roastMarquee : {}),
+    ...bulletAccentStyle(interaction.id, interaction.kind),
     "--ktv-bullet-y": `${bulletVerticalPosition(interaction.id)}vh`
   } as CSSProperties;
 
   return (
-    <div data-testid="bullet-marquee" role="status" style={style}>
+    <div data-kind={interaction.kind} data-testid="bullet-marquee" role="status" style={style}>
       <span style={styles.bulletMarqueeGlow} aria-hidden="true" />
       <strong style={styles.bulletMarqueeText}>{interaction.message}</strong>
     </div>
   );
+}
+
+function RainbowPraiseOverlay({ interaction, stackIndex }: { interaction: RoomInteractionEvent; stackIndex: number }) {
+  const seed = stableHash(interaction.id);
+  const style = {
+    ...styles.rainbowPraiseCard,
+    "--ktv-rainbow-stack-offset": `${Math.min(stackIndex, 5) * 16}px`,
+    "--ktv-rainbow-tilt": `${((seed % 9) - 4) * 0.35}deg`
+  } as CSSProperties;
+
+  return (
+    <div data-testid="rainbow-praise" role="status" style={style}>
+      <span aria-hidden="true" style={styles.rainbowPraiseAura} />
+      <span aria-hidden="true" style={styles.rainbowPraiseRibbon} />
+      <span style={styles.rainbowPraiseBadge}>彩虹屁</span>
+      <strong style={styles.rainbowPraiseText}>{interaction.message}</strong>
+      {Array.from({ length: 14 }, (_, index) => (
+        <RainbowSpark index={index} key={`${interaction.id}-spark-${index}`} seed={seed} />
+      ))}
+    </div>
+  );
+}
+
+function RainbowSpark({ index, seed }: { index: number; seed: number }) {
+  const direction = index % 2 === 0 ? 1 : -1;
+  const style = {
+    ...styles.rainbowPraiseSpark,
+    "--ktv-rainbow-spark-x": `${direction * (58 + ((seed + index * 37) % 180))}px`,
+    "--ktv-rainbow-spark-y": `${-36 - ((seed + index * 29) % 118)}px`,
+    animationDelay: `${index * 48}ms`,
+    background: rainbowSparkColors[index % rainbowSparkColors.length],
+    left: `${8 + ((seed + index * 17) % 84)}%`,
+    top: `${18 + ((seed + index * 23) % 62)}%`
+  } as CSSProperties;
+
+  return <span aria-hidden="true" data-testid="rainbow-spark" style={style} />;
 }
 
 function BlessingStackItem({ interaction }: { interaction: RoomInteractionEvent }) {
@@ -181,11 +225,20 @@ function BlessingStackItem({ interaction }: { interaction: RoomInteractionEvent 
 
 function StaticInteractionOverlay({ interactions }: { interactions: readonly RoomInteractionEvent[] }) {
   const emojiItems = interactions.filter((interaction) => interaction.kind === "emoji");
-  const bulletItems = interactions.filter((interaction) => interaction.kind === "bullet");
+  const bulletItems = interactions.filter((interaction) => interaction.kind === "bullet" || interaction.kind === "roast");
+  const rainbowPraiseItems = sortNewestFirst(interactions.filter((interaction) => interaction.kind === "rainbow_praise"));
   const blessingItems = sortNewestFirst(interactions.filter((interaction) => interaction.kind === "blessing"));
 
   return (
     <div aria-live="polite" style={styles.root}>
+      <div style={styles.staticRainbowLane}>
+        {rainbowPraiseItems.slice(0, 2).map((interaction) => (
+          <div key={interaction.id} role="status" style={styles.staticRainbowPraise}>
+            <span style={styles.rainbowPraiseBadge}>彩虹屁</span>
+            <strong style={styles.rainbowPraiseText}>{interaction.message}</strong>
+          </div>
+        ))}
+      </div>
       <div style={styles.staticBulletLane}>
         {bulletItems.map((interaction) => (
           <div key={interaction.id} role="status" style={styles.staticBullet}>
@@ -252,8 +305,19 @@ const bulletAccentPalette: readonly BulletAccentTone[] = [
   { start: "#F8FAFC", end: "#CBD5E1" }
 ];
 
-function bulletAccentStyle(id: string): CSSProperties {
-  const tone = bulletAccentPalette[stableHash(id) % bulletAccentPalette.length] ?? defaultBulletAccentTone;
+const roastAccentPalette: readonly BulletAccentTone[] = [
+  { start: "#FB923C", end: "#FACC15" },
+  { start: "#F97316", end: "#F472B6" },
+  { start: "#A78BFA", end: "#FB7185" },
+  { start: "#F8FAFC", end: "#FB923C" },
+  { start: "#FACC15", end: "#A78BFA" }
+];
+
+const rainbowSparkColors = ["#fb7185", "#facc15", "#34d399", "#22d3ee", "#a78bfa", "#f472b6", "#f8fafc"];
+
+function bulletAccentStyle(id: string, kind: RoomInteractionEvent["kind"] = "bullet"): CSSProperties {
+  const palette = kind === "roast" ? roastAccentPalette : bulletAccentPalette;
+  const tone = palette[stableHash(id) % palette.length] ?? defaultBulletAccentTone;
   return {
     "--ktv-bullet-accent": tone.start,
     "--ktv-bullet-accent-border": hexToRgba(tone.start, 0.54),
@@ -568,6 +632,55 @@ const textOverlayKeyframes = `
     transform: translate3d(0, 0, 0) scale(0.99);
   }
 }
+
+@keyframes ktv-rainbow-praise-card {
+  0% {
+    opacity: 0;
+    transform: translate3d(-50%, calc(var(--ktv-rainbow-stack-offset) + 42px), 0)
+      scale(0.86) rotate(var(--ktv-rainbow-tilt));
+  }
+  10% {
+    opacity: 1;
+    transform: translate3d(-50%, var(--ktv-rainbow-stack-offset), 0)
+      scale(1.04) rotate(var(--ktv-rainbow-tilt));
+  }
+  18% {
+    transform: translate3d(-50%, var(--ktv-rainbow-stack-offset), 0)
+      scale(1) rotate(var(--ktv-rainbow-tilt));
+  }
+  84% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-50%, calc(var(--ktv-rainbow-stack-offset) - 18px), 0)
+      scale(0.98) rotate(var(--ktv-rainbow-tilt));
+  }
+}
+
+@keyframes ktv-rainbow-praise-ribbon {
+  0% {
+    transform: translate3d(-120%, 0, 0) rotate(-2deg);
+  }
+  100% {
+    transform: translate3d(120%, 0, 0) rotate(-2deg);
+  }
+}
+
+@keyframes ktv-rainbow-praise-spark {
+  0% {
+    opacity: 0;
+    transform: translate3d(-50%, -50%, 0) scale(0.28) rotate(0deg);
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(calc(-50% + var(--ktv-rainbow-spark-x)), calc(-50% + var(--ktv-rainbow-spark-y)), 0)
+      scale(0.9) rotate(260deg);
+  }
+}
 `;
 
 const styles = {
@@ -666,6 +779,10 @@ const styles = {
     width: "max-content",
     willChange: "transform, opacity"
   },
+  roastMarquee: {
+    background: "linear-gradient(135deg, rgba(76,29,10,0.84), rgba(15,23,42,0.76))",
+    boxShadow: "0 24px 72px rgba(0,0,0,0.44), 0 0 30px var(--ktv-bullet-accent-halo, rgba(251,146,60,0.2))"
+  },
   bulletMarqueeGlow: {
     background:
       "linear-gradient(180deg, var(--ktv-bullet-accent, #22d3ee), var(--ktv-bullet-accent-end, #22c55e))",
@@ -695,6 +812,94 @@ const styles = {
     justifyItems: "center",
     padding: "18px 42px",
     textAlign: "center"
+  },
+  rainbowPraiseCard: {
+    alignItems: "center",
+    animationDuration: "7000ms",
+    animationFillMode: "forwards",
+    animationName: "ktv-rainbow-praise-card",
+    animationTimingFunction: "cubic-bezier(0.18, 0.78, 0.2, 1)",
+    backdropFilter: "blur(22px)",
+    background:
+      "linear-gradient(135deg, rgba(251,113,133,0.34), rgba(250,204,21,0.24) 34%, rgba(34,211,238,0.26) 68%, rgba(52,211,153,0.22)), linear-gradient(180deg, rgba(15,23,42,0.92), rgba(2,6,23,0.78))",
+    border: "1px solid rgba(248,250,252,0.48)",
+    borderRadius: 26,
+    boxShadow: "0 34px 120px rgba(0,0,0,0.52), 0 0 54px rgba(34,211,238,0.24), 0 0 72px rgba(244,114,182,0.18)",
+    color: tvTheme.colors.text,
+    display: "grid",
+    gap: 10,
+    justifyItems: "center",
+    left: "50%",
+    lineHeight: 1,
+    maxWidth: "74vw",
+    minWidth: "min(620px, 66vw)",
+    overflow: "hidden",
+    padding: "22px 44px 24px",
+    position: "absolute",
+    textAlign: "center",
+    top: "16vh",
+    userSelect: "none",
+    willChange: "transform, opacity",
+    zIndex: 2
+  },
+  rainbowPraiseAura: {
+    background:
+      "radial-gradient(circle at 24% 50%, rgba(251,113,133,0.36), transparent 28%), radial-gradient(circle at 76% 46%, rgba(34,211,238,0.32), transparent 30%)",
+    inset: -50,
+    opacity: 0.88,
+    position: "absolute"
+  },
+  rainbowPraiseRibbon: {
+    animationDuration: "1800ms",
+    animationIterationCount: "infinite",
+    animationName: "ktv-rainbow-praise-ribbon",
+    animationTimingFunction: "linear",
+    background:
+      "linear-gradient(90deg, transparent, rgba(251,113,133,0.85), rgba(250,204,21,0.88), rgba(34,211,238,0.86), rgba(52,211,153,0.82), transparent)",
+    filter: "blur(0.2px)",
+    height: 10,
+    left: "-20%",
+    opacity: 0.86,
+    position: "absolute",
+    right: "-20%",
+    top: "18%"
+  },
+  rainbowPraiseBadge: {
+    border: "1px solid rgba(248,250,252,0.42)",
+    borderRadius: tvTheme.radii.pill,
+    color: "#03120b",
+    background: "linear-gradient(90deg, #fb7185, #facc15, #34d399, #22d3ee)",
+    fontSize: "clamp(16px, 1.24vw, 24px)",
+    fontWeight: 950,
+    lineHeight: 1,
+    padding: "8px 16px",
+    position: "relative",
+    zIndex: 1
+  },
+  rainbowPraiseText: {
+    color: tvTheme.colors.text,
+    fontSize: "clamp(34px, 3.4vw, 64px)",
+    fontWeight: 950,
+    lineHeight: 1.08,
+    maxWidth: "100%",
+    overflowWrap: "anywhere",
+    position: "relative",
+    textShadow: "0 9px 26px rgba(0,0,0,0.48)",
+    zIndex: 1
+  },
+  rainbowPraiseSpark: {
+    animationDuration: "1300ms",
+    animationFillMode: "forwards",
+    animationName: "ktv-rainbow-praise-spark",
+    animationTimingFunction: "cubic-bezier(0.16, 0.8, 0.22, 1)",
+    borderRadius: 999,
+    boxShadow: "0 0 18px rgba(255,255,255,0.34)",
+    height: 9,
+    opacity: 0,
+    position: "absolute",
+    transformOrigin: "50% 50%",
+    width: 9,
+    zIndex: 1
   },
   blessingLabel: {
     color: tvTheme.colors.warning,
@@ -765,6 +970,29 @@ const styles = {
     position: "absolute",
     right: "8vw",
     top: "18vh"
+  },
+  staticRainbowLane: {
+    display: "grid",
+    gap: 12,
+    left: "50%",
+    maxWidth: "min(780px, 74vw)",
+    position: "absolute",
+    top: "14vh",
+    transform: "translateX(-50%)",
+    width: "100%"
+  },
+  staticRainbowPraise: {
+    background:
+      "linear-gradient(135deg, rgba(251,113,133,0.34), rgba(250,204,21,0.24), rgba(34,211,238,0.24)), rgba(15,23,42,0.84)",
+    border: "1px solid rgba(248,250,252,0.46)",
+    borderRadius: 26,
+    boxShadow: "0 28px 92px rgba(0,0,0,0.46)",
+    color: tvTheme.colors.text,
+    display: "grid",
+    gap: 10,
+    justifyItems: "center",
+    padding: "22px 34px",
+    textAlign: "center"
   },
   staticBullet: {
     alignSelf: "start",

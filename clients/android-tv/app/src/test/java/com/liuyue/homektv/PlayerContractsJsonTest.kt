@@ -98,6 +98,21 @@ class PlayerContractsJsonTest {
     }
 
     @Test
+    fun parsesNewRealtimeInteractionKinds() {
+        val rainbow = PlayerContractsJson.roomInteractionFromRealtimeMessage(
+            interactionMessageJson(kind = "rainbow_praise", message = "这一开嗓，客厅都亮了"),
+        )
+        val roast = PlayerContractsJson.roomInteractionFromRealtimeMessage(
+            interactionMessageJson(kind = "roast", message = "这调跑得很有探索精神"),
+        )
+
+        assertEquals("rainbow_praise", rainbow?.kind)
+        assertEquals("这一开嗓，客厅都亮了", rainbow?.message)
+        assertEquals("roast", roast?.kind)
+        assertEquals("这调跑得很有探索精神", roast?.message)
+    }
+
+    @Test
     fun parsesSwitchTransitionTargetSourceType() {
         val result = PlayerContractsJson.switchTransitionFromJson(
             JSONObject(
@@ -193,6 +208,28 @@ class PlayerContractsJsonTest {
               "conflict": null,
               "notice": null,
               "generatedAt": "2026-05-21T00:00:00.000Z"
+            }
+        """.trimIndent()
+    }
+
+    private fun interactionMessageJson(kind: String, message: String): String {
+        return """
+            {
+              "type": "room.interaction.created",
+              "roomId": "room-1",
+              "version": 7,
+              "timestamp": "2026-05-21T00:00:00.000Z",
+              "payload": {
+                "id": "interaction-1",
+                "roomId": "room-1",
+                "roomSlug": "living-room",
+                "kind": "$kind",
+                "message": "$message",
+                "senderDeviceId": "phone-a",
+                "senderName": "客厅手机",
+                "createdAt": "2026-05-21T00:00:00.000Z",
+                "expiresAt": "2026-05-21T00:00:07.000Z"
+              }
             }
         """.trimIndent()
     }

@@ -105,6 +105,42 @@ describe("room interaction routes", () => {
     await server.close();
   });
 
+  it("accepts rainbow praise and roast interaction kinds", async () => {
+    const server = await createServer(serverConfig);
+    const cookie = await createControllerCookie(server);
+
+    const rainbowResponse = await server.inject({
+      method: "POST",
+      url: "/rooms/living-room/interactions",
+      headers: {
+        cookie
+      },
+      payload: {
+        deviceId: "phone-a",
+        kind: "rainbow_praise",
+        message: "这一开嗓，客厅都亮了"
+      }
+    });
+    const roastResponse = await server.inject({
+      method: "POST",
+      url: "/rooms/living-room/interactions",
+      headers: {
+        cookie
+      },
+      payload: {
+        deviceId: "phone-a",
+        kind: "roast",
+        message: "这调跑得很有探索精神"
+      }
+    });
+
+    expect(rainbowResponse.statusCode).toBe(200);
+    expect(rainbowResponse.json().interaction).toMatchObject({ kind: "rainbow_praise", message: "这一开嗓，客厅都亮了" });
+    expect(roastResponse.statusCode).toBe(200);
+    expect(roastResponse.json().interaction).toMatchObject({ kind: "roast", message: "这调跑得很有探索精神" });
+    await server.close();
+  });
+
   it("keeps emoji interactions visible longer than text interactions", async () => {
     const server = await createServer(serverConfig);
     const cookie = await createControllerCookie(server);

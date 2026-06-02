@@ -229,6 +229,8 @@ function isRoomInteractionEvent(payload: unknown): payload is RoomInteractionEve
       typeof (payload as RoomInteractionEvent).id === "string" &&
       ((payload as RoomInteractionEvent).kind === "emoji" ||
         (payload as RoomInteractionEvent).kind === "bullet" ||
+        (payload as RoomInteractionEvent).kind === "rainbow_praise" ||
+        (payload as RoomInteractionEvent).kind === "roast" ||
         (payload as RoomInteractionEvent).kind === "blessing") &&
       typeof (payload as RoomInteractionEvent).message === "string"
   );

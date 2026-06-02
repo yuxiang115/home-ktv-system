@@ -35,6 +35,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -247,7 +248,8 @@ describe("mobile controller runtime", () => {
     expect(within(screen.getByRole("button", { name: /风格点歌/u })).getByText("摇滚")).toBeTruthy();
     expect(screen.getByRole("region", { name: "互动快捷操作" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "发表情" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "发弹幕" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "彩虹屁" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "神吐槽" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "送祝福" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "推荐歌曲" })).toBeTruthy();
     expect(screen.getAllByText("周杰伦").length).toBeGreaterThan(0);
@@ -426,8 +428,9 @@ describe("mobile controller runtime", () => {
     expect(addRequests[1]?.body).toMatchObject({ sourceType: "nas", assetId: "ktv-asset-discovery-sunny", sessionVersion: 2 });
   });
 
-  it("sends emoji, bullet, and blessing shortcut interactions", async () => {
+  it("sends emoji, rainbow praise, roast, and blessing shortcut interactions", async () => {
     const user = userEvent.setup();
+    vi.spyOn(Math, "random").mockReturnValue(0);
     const { requests } = installControllerFetchMock({
       restoreResponses: [json(sessionResponse(roomSnapshot()))]
     });
@@ -451,19 +454,31 @@ describe("mobile controller runtime", () => {
     await user.click(within(screen.getByRole("dialog", { name: "发表情" })).getByRole("button", { name: "🚀" }));
     await flush();
 
-    await user.click(screen.getByRole("button", { name: "发弹幕" }));
-    const bulletDialog = screen.getByRole("dialog", { name: "发弹幕" });
-    expect(bulletDialog.className).toContain("interaction-sheet");
-    expect(bulletDialog.querySelector(".interaction-sheet__footer")).toBeTruthy();
-    await user.clear(within(bulletDialog).getByLabelText("互动内容"));
-    await user.type(within(bulletDialog).getByLabelText("互动内容"), "唱得太好了");
-    await user.click(within(bulletDialog).getByRole("button", { name: "发送" }));
+    await user.click(screen.getByRole("button", { name: "彩虹屁" }));
+    const rainbowDialog = screen.getByRole("dialog", { name: "彩虹屁" });
+    expect(rainbowDialog.className).toContain("interaction-sheet");
+    expect(rainbowDialog.querySelector(".interaction-sheet__footer")).toBeTruthy();
+    await user.clear(within(rainbowDialog).getByLabelText("互动内容"));
+    await user.click(within(rainbowDialog).getByRole("button", { name: "随机彩虹屁" }));
+    expect((within(rainbowDialog).getByLabelText("互动内容") as HTMLTextAreaElement).value).toBe("这一开嗓，客厅都亮了");
+    await user.click(within(rainbowDialog).getByRole("button", { name: "发送" }));
     await flush();
-    expect(screen.getByRole("dialog", { name: "发弹幕" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "彩虹屁" })).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "神吐槽" }));
+    const roastDialog = screen.getByRole("dialog", { name: "神吐槽" });
+    await user.clear(within(roastDialog).getByLabelText("互动内容"));
+    await user.click(within(roastDialog).getByRole("button", { name: "随机神吐槽" }));
+    expect((within(roastDialog).getByLabelText("互动内容") as HTMLTextAreaElement).value).toBe("这调跑得很有探索精神");
+    await user.click(within(roastDialog).getByRole("button", { name: "发送" }));
+    await flush();
+    expect(screen.getByRole("dialog", { name: "神吐槽" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "送祝福" }));
     const blessingDialog = screen.getByRole("dialog", { name: "送祝福" });
-    await user.click(within(blessingDialog).getByRole("button", { name: "祝家人朋友天天开心" }));
+    await user.clear(within(blessingDialog).getByLabelText("互动内容"));
+    await user.click(within(blessingDialog).getByRole("button", { name: "随机祝福" }));
+    expect((within(blessingDialog).getByLabelText("互动内容") as HTMLTextAreaElement).value).toBe("祝大家今晚玩得开心");
     await user.click(within(blessingDialog).getByRole("button", { name: "发送" }));
     await flush();
     expect(screen.getByRole("dialog", { name: "送祝福" })).toBeTruthy();
@@ -472,8 +487,9 @@ describe("mobile controller runtime", () => {
     expect(interactionRequests.map((request) => request.body)).toEqual([
       expect.objectContaining({ deviceId: "mobile-test-uuid", kind: "emoji", message: "😀" }),
       expect.objectContaining({ deviceId: "mobile-test-uuid", kind: "emoji", message: "🚀" }),
-      expect.objectContaining({ deviceId: "mobile-test-uuid", kind: "bullet", message: "唱得太好了" }),
-      expect.objectContaining({ deviceId: "mobile-test-uuid", kind: "blessing", message: "祝家人朋友天天开心" })
+      expect.objectContaining({ deviceId: "mobile-test-uuid", kind: "rainbow_praise", message: "这一开嗓，客厅都亮了" }),
+      expect.objectContaining({ deviceId: "mobile-test-uuid", kind: "roast", message: "这调跑得很有探索精神" }),
+      expect.objectContaining({ deviceId: "mobile-test-uuid", kind: "blessing", message: "祝大家今晚玩得开心" })
     ]);
   });
 

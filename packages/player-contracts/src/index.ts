@@ -151,7 +151,7 @@ export interface PlaybackNotice {
   message: string;
 }
 
-export type RoomInteractionKind = "emoji" | "bullet" | "blessing";
+export type RoomInteractionKind = "emoji" | "bullet" | "rainbow_praise" | "roast" | "blessing";
 
 export interface RoomInteractionEvent {
   id: string;
