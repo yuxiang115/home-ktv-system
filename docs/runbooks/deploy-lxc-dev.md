@@ -100,6 +100,7 @@ bash deploy/source/ktv.sh smoke
 ```text
 API:        https://ktv-api.shaolongfei.com/health
 Admin:      https://ktv-admin.shaolongfei.com/
+pgweb:      https://pgweb.shaolongfei.com/
 Controller: 通过 Web TV 二维码或 Admin 的 pairing.controllerUrl 进入，URL 必须带 token
 Web TV:     https://ktv-tv.shaolongfei.com/?apiBaseUrl=https://ktv-api.shaolongfei.com&roomSlug=living-room&deviceName=Web%20TV
 ```
@@ -129,3 +130,46 @@ Homepage 配置在：
 ```
 
 修改前同样先备份。
+
+## pgweb
+
+数据库网页浏览器 `pgweb` 部署在 `lxc-dev`，由 `lxc-network` 的 Caddy 反代并挂到 Homepage。
+
+关键信息：
+
+```text
+服务名:     pgweb
+安装目录:   /opt/pgweb
+监听端口:   8082
+访问域名:   https://pgweb.shaolongfei.com/
+运行模式:   readonly
+数据库连接: 复用 /opt/home-ktv-system/deploy/source/.env 中的 DATABASE_URL
+```
+
+常用命令：
+
+```bash
+ssh dev
+systemctl status pgweb --no-pager
+systemctl restart pgweb
+journalctl -u pgweb -n 100 --no-pager
+curl -sS http://127.0.0.1:8082/ | head
+```
+
+若要重装或升级：
+
+```bash
+ssh dev
+cd /opt/pgweb
+curl -fL -o pgweb_linux_amd64.zip https://github.com/sosedoff/pgweb/releases/download/v0.16.2/pgweb_linux_amd64.zip
+python3 - <<'PY'
+import zipfile
+with zipfile.ZipFile("pgweb_linux_amd64.zip") as zf:
+    zf.extractall(".")
+PY
+chmod +x /opt/pgweb/pgweb_linux_amd64
+ln -sf /opt/pgweb/pgweb_linux_amd64 /opt/pgweb/pgweb
+systemctl restart pgweb
+```
+
+`pgweb` 当前使用 `--readonly`，适合作为数据库可视化入口；它不会在网页界面里执行写操作，但数据库账号本身仍是现有业务账号，后续若安全边界变化，应再补独立只读账号。
