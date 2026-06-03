@@ -117,6 +117,29 @@ describe("KTV full index importer", () => {
       expect.stringContaining("missing_at IS NULL")
     ]));
   });
+
+  it("preserves existing same-path metadata when preserveExisting is enabled", async () => {
+    const db = createRecordingDb();
+
+    await indexKtvAssetDrafts(db, {
+      sourceRoot: "/media",
+      drafts: [createDraft({ filePath: "/media/existing.mkv" })],
+      preserveExisting: true
+    });
+
+    const upsertQuery = db.queries.find((query) => query.text.includes("ON CONFLICT (file_path)"));
+    expect(upsertQuery?.text).toBeDefined();
+    expect(upsertQuery?.text).toContain("last_seen_run_id = EXCLUDED.last_seen_run_id");
+    expect(upsertQuery?.text).toContain("missing_at = NULL");
+    expect(upsertQuery?.text).toContain("size_bytes = EXCLUDED.size_bytes");
+    expect(upsertQuery?.text).not.toContain("title = EXCLUDED.title");
+    expect(upsertQuery?.text).not.toContain("primary_artist_name = EXCLUDED.primary_artist_name");
+    expect(upsertQuery?.text).not.toContain("artist_names = EXCLUDED.artist_names");
+    expect(upsertQuery?.text).not.toContain("style_tags = EXCLUDED.style_tags");
+    expect(upsertQuery?.text).not.toContain("parse_strategy = EXCLUDED.parse_strategy");
+    expect(upsertQuery?.text).not.toContain("technical_status = EXCLUDED.technical_status");
+    expect(upsertQuery?.text).not.toContain("technical_metadata = EXCLUDED.technical_metadata");
+  });
 });
 
 function createDraft(overrides: Partial<KtvIndexAssetDraft> = {}): KtvIndexAssetDraft {

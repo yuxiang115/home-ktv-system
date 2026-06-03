@@ -73,6 +73,82 @@ describe("ktv sample index helpers", () => {
     });
   });
 
+  it("uses directory-level filename profiles for the known first-level roots", () => {
+    const cases = [
+      {
+        relativePath: "流行歌曲/周杰伦-简单爱(MTV)-国语-流行.mkv",
+        expected: {
+          title: "简单爱",
+          artistName: "周杰伦",
+          category: "流行",
+          parseStrategy: "filename"
+        }
+      },
+      {
+        relativePath: "流行精选/冷酷-握不住手中沙-国语-流行.mkv",
+        expected: {
+          title: "握不住手中沙",
+          artistName: "冷酷",
+          category: "流行",
+          parseStrategy: "filename"
+        }
+      },
+      {
+        relativePath: "网络热歌(有新歌加入)/DJ小鱼儿-爱的病变-国语-流行.mkv",
+        expected: {
+          title: "爱的病变",
+          artistName: "DJ小鱼儿",
+          category: "流行",
+          parseStrategy: "filename"
+        }
+      },
+      {
+        relativePath: "本店2026年更新MPG720超清（更新中）/01月/梁静茹-情歌[720P]-国语-流行.mpg",
+        expected: {
+          title: "情歌[720P]",
+          artistName: "梁静茹",
+          category: "流行",
+          parseStrategy: "filename"
+        }
+      },
+      {
+        relativePath: "1080P全高清MPG2026年更新（更新中）/01月MPG1080/F4-第一时间 (Live)[1080P]-国语-合唱.mpg",
+        expected: {
+          title: "第一时间 (Live)[1080P]",
+          artistName: "F4",
+          category: "合唱",
+          parseStrategy: "filename"
+        }
+      },
+      {
+        relativePath: "国语-知名歌星专辑 11000首850G/知名歌星个人专辑（65人6600首）/邓丽君151/邓丽君-你的心我的心(人物)-国语-流行.mpg",
+        expected: {
+          title: "你的心我的心",
+          artistName: "邓丽君",
+          category: "流行",
+          parseStrategy: "filename"
+        }
+      }
+    ] as const;
+
+    for (const testCase of cases) {
+      expect(inferKtvSampleMetadata(testCase.relativePath)).toMatchObject(testCase.expected);
+    }
+  });
+
+  it("keeps variety-show title parentheses for the comprehensive compilation root", () => {
+    const result = inferKtvSampleMetadata(
+      "综合专辑 9300首1.4T/综艺专区1（2900首）/中国好声音/康树龙-魔鬼中的天使(2018中国好声音)-国语-流行.mpg"
+    );
+
+    expect(result).toMatchObject({
+      title: "魔鬼中的天使(2018中国好声音)",
+      artistName: "康树龙",
+      category: "流行",
+      parseStrategy: "filename"
+    });
+  });
+
   it("does not support underscore-delimited exception files after cleanup", () => {
     const result = inferKtvSampleMetadata(
       "流行歌曲(2.5万首880G)/推荐0002/毛不易-像我这样的人_国语_流行 .mkv"

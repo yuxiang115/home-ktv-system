@@ -32,6 +32,7 @@ export interface IndexKtvAssetDraftsInput {
   drafts: readonly KtvIndexAssetDraft[];
   batchSize?: number;
   markMissingAssets?: boolean;
+  preserveExisting?: boolean;
 }
 
 export interface IndexKtvAssetDraftsResult {
@@ -82,7 +83,7 @@ export async function indexKtvAssetDrafts(
   try {
     for (const draft of input.drafts) {
       const primaryArtistName = draft.artistNames[0] ?? "Unknown Artist";
-      await upsertSong(db, draft, primaryArtistName, runId, input.sourceRoot, input.sshHost);
+      await upsertSong(db, draft, primaryArtistName, runId, input.sourceRoot, input.sshHost, input.preserveExisting);
       songsUpserted += 1;
       assetsUpserted += 1;
     }
@@ -123,44 +124,12 @@ async function upsertSong(
   primaryArtistName: string,
   runId: string,
   sourceRoot: string,
-  sshHost: string | undefined
+  sshHost: string | undefined,
+  preserveExisting: boolean | undefined
 ): Promise<string> {
   const normalizedPrimaryArtistName = normalizeSearchText(primaryArtistName);
   const result = await db.query<IdRow>(
-    `INSERT INTO ktv_songs (
-       title, normalized_title, title_pinyin, title_initials,
-       primary_artist_name, normalized_primary_artist_name,
-       artist_names, style_tags,
-       file_path, relative_path, file_name, extension,
-       size_bytes, mtime_ms, parse_strategy, parse_confidence,
-       technical_status, technical_metadata,
-       source_root, ssh_host, first_seen_run_id, last_seen_run_id, missing_at
-     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7::text[], $8::text[], $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19, $20, $21, $21, NULL)
-     ON CONFLICT (file_path)
-     DO UPDATE SET
-       title = EXCLUDED.title,
-       title_pinyin = EXCLUDED.title_pinyin,
-       title_initials = EXCLUDED.title_initials,
-       primary_artist_name = EXCLUDED.primary_artist_name,
-       normalized_primary_artist_name = EXCLUDED.normalized_primary_artist_name,
-       artist_names = EXCLUDED.artist_names,
-       style_tags = EXCLUDED.style_tags,
-       relative_path = EXCLUDED.relative_path,
-       file_name = EXCLUDED.file_name,
-       extension = EXCLUDED.extension,
-       size_bytes = EXCLUDED.size_bytes,
-       mtime_ms = EXCLUDED.mtime_ms,
-       parse_strategy = EXCLUDED.parse_strategy,
-       parse_confidence = EXCLUDED.parse_confidence,
-       technical_status = EXCLUDED.technical_status,
-       technical_metadata = EXCLUDED.technical_metadata,
-       source_root = EXCLUDED.source_root,
-       ssh_host = EXCLUDED.ssh_host,
-       last_seen_run_id = EXCLUDED.last_seen_run_id,
-       missing_at = NULL,
-       updated_at = now()
-     RETURNING id`,
+    buildKtvSongsUpsertSql(Boolean(preserveExisting)),
     [
       draft.title,
       draft.normalizedTitle,
@@ -186,6 +155,56 @@ async function upsertSong(
     ]
   );
   return requireRow(result.rows[0], "ktv_songs upsert").id;
+}
+
+function buildKtvSongsUpsertSql(preserveExisting: boolean): string {
+  return `INSERT INTO ktv_songs (
+       title, normalized_title, title_pinyin, title_initials,
+       primary_artist_name, normalized_primary_artist_name,
+       artist_names, style_tags,
+       file_path, relative_path, file_name, extension,
+       size_bytes, mtime_ms, parse_strategy, parse_confidence,
+       technical_status, technical_metadata,
+       source_root, ssh_host, first_seen_run_id, last_seen_run_id, missing_at
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7::text[], $8::text[], $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19, $20, $21, $21, NULL)
+     ON CONFLICT (file_path)
+     DO UPDATE SET
+       ${preserveExisting ? [
+         "relative_path = EXCLUDED.relative_path",
+         "file_name = EXCLUDED.file_name",
+         "extension = EXCLUDED.extension",
+         "size_bytes = EXCLUDED.size_bytes",
+         "mtime_ms = EXCLUDED.mtime_ms",
+         "source_root = EXCLUDED.source_root",
+         "ssh_host = EXCLUDED.ssh_host",
+         "last_seen_run_id = EXCLUDED.last_seen_run_id",
+         "missing_at = NULL",
+         "updated_at = now()"
+       ].join(",\n       ") : [
+         "title = EXCLUDED.title",
+         "title_pinyin = EXCLUDED.title_pinyin",
+         "title_initials = EXCLUDED.title_initials",
+         "primary_artist_name = EXCLUDED.primary_artist_name",
+         "normalized_primary_artist_name = EXCLUDED.normalized_primary_artist_name",
+         "artist_names = EXCLUDED.artist_names",
+         "style_tags = EXCLUDED.style_tags",
+         "relative_path = EXCLUDED.relative_path",
+         "file_name = EXCLUDED.file_name",
+         "extension = EXCLUDED.extension",
+         "size_bytes = EXCLUDED.size_bytes",
+         "mtime_ms = EXCLUDED.mtime_ms",
+         "parse_strategy = EXCLUDED.parse_strategy",
+         "parse_confidence = EXCLUDED.parse_confidence",
+         "technical_status = EXCLUDED.technical_status",
+         "technical_metadata = EXCLUDED.technical_metadata",
+         "source_root = EXCLUDED.source_root",
+         "ssh_host = EXCLUDED.ssh_host",
+         "last_seen_run_id = EXCLUDED.last_seen_run_id",
+         "missing_at = NULL",
+         "updated_at = now()"
+       ].join(",\n       ")}
+     RETURNING id`;
 }
 
 async function markMissingAssets(db: QueryExecutor, runId: string): Promise<number> {

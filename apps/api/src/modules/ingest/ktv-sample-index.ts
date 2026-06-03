@@ -172,23 +172,51 @@ function parseKtvFilename(relativePath: string): FilenameMetadataDraft {
   return rule ? rule(stem) ?? { title: stem } : { title: stem };
 }
 
+type KtvFilenameRule = (stem: string) => FilenameMetadataDraft | null;
+type KtvRootFolderProfile = "strict_dash_tail" | "strict_dash_tail_keep_trailing_parens";
+
+const KTV_ROOT_FOLDER_PROFILES: Record<string, KtvRootFolderProfile> = {
+  "1080P全高清MPG2026年更新（更新中）": "strict_dash_tail",
+  "国语-知名歌星专辑 11000首850G": "strict_dash_tail",
+  "本店2026年更新MPG720超清（更新中）": "strict_dash_tail",
+  "流行歌曲": "strict_dash_tail",
+  "流行歌曲(2.5万首880G)": "strict_dash_tail",
+  "流行精选": "strict_dash_tail",
+  "综合专辑 9300首1.4T": "strict_dash_tail_keep_trailing_parens",
+  "网络热歌(有新歌加入)": "strict_dash_tail",
+  "酷狗排行TOP": "strict_dash_tail"
+};
+
 function ruleForRootFolder(rootFolder: string): ((stem: string) => FilenameMetadataDraft | null) | null {
-  if (rootFolder.startsWith("流行歌曲")) {
-    return parseStrictDashTailKtvFilename;
+  const profile = KTV_ROOT_FOLDER_PROFILES[rootFolder];
+  switch (profile) {
+    case "strict_dash_tail":
+      return parseStrictDashTailKtvFilename;
+    case "strict_dash_tail_keep_trailing_parens":
+      return parseStrictDashTailKeepTrailingParensKtvFilename;
+    default:
+      return null;
   }
-
-  if (rootFolder.startsWith("国语-知名歌星专辑")) {
-    return parseStrictDashTailKtvFilename;
-  }
-
-  if (rootFolder === "酷狗排行TOP") {
-    return parseStrictDashTailKtvFilename;
-  }
-
-  return null;
 }
 
 function parseStrictDashTailKtvFilename(stem: string): FilenameMetadataDraft | null {
+  return parseStrictDashTailKtvFilenameWithOptions(stem, {
+    stripTrailingDisplayMarkerFromTitle: true
+  });
+}
+
+function parseStrictDashTailKeepTrailingParensKtvFilename(stem: string): FilenameMetadataDraft | null {
+  return parseStrictDashTailKtvFilenameWithOptions(stem, {
+    stripTrailingDisplayMarkerFromTitle: false
+  });
+}
+
+function parseStrictDashTailKtvFilenameWithOptions(
+  stem: string,
+  options: {
+    stripTrailingDisplayMarkerFromTitle: boolean;
+  }
+): FilenameMetadataDraft | null {
   const normalizedStem = stem.replace(/[－—–]/gu, "-");
   const parts = normalizedStem.split("-").map((part) => part.trim()).filter(Boolean);
 
@@ -199,7 +227,7 @@ function parseStrictDashTailKtvFilename(stem: string): FilenameMetadataDraft | n
     if (artistName && title && category) {
       return {
         artistName,
-        title: stripTrailingDisplayMarker(title),
+        title: options.stripTrailingDisplayMarkerFromTitle ? stripTrailingDisplayMarker(title) : title,
         genre: [normalizeCategory(category)]
       };
     }

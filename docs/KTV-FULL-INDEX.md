@@ -78,6 +78,22 @@ pnpm -F @home-ktv/api index:ktv -- \
   --database-url postgresql://ktv:ktv@127.0.0.1:5432/home_ktv
 ```
 
+如果数据库里已经有一批人工维护过标签、封面或修正过歌名歌手的数据，补充新增歌曲时应使用安全模式：
+
+```bash
+pnpm -F @home-ktv/api index:ktv -- \
+  --source-root /mnt/nas/KTV歌曲 \
+  --database-url postgresql://ktv:ktv@127.0.0.1:5432/home_ktv \
+  --preserve-existing
+```
+
+安全模式会：
+
+- 新路径正常插入
+- 同路径保留原有标题、歌手、标签、技术探测和封面字段
+- 如果旧记录此前被标记为 `missing_at`，本次重新扫到后恢复为存在中
+- 仍会标记本轮全量扫描未看到的旧路径为 `missing`
+
 在当前 `lxc-dev` 源码部署中，NAS 已经通过 bind mount 挂载到 `/mnt/nas`，因此不需要 `--ssh-host`。只有从不能直接读取 NAS 路径的机器执行索引时，才额外传 `--ssh-host <host>`。
 
 行为：
