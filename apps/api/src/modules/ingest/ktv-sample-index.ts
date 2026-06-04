@@ -168,16 +168,27 @@ function parseKtvFilename(relativePath: string): FilenameMetadataDraft {
   const segments = relativePath.replaceAll("\\", "/").split("/").filter(Boolean);
   const rootFolder = segments[0] ?? "";
   const rule = ruleForRootFolder(rootFolder);
+  const draft = rule ? rule(stem) : null;
 
-  return rule ? rule(stem) ?? { title: stem } : { title: stem };
+  if (draft?.title && draft.artistName && !draft.genre?.[0]) {
+    const parentCategory = inferKtvParentCategory(rootFolder, segments.at(-2));
+    if (parentCategory) {
+      return {
+        ...draft,
+        genre: [parentCategory]
+      };
+    }
+  }
+
+  return draft ?? { title: stem };
 }
 
 type KtvFilenameRule = (stem: string) => FilenameMetadataDraft | null;
-type KtvRootFolderProfile = "strict_dash_tail" | "strict_dash_tail_keep_trailing_parens" | "strict_dash_tail_strip_variety_markers" | "strict_dash_tail_or_parenthesized_language";
+type KtvRootFolderProfile = "strict_dash_tail" | "strict_dash_tail_keep_trailing_parens" | "strict_dash_tail_strip_variety_markers" | "strict_dash_tail_or_loose_tail" | "strict_dash_tail_or_parenthesized_language_or_loose_tail";
 
 const KTV_ROOT_FOLDER_PROFILES: Record<string, KtvRootFolderProfile> = {
-  "2024": "strict_dash_tail",
-  "2025": "strict_dash_tail_or_parenthesized_language",
+  "2024": "strict_dash_tail_or_loose_tail",
+  "2025": "strict_dash_tail_or_parenthesized_language_or_loose_tail",
   "1080P全高清MPG2026年更新（更新中）": "strict_dash_tail",
   "国语-知名歌星专辑 11000首850G": "strict_dash_tail",
   "本店2026年更新MPG720超清（更新中）": "strict_dash_tail",
@@ -199,8 +210,10 @@ function ruleForRootFolder(rootFolder: string): ((stem: string) => FilenameMetad
       return parseStrictDashTailKeepTrailingParensKtvFilename;
     case "strict_dash_tail_strip_variety_markers":
       return parseStrictDashTailStripVarietyMarkersKtvFilename;
-    case "strict_dash_tail_or_parenthesized_language":
-      return parseStrictDashTailOrParenthesizedLanguageKtvFilename;
+    case "strict_dash_tail_or_loose_tail":
+      return parseStrictDashTailOrLooseTailKtvFilename;
+    case "strict_dash_tail_or_parenthesized_language_or_loose_tail":
+      return parseStrictDashTailOrParenthesizedLanguageOrLooseTailKtvFilename;
     default:
       return null;
   }
@@ -224,8 +237,15 @@ function parseStrictDashTailStripVarietyMarkersKtvFilename(stem: string): Filena
   });
 }
 
-function parseStrictDashTailOrParenthesizedLanguageKtvFilename(stem: string): FilenameMetadataDraft | null {
-  return parseStrictDashTailKtvFilename(stem) ?? parseParenthesizedLanguageKtvFilename(stem);
+function parseStrictDashTailOrLooseTailKtvFilename(stem: string): FilenameMetadataDraft | null {
+  return parseStrictDashTailKtvFilename(stem)
+    ?? parseLooseDashTailKtvFilename(stem);
+}
+
+function parseStrictDashTailOrParenthesizedLanguageOrLooseTailKtvFilename(stem: string): FilenameMetadataDraft | null {
+  return parseStrictDashTailKtvFilename(stem)
+    ?? parseParenthesizedLanguageKtvFilename(stem)
+    ?? parseLooseDashTailKtvFilename(stem);
 }
 
 function parseStrictDashTailKtvFilenameWithOptions(
@@ -234,7 +254,7 @@ function parseStrictDashTailKtvFilenameWithOptions(
     trailingTitleMarkerMode: "parentheses" | "all" | "none";
   }
 ): FilenameMetadataDraft | null {
-  const normalizedStem = stem.replace(/[－—–]/gu, "-");
+  const normalizedStem = normalizeDashSeparators(stem);
   const parts = normalizedStem.split("-").map((part) => part.trim()).filter(Boolean);
 
   if (parts.length >= 4 && isKtvLanguageMarker(parts[parts.length - 2])) {
@@ -254,7 +274,7 @@ function parseStrictDashTailKtvFilenameWithOptions(
 }
 
 function parseParenthesizedLanguageKtvFilename(stem: string): FilenameMetadataDraft | null {
-  const normalizedStem = stem.replace(/[－—–]/gu, "-");
+  const normalizedStem = normalizeDashSeparators(stem);
   const parts = normalizedStem.split("-").map((part) => part.trim()).filter(Boolean);
   if (parts.length < 2) {
     return null;
@@ -276,6 +296,83 @@ function parseParenthesizedLanguageKtvFilename(stem: string): FilenameMetadataDr
   };
 }
 
+function parseLooseDashTailKtvFilename(stem: string): FilenameMetadataDraft | null {
+  const normalizedStem = normalizeDashSeparators(stem);
+  const parts = normalizedStem.split("-").map((part) => part.trim()).filter(Boolean);
+
+  if (parts.length >= 4 && isKtvLanguageMarker(parts[parts.length - 2])) {
+    const artistName = parts[0];
+    const title = parts.slice(1, -2).join("-").trim();
+    const category = parts.at(-1)?.trim();
+    return buildFilenameMetadata(artistName, title, category);
+  }
+
+  if (parts.length === 3 && isKtvLanguageMarker(parts[2])) {
+    const artistName = parts[0];
+    const title = parts[1];
+    return buildFilenameMetadata(artistName, title, null);
+  }
+
+  if (parts.length === 3 && isKtvLanguageMarker(parts[1])) {
+    const title = parts[0];
+    const category = parts[2];
+    return buildFilenameMetadata(null, title, category);
+  }
+
+  if (parts.length === 3) {
+    const titlePart = parts[1];
+    const categoryPart = parts[2];
+    if (!titlePart || !categoryPart) {
+      return null;
+    }
+
+    const titleWithInlineLanguage = extractTitleWithInlineLanguage(titlePart, categoryPart);
+    if (titleWithInlineLanguage) {
+      return buildFilenameMetadata(parts[0], titleWithInlineLanguage.title, titleWithInlineLanguage.category);
+    }
+  }
+
+  if (parts.length === 2) {
+    const titlePart = parts[1];
+    if (!titlePart) {
+      return null;
+    }
+
+    const tailParts = splitLooseTailParts(titlePart);
+    if (tailParts.length >= 3 && isKtvLanguageMarker(tailParts[tailParts.length - 2])) {
+      const title = tailParts.slice(0, -2).join("_").trim();
+      const category = tailParts.at(-1);
+      return buildFilenameMetadata(parts[0], title, category);
+    }
+
+    const titleWithInlineLanguage = extractTitleWithInlineLanguage(titlePart);
+    if (titleWithInlineLanguage) {
+      return buildFilenameMetadata(parts[0], titleWithInlineLanguage.title, titleWithInlineLanguage.category);
+    }
+
+    return buildFilenameMetadata(parts[0], titlePart, null);
+  }
+
+  return null;
+}
+
+function buildFilenameMetadata(
+  artistName: string | null | undefined,
+  title: string | null | undefined,
+  category: string | null | undefined
+): FilenameMetadataDraft | null {
+  const cleanTitle = stripTrailingTitleMarker(title ?? "", "parentheses");
+  if (!cleanTitle) {
+    return null;
+  }
+
+  return {
+    artistName: artistName?.trim() || "Unknown Artist",
+    title: cleanTitle,
+    ...(category?.trim() ? { genre: [normalizeCategory(category)] } : {})
+  };
+}
+
 function isKtvLanguageMarker(value: string | undefined): boolean {
   return Boolean(value) && KTV_LANGUAGE_MARKERS.has(normalizeTailMarker(value ?? "") as KtvLanguageMarker);
 }
@@ -285,13 +382,16 @@ type KtvLanguageMarker = typeof KTV_LANGUAGE_MARKERS extends Set<infer TValue> ?
 const KTV_LANGUAGE_MARKERS = new Set([
   "国语",
   "国语歌曲",
+  "囯语",
   "普通话",
   "粤语",
   "闽南",
   "闽南语",
+  "闽语",
   "台语",
   "泰语",
   "蒙语",
+  "彝语",
   "客家语",
   "英语",
   "日语",
@@ -300,6 +400,34 @@ const KTV_LANGUAGE_MARKERS = new Set([
   "其他",
   "其它"
 ] as const);
+
+function normalizeDashSeparators(value: string): string {
+  return value.replace(/[－—–]/gu, "-").replace(/\s+-\s+/gu, "-");
+}
+
+function splitLooseTailParts(value: string): string[] {
+  return value.split("_").map((part) => part.trim()).filter(Boolean);
+}
+
+function inferKtvParentCategory(rootFolder: string, parentFolder: string | undefined): string | null {
+  if ((rootFolder !== "2024" && rootFolder !== "2025") || !parentFolder) {
+    return null;
+  }
+
+  return /^20\d{2}/u.test(parentFolder) ? null : normalizeCategory(parentFolder);
+}
+
+function extractTitleWithInlineLanguage(value: string, category: string = "流行"): { title: string; category: string } | null {
+  const match = value.match(/^(.*?)[\(（][^()（）]+[\)）]?(国语歌曲|国语|囯语|普通话|粤语|闽南语|闽南|闽语|台语|泰语|蒙语|彝语|客家语|英语|日语|韩语|外语|其它|其他)$/u);
+  if (!match?.[1] || !isKtvLanguageMarker(match[2])) {
+    return null;
+  }
+
+  return {
+    title: stripTrailingTitleMarker(match[1], "parentheses"),
+    category
+  };
+}
 
 function normalizeTailMarker(value: string): string {
   return value.trim().replace(/\s+/gu, "");

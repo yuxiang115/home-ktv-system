@@ -190,6 +190,96 @@ describe("ktv sample index helpers", () => {
     }
   });
 
+  it("parses exception formats from the 2024 root profile", () => {
+    const cases = [
+      {
+        relativePath: "2024/2024-4/如風 - 记住这份缘(原版)国语-流行.mpg",
+        expected: {
+          title: "记住这份缘",
+          artistName: "如風",
+          category: "流行",
+          parseStrategy: "filename"
+        }
+      },
+      {
+        relativePath: "2024/2024-6/海来铁子 - 命苦的孩子该走了-彝语-流行.mpg",
+        expected: {
+          title: "命苦的孩子该走了",
+          artistName: "海来铁子",
+          category: "流行",
+          parseStrategy: "filename"
+        }
+      },
+      {
+        relativePath: "2024/2024-7/闲也想你忙也想你-国语-流行.mpg",
+        expected: {
+          title: "闲也想你忙也想你",
+          artistName: "Unknown Artist",
+          category: "流行",
+          parseStrategy: "filename"
+        }
+      },
+      {
+        relativePath: "2024/2024-8/祁隆-雨中的思念_国语_流行.mpg",
+        expected: {
+          title: "雨中的思念",
+          artistName: "祁隆",
+          category: "流行",
+          parseStrategy: "filename"
+        }
+      }
+    ] as const;
+
+    for (const testCase of cases) {
+      expect(inferKtvSampleMetadata(testCase.relativePath)).toMatchObject(testCase.expected);
+    }
+  });
+
+  it("parses exception formats from the 2025 root profile", () => {
+    const cases = [
+      {
+        relativePath: "2025/2025-11/DJ鬼鬼于航-烟花叹.mkv",
+        expected: {
+          title: "烟花叹",
+          artistName: "DJ鬼鬼于航",
+          category: null,
+          parseStrategy: "hybrid"
+        }
+      },
+      {
+        relativePath: "2025/2025-11/吴欣达&蔡宜汝-金色海岸-闽语-合唱.mkv",
+        expected: {
+          title: "金色海岸",
+          artistName: "吴欣达&蔡宜汝",
+          category: "合唱",
+          parseStrategy: "filename"
+        }
+      },
+      {
+        relativePath: "2025/2025-11new/新年喜庆歌曲/邓志驹_蒋文端-新年蜜运最成功(MTV)-粤语.mkv",
+        expected: {
+          title: "新年蜜运最成功",
+          artistName: "邓志驹_蒋文端",
+          category: "新年喜庆歌曲",
+          parseStrategy: "filename"
+        }
+      },
+      {
+        relativePath: "2025/2025-8new/文夫-背着风流泪-囯语-流行.mkv",
+        expected: {
+          title: "背着风流泪",
+          artistName: "文夫",
+          category: "流行",
+          parseStrategy: "filename"
+        }
+      }
+    ] as const;
+
+    for (const testCase of cases) {
+      expect(inferKtvSampleMetadata(testCase.relativePath)).toMatchObject(testCase.expected);
+    }
+  });
+
   it("strips variety-show title markers for comprehensive compilation variety roots", () => {
     const result = inferKtvSampleMetadata(
       "综合专辑 9300首1.4T/综艺专区1（2900首）/中国好声音/康树龙-魔鬼中的天使(2018中国好声音)-国语-流行.mpg"
