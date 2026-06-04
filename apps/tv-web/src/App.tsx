@@ -31,7 +31,8 @@ export function App() {
           runtime.playbackPositionMs,
           runtime.durationMs,
           runtime.firstPlayBlocked,
-          runtime.handleFirstPlayPromptClick
+          runtime.handleFirstPlayPromptClick,
+          runtime.localPlaybackConfirmed
         )}
       </div>
       <InteractionOverlay interactions={runtime.interactions} />
@@ -46,7 +47,8 @@ function renderScreen(
   playbackPositionMs: number,
   durationMs: number | null,
   firstPlayBlocked: boolean,
-  onFirstPlayPromptClick: () => void
+  onFirstPlayPromptClick: () => void,
+  localPlaybackConfirmed: boolean
 ) {
   const displayState = deriveTvDisplayState({
     errorMessage,
@@ -83,6 +85,7 @@ function renderScreen(
         playbackPositionMs={playbackPositionMs}
         durationMs={durationMs}
         onFirstPlayPromptClick={onFirstPlayPromptClick}
+        showStateLabel={!localPlaybackConfirmed}
       />
     );
   }

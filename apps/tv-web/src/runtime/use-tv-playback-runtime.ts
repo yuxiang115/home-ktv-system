@@ -24,6 +24,7 @@ export interface TvPlaybackRuntimeState {
   handleFirstPlayPromptClick(): void;
   handleVideoEnded(event: SyntheticEvent<HTMLVideoElement>): void;
   interactions: readonly RoomInteractionEvent[];
+  localPlaybackConfirmed: boolean;
   playbackPositionMs: number;
   roomState: RoomSnapshotState;
   snapshot: RoomSnapshot | null;
@@ -38,6 +39,7 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
   const sentPlaybackTelemetryRef = useRef<Set<string>>(new Set());
   const [localNotice, setLocalNotice] = useState<PlaybackNotice | null>(null);
   const [firstPlayBlocked, setFirstPlayBlocked] = useState(false);
+  const [confirmedPlaybackTargetKey, setConfirmedPlaybackTargetKey] = useState<string | null>(null);
   const [, setPlaybackFrame] = useState(0);
 
   useEffect(() => {
@@ -64,6 +66,7 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
       pool,
       snapshot,
       setFirstPlayBlocked,
+      setConfirmedPlaybackTargetKey,
       sentPlaybackTelemetryRef,
       setLocalNotice,
       switchInFlightRef: vocalModeSwitchInFlightRef
@@ -73,6 +76,7 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
   useEffect(() => {
     if (roomState.status === "error" || !roomState.snapshot?.currentTarget || roomState.snapshot.conflict) {
       setFirstPlayBlocked(false);
+      setConfirmedPlaybackTargetKey(null);
     }
   }, [roomState.status, roomState.snapshot?.currentTarget?.queueEntryId, roomState.snapshot?.conflict]);
 
@@ -112,6 +116,7 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
       pool,
       snapshot,
       setFirstPlayBlocked,
+      setConfirmedPlaybackTargetKey,
       sentPlaybackTelemetryRef,
       setLocalNotice,
       switchInFlightRef: vocalModeSwitchInFlightRef
@@ -210,6 +215,7 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
   );
 
   const snapshot = mergeLocalNotice(roomState.snapshot, localNotice);
+  const currentTargetKey = playbackTargetKey(snapshot?.currentTarget ?? null);
   const activeVideo = videoPoolRef.current?.activeVideo ?? null;
   const playbackPositionMs = activeVideo
     ? Math.max(0, Math.trunc(activeVideo.currentTime * 1000))
@@ -223,6 +229,7 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
     handleFirstPlayPromptClick: retryCurrentPlayback,
     handleVideoEnded,
     interactions: roomState.interactions,
+    localPlaybackConfirmed: Boolean(currentTargetKey && confirmedPlaybackTargetKey === currentTargetKey),
     playbackPositionMs,
     roomState,
     snapshot
@@ -254,12 +261,14 @@ async function ensureCurrentPlayback(
   snapshot: RoomSnapshot,
   sentPlaybackTelemetryRef: MutableRefObject<Set<string>>,
   setLocalNotice: Dispatch<SetStateAction<PlaybackNotice | null>>,
-  setFirstPlayBlocked: Dispatch<SetStateAction<boolean>>
+  setFirstPlayBlocked: Dispatch<SetStateAction<boolean>>,
+  setConfirmedPlaybackTargetKey: Dispatch<SetStateAction<string | null>>
 ): Promise<void> {
   const result = await new ActivePlaybackController({ videoPool: pool }).ensurePlaying(snapshot);
   const target = snapshot.currentTarget;
   if (!target) {
     setFirstPlayBlocked(false);
+    setConfirmedPlaybackTargetKey(null);
     return;
   }
 
@@ -290,6 +299,7 @@ async function ensureCurrentPlayback(
     }
 
     setFirstPlayBlocked(true);
+    setConfirmedPlaybackTargetKey(null);
     setLocalNotice({
       kind: "loading",
       message: "点击电视开始播放"
@@ -308,6 +318,7 @@ async function ensureCurrentPlayback(
 
   if (result.status === "playing") {
     setFirstPlayBlocked(false);
+    setConfirmedPlaybackTargetKey(playbackTargetKey(target));
     setLocalNotice((notice) => (notice?.kind === "loading" ? null : notice));
     await sendPlaybackTelemetryOnce({
       client,
@@ -323,6 +334,7 @@ async function ensureCurrentPlayback(
 async function synchronizePlayback(input: {
   client: ReturnType<typeof createBrowserPlayerClient>;
   pool: DualVideoPool;
+  setConfirmedPlaybackTargetKey: Dispatch<SetStateAction<string | null>>;
   setFirstPlayBlocked: Dispatch<SetStateAction<boolean>>;
   sentPlaybackTelemetryRef: MutableRefObject<Set<string>>;
   snapshot: RoomSnapshot;
@@ -340,7 +352,8 @@ async function synchronizePlayback(input: {
       input.snapshot,
       input.sentPlaybackTelemetryRef,
       input.setLocalNotice,
-      input.setFirstPlayBlocked
+      input.setFirstPlayBlocked,
+      input.setConfirmedPlaybackTargetKey
     );
     return;
   }
@@ -375,7 +388,8 @@ async function synchronizePlayback(input: {
     input.snapshot,
     input.sentPlaybackTelemetryRef,
     input.setLocalNotice,
-    input.setFirstPlayBlocked
+    input.setFirstPlayBlocked,
+    input.setConfirmedPlaybackTargetKey
   );
 }
 
@@ -438,6 +452,14 @@ function playbackPositionFromVideo(video: KtvVideoElement, fallbackMs: number): 
   }
 
   return Math.max(0, Math.trunc(video.currentTime * 1000));
+}
+
+function playbackTargetKey(target: RoomSnapshot["currentTarget"] | null): string | null {
+  if (!target) {
+    return null;
+  }
+
+  return [target.queueEntryId, target.sourceType, target.assetId, target.vocalMode].join(":");
 }
 
 function endedPlaybackPositionMs(video: HTMLVideoElement): number {

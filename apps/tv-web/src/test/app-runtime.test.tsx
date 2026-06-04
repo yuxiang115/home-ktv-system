@@ -231,6 +231,19 @@ describe("tv app runtime", () => {
     );
   });
 
+  it("hides the loading state label after local playback starts", async () => {
+    const playbackSnapshot = snapshot({ state: "loading", targetVocalMode: "original" });
+    mocks.roomSnapshot.mockImplementation(() => playbackSnapshot);
+    mocks.createBrowserPlayerClient.mockReturnValue(createClient());
+    mocks.createBrowserVideoPool.mockReturnValue(createPool({ activeTarget: playbackSnapshot.currentTarget }));
+
+    render(<App />);
+
+    expect(screen.getByText("准备中")).toBeTruthy();
+    await waitFor(() => expect(mocks.activePlaybackEnsurePlaying).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByText("准备中")).toBeNull());
+  });
+
   it("reports loading telemetry when browser autoplay blocks current playback", async () => {
     const playbackSnapshot = snapshot({ state: "loading", targetVocalMode: "original" });
     mocks.roomSnapshot.mockImplementation(() => playbackSnapshot);

@@ -11,9 +11,17 @@ export interface PlayingScreenProps {
   playbackPositionMs: number;
   durationMs: number | null;
   onFirstPlayPromptClick?: () => void;
+  showStateLabel?: boolean;
 }
 
-export function PlayingScreen({ displayState, snapshot, playbackPositionMs, durationMs, onFirstPlayPromptClick }: PlayingScreenProps) {
+export function PlayingScreen({
+  displayState,
+  snapshot,
+  playbackPositionMs,
+  durationMs,
+  onFirstPlayPromptClick,
+  showStateLabel = true
+}: PlayingScreenProps) {
   const target = snapshot.currentTarget;
   const modeLabel = modeLabelFor(target?.vocalMode ?? "unknown");
   const clock = formatPlaybackClock(playbackPositionMs, durationMs);
@@ -32,7 +40,7 @@ export function PlayingScreen({ displayState, snapshot, playbackPositionMs, dura
         <span style={styles.metaLine}>
           <span style={{ ...styles.modePill, ...modeAccent(target?.vocalMode ?? "unknown") }}>{modeLabel}</span>
           <span style={styles.audioTrackText}>{audioTrackLabel}</span>
-          <span style={{ ...styles.stateText, ...stateAccent(displayState.tone) }}>{displayState.stateLabel}</span>
+          {showStateLabel ? <span style={{ ...styles.stateText, ...stateAccent(displayState.tone) }}>{displayState.stateLabel}</span> : null}
         </span>
       </footer>
       {displayState.firstPlayPrompt.visible ? (
