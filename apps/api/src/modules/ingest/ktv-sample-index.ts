@@ -173,15 +173,18 @@ function parseKtvFilename(relativePath: string): FilenameMetadataDraft {
 }
 
 type KtvFilenameRule = (stem: string) => FilenameMetadataDraft | null;
-type KtvRootFolderProfile = "strict_dash_tail" | "strict_dash_tail_keep_trailing_parens" | "strict_dash_tail_strip_variety_markers";
+type KtvRootFolderProfile = "strict_dash_tail" | "strict_dash_tail_keep_trailing_parens" | "strict_dash_tail_strip_variety_markers" | "strict_dash_tail_or_parenthesized_language";
 
 const KTV_ROOT_FOLDER_PROFILES: Record<string, KtvRootFolderProfile> = {
+  "2024": "strict_dash_tail",
+  "2025": "strict_dash_tail_or_parenthesized_language",
   "1080P全高清MPG2026年更新（更新中）": "strict_dash_tail",
   "国语-知名歌星专辑 11000首850G": "strict_dash_tail",
   "本店2026年更新MPG720超清（更新中）": "strict_dash_tail",
   "流行歌曲": "strict_dash_tail",
   "流行歌曲(2.5万首880G)": "strict_dash_tail",
   "流行精选": "strict_dash_tail",
+  "经典老歌(1.2万首450G)": "strict_dash_tail",
   "综合专辑 9300首1.4T": "strict_dash_tail_strip_variety_markers",
   "网络热歌(有新歌加入)": "strict_dash_tail",
   "酷狗排行TOP": "strict_dash_tail"
@@ -196,6 +199,8 @@ function ruleForRootFolder(rootFolder: string): ((stem: string) => FilenameMetad
       return parseStrictDashTailKeepTrailingParensKtvFilename;
     case "strict_dash_tail_strip_variety_markers":
       return parseStrictDashTailStripVarietyMarkersKtvFilename;
+    case "strict_dash_tail_or_parenthesized_language":
+      return parseStrictDashTailOrParenthesizedLanguageKtvFilename;
     default:
       return null;
   }
@@ -217,6 +222,10 @@ function parseStrictDashTailStripVarietyMarkersKtvFilename(stem: string): Filena
   return parseStrictDashTailKtvFilenameWithOptions(stem, {
     trailingTitleMarkerMode: "all"
   });
+}
+
+function parseStrictDashTailOrParenthesizedLanguageKtvFilename(stem: string): FilenameMetadataDraft | null {
+  return parseStrictDashTailKtvFilename(stem) ?? parseParenthesizedLanguageKtvFilename(stem);
 }
 
 function parseStrictDashTailKtvFilenameWithOptions(
@@ -242,6 +251,29 @@ function parseStrictDashTailKtvFilenameWithOptions(
   }
 
   return null;
+}
+
+function parseParenthesizedLanguageKtvFilename(stem: string): FilenameMetadataDraft | null {
+  const normalizedStem = stem.replace(/[－—–]/gu, "-");
+  const parts = normalizedStem.split("-").map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 2) {
+    return null;
+  }
+
+  const artistName = parts[0];
+  const titleWithLanguage = parts.length >= 3 ? parts.slice(1, -1).join("-").trim() : parts.slice(1).join("-").trim();
+  const category = parts.length >= 3 ? parts.at(-1)?.trim() : null;
+  const match = titleWithLanguage.match(/^(.*?)[\(（]([^()（）]+)[\)）]$/u);
+  const languageMarker = match?.[2];
+  if (!artistName || !match?.[1] || !isKtvLanguageMarker(languageMarker)) {
+    return null;
+  }
+
+  return {
+    artistName,
+    title: match[1].trim(),
+    genre: [normalizeCategory(category || "新年喜庆歌曲")]
+  };
 }
 
 function isKtvLanguageMarker(value: string | undefined): boolean {

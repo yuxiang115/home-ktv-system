@@ -76,6 +76,33 @@ describe("ktv sample index helpers", () => {
   it("uses directory-level filename profiles for the known first-level roots", () => {
     const cases = [
       {
+        relativePath: "2024/2024-10/TF家族-等你的回答-国语-流行.mkv",
+        expected: {
+          title: "等你的回答",
+          artistName: "TF家族",
+          category: "流行",
+          parseStrategy: "filename"
+        }
+      },
+      {
+        relativePath: "2025/2025-10/任素汐_任宥纶-亲爱的你啊-国语-流行.mkv",
+        expected: {
+          title: "亲爱的你啊",
+          artistName: "任素汐_任宥纶",
+          category: "流行",
+          parseStrategy: "filename"
+        }
+      },
+      {
+        relativePath: "经典老歌(1.2万首450G)/经典老歌10/五月天-彩虹(演)-国语-流行歌曲.mkv",
+        expected: {
+          title: "彩虹",
+          artistName: "五月天",
+          category: "流行歌曲",
+          parseStrategy: "filename"
+        }
+      },
+      {
         relativePath: "流行歌曲/周杰伦-简单爱(MTV)-国语-流行.mkv",
         expected: {
           title: "简单爱",
@@ -126,6 +153,33 @@ describe("ktv sample index helpers", () => {
           title: "你的心我的心",
           artistName: "邓丽君",
           category: "流行",
+          parseStrategy: "filename"
+        }
+      }
+    ] as const;
+
+    for (const testCase of cases) {
+      expect(inferKtvSampleMetadata(testCase.relativePath)).toMatchObject(testCase.expected);
+    }
+  });
+
+  it("parses 2025 new-year files with parenthesized language markers", () => {
+    const cases = [
+      {
+        relativePath: "2025/2025-11new/新年喜庆歌曲/UNIQ&宇宙少女-新年快乐{HD}(国语).mpg",
+        expected: {
+          title: "新年快乐{HD}",
+          artistName: "UNIQ&宇宙少女",
+          category: "新年喜庆歌曲",
+          parseStrategy: "filename"
+        }
+      },
+      {
+        relativePath: "2025/2025-11new/新年喜庆歌曲/区瑞强-财神到(粤语)-喜庆歌.mpg",
+        expected: {
+          title: "财神到",
+          artistName: "区瑞强",
+          category: "喜庆歌",
           parseStrategy: "filename"
         }
       }
