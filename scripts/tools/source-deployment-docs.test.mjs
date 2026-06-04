@@ -12,6 +12,7 @@ test("source deployment help exposes one-command deploy and smoke checks", async
   assert.equal(result.code, 0);
   assert.match(result.stdout, /deploy\s+Pull, install, build, migrate, restart, doctor, and smoke test/u);
   assert.match(result.stdout, /smoke\s+Run public web deployment smoke checks/u);
+  assert.match(result.stdout, /cover-thumbnails\s+Generate fixed-size local cover thumbnails/u);
 });
 
 test("deployment docs make source deployment the server default", async () => {

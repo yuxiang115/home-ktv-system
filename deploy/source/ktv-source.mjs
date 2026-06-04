@@ -165,6 +165,11 @@ async function main(currentCommand, currentArg, currentArgs) {
       ensureDirs();
       await runForeground("pnpm", ["-F", "@home-ktv/api", "covers:status", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
       return;
+    case "cover-thumbnails":
+      requireEnvFile();
+      ensureDirs();
+      await runForeground("pnpm", ["covers:thumbnails", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
+      return;
     case "help":
     case "-h":
     case "--help":
@@ -528,6 +533,7 @@ function printUsage(error = false) {
     "  fetch-covers Batch fetch and cache song cover images",
     "  cover-coverage Test cover lookup coverage without writing database rows",
     "  cover-status Show cover cache progress and database coverage",
+    "  cover-thumbnails Generate fixed-size local cover thumbnails",
     "  stop        Stop services",
     "  help        Show this help",
     "",

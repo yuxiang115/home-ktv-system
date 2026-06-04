@@ -44,13 +44,28 @@ export class PgSongCoverRepository implements SongCoverRepository {
       result.rows
         .filter((row) => row.cover_image_url)
         .map((row) => {
+          const thumbnailImageUrl = deriveLocalNasThumbnailUrl(row.cover_image_url!);
           const entry: SongCoverEntry = {
             source: row.source_kind,
             sourceSongId: row.source_song_id,
-            imageUrl: row.cover_image_url!
+            imageUrl: row.cover_image_url!,
+            ...(thumbnailImageUrl ? { thumbnailImageUrl } : {})
           };
           return [songCoverKey(entry), entry];
         })
     );
   }
+}
+
+function deriveLocalNasThumbnailUrl(imageUrl: string): string | null {
+  const marker = "/media/covers/nas/";
+  const index = imageUrl.lastIndexOf(marker);
+  if (index < 0 || !imageUrl.endsWith(".jpg")) {
+    return null;
+  }
+  const fileName = imageUrl.slice(index + marker.length);
+  if (fileName.includes("/")) {
+    return null;
+  }
+  return `${imageUrl.slice(0, index)}${marker}thumbs/${fileName}`;
 }

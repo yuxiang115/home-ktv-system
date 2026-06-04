@@ -46,7 +46,10 @@ describe("song discovery routes", () => {
       queueEntries: [createQueueEntry({ songId: "ktv-song-hot", assetId: "ktv-asset-hot" })],
       playCounts: { "ktv-song-hot": 8, "ktv-song-rock": 2 },
       coverEntries: {
-        "nas:ktv-song-hot": "https://cover.example/hot.jpg"
+        "nas:ktv-song-hot": {
+          imageUrl: "https://cover.example/hot.jpg",
+          thumbnailImageUrl: "https://cover.example/thumbs/hot.jpg"
+        }
       }
     });
 
@@ -82,6 +85,7 @@ describe("song discovery routes", () => {
           queueState: "queued",
           playCount: 8,
           coverImageUrl: "https://cover.example/hot.jpg",
+          coverThumbnailUrl: "https://cover.example/thumbs/hot.jpg",
           versions: [
             expect.objectContaining({
               assetId: "ktv-asset-hot",
@@ -367,21 +371,23 @@ class FakeQueueEntryRepository implements QueueEntryRepository {
 class FakeSongCovers implements Pick<SongCoverRepository, "findBySongKeys"> {
   readonly lookupCalls: SongCoverLookupKey[][] = [];
 
-  constructor(private readonly entries: Record<string, string>) {}
+  constructor(private readonly entries: Record<string, string | { imageUrl: string; thumbnailImageUrl?: string }>) {}
 
   async findBySongKeys(keys: readonly SongCoverLookupKey[]) {
     this.lookupCalls.push([...keys]);
     return new Map(
       keys.flatMap((key) => {
-        const imageUrl = this.entries[`${key.source}:${key.sourceSongId}`];
-        return imageUrl
+        const entry = this.entries[`${key.source}:${key.sourceSongId}`];
+        const cover = typeof entry === "string" ? { imageUrl: entry } : entry;
+        return cover
           ? [
               [
                 `${key.source}:${key.sourceSongId}`,
                 {
                   source: key.source,
                   sourceSongId: key.sourceSongId,
-                  imageUrl
+                  imageUrl: cover.imageUrl,
+                  ...(cover.thumbnailImageUrl ? { thumbnailImageUrl: cover.thumbnailImageUrl } : {})
                 }
               ] as const
             ]

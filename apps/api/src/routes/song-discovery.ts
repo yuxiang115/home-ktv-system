@@ -163,7 +163,13 @@ async function attachCoverImageUrls(
         sourceSongId: discoverySourceSongId(song)
       })
     );
-    return cover?.imageUrl ? { ...song, coverImageUrl: cover.imageUrl } : song;
+    return cover?.imageUrl
+      ? {
+          ...song,
+          coverImageUrl: cover.imageUrl,
+          ...(cover.thumbnailImageUrl ? { coverThumbnailUrl: cover.thumbnailImageUrl } : {})
+        }
+      : song;
   });
 }
 

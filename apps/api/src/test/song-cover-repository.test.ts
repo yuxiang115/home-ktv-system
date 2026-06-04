@@ -8,14 +8,17 @@ describe("song cover repository", () => {
       {
         source_kind: "nas",
         source_song_id: "song-1",
-        cover_image_url: "https://cover.example/song-1.jpg"
+        cover_image_url: "https://ktv.example.com/media/covers/nas/song-1.jpg"
       }
     ]);
     const repository = new PgSongCoverRepository(db);
 
     const covers = await repository.findBySongKeys([{ source: "nas", sourceSongId: "song-1" }]);
 
-    expect(covers.get("nas:song-1")?.imageUrl).toBe("https://cover.example/song-1.jpg");
+    expect(covers.get("nas:song-1")?.imageUrl).toBe("https://ktv.example.com/media/covers/nas/song-1.jpg");
+    expect(covers.get("nas:song-1")?.thumbnailImageUrl).toBe(
+      "https://ktv.example.com/media/covers/nas/thumbs/song-1.jpg"
+    );
     expect(db.queries[0]?.text).toContain("FROM ktv_songs");
     expect(db.queries[0]?.text).not.toContain("song_cover_cache");
   });

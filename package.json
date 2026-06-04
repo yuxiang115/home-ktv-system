@@ -16,6 +16,7 @@
     "covers:songs": "pnpm -F @home-ktv/api covers:songs",
     "covers:coverage": "pnpm -F @home-ktv/api covers:coverage",
     "covers:status": "pnpm -F @home-ktv/api covers:status",
+    "covers:thumbnails": "python3 scripts/tools/generate_cover_thumbnails.py generate",
     "deploy:doctor": "node scripts/tools/deploy-doctor.mjs",
     "repo:hygiene": "node scripts/tools/repo-hygiene-check.mjs",
     "deploy:docker": "bash deploy/docker/ktv.sh",

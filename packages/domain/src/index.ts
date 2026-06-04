@@ -338,6 +338,7 @@ export interface SongDiscoverySong {
   matchReason: SongSearchMatchReason;
   queueState: SongSearchQueueState;
   coverImageUrl?: string;
+  coverThumbnailUrl?: string;
   artistId: EntityId;
   genre: readonly string[];
   playCount: number;

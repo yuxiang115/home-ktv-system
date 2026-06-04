@@ -16,6 +16,7 @@
 | `web-deploy-smoke.mjs` | 部署后的公开入口 smoke，验证 CORS、TV bootstrap、heartbeat、控制端看到 TV 在线、推荐列表非空。 | `pnpm deploy:smoke` / `bash deploy/source/ktv.sh smoke` |
 | `repo-hygiene-check.mjs` | 提交前仓库卫生检查，区分 tracked dirty、高风险未跟踪文件和本地运行产物。 | `pnpm repo:hygiene` |
 | `fetch_song_covers.py` | 批量查询、下载并缓存歌曲封面，也支持单首歌封面探测；把本地公开封面 URL 写回 `ktv_songs.cover_image_url`。 | `bash deploy/source/ktv.sh fetch-covers -- ...` / `python3 scripts/tools/fetch_song_covers.py probe 夜之光 花姐` |
+| `generate_cover_thumbnails.py` | 把 NAS 封面原图批量压缩成固定 `160x160` JPEG 缩略图；默认跳过已生成且比原图新的文件，可重复运行续跑。 | `bash deploy/source/ktv.sh cover-thumbnails -- --source-root runtime/media/covers/nas --concurrency 20` |
 | `fetch_hot_song_candidates.py` | Python 入口，复用 `packages/hot-songs` 现有流水线，并发抓热门歌曲来源后输出总榜候选。 | `python3 scripts/tools/fetch_hot_song_candidates.py collect --concurrency 10` |
 | `fetch_chart_scores.py` | 抓取中文主流音乐平台全部榜单，按歌曲在不同榜单出现次数累计积分，输出聚合 CSV 供曲库清理筛选。 | `python3 scripts/tools/fetch_chart_scores.py collect --platforms qq,kugou,kuwo,migu --concurrency 10` |
 | `fetch_playlist_scores.py` | 抓取中文主流音乐平台的用户歌单歌曲，支持关键词搜歌单和直接抓歌单链接/ID，按歌曲在不同歌单出现次数累计积分。 | `python3 scripts/tools/fetch_playlist_scores.py collect --keywords 周杰伦 --concurrency 10` |
@@ -37,6 +38,7 @@
 | `web-deploy-smoke.test.mjs` | Web smoke 的 CORS、页面可达性、TV bootstrap/heartbeat、控制端 session 和 discovery 检查。 |
 | `repo-hygiene-check.test.mjs` | Git 状态解析、高风险未跟踪路径识别和 dirty 报告。 |
 | `fetch_song_covers_test.py` | 封面路径、公开 URL、并发调度、图片校验、历史跳过、匹配评分、provider fallback、单首探测和 JSONL 历史读取。 |
+| `generate_cover_thumbnails_test.py` | 缩略图脚本的 CLI 默认值、跳过/覆盖规划和固定尺寸 JPEG 输出。 |
 | `fetch_hot_song_candidates_test.py` | 热门歌曲 Python 入口的 CLI 默认值、来源筛选、并发调度和聚合报告格式。 |
 | `fetch_chart_scores_test.py` | 榜单积分脚本的 CLI 默认值、并发调度、歌曲归一化、积分聚合和各平台榜单解析契约。 |
 | `fetch_playlist_scores_test.py` | 歌单积分脚本的 CLI 默认值、歌单引用解析、并发调度、歌曲归一化、积分聚合和各平台歌单解析契约。 |
@@ -195,6 +197,41 @@ python3 -m pip install --user --break-system-packages spotifyscraper
 
 ```bash
 python3 scripts/tools/fetch_song_covers_test.py
+```
+
+## generate_cover_thumbnails.py
+
+`generate_cover_thumbnails.py` 用于把已经缓存到本地的 NAS 封面原图生成控制端首屏使用的小缩略图。数据库仍只保存原图地址 `ktv_songs.cover_image_url`，API 会把本地原图地址 `/media/covers/nas/<song-id>.jpg` 派生为 `/media/covers/nas/thumbs/<song-id>.jpg`，控制端优先加载缩略图，失败时再回退原图。
+
+核心逻辑：
+
+1. 扫描 `--source-root` 下的 `*.jpg` 原图。
+2. 输出到 `--output-root`，默认是源目录下的 `thumbs/`。
+3. 使用 Pillow 按比例缩放并居中填充到固定 `160x160`。
+4. 生成 progressive JPEG，默认 `quality=82`。
+5. 默认跳过已经存在且更新时间不早于原图的缩略图；需要重建时加 `--overwrite`。
+6. 使用线程池并发处理，默认 `--concurrency 20`。
+
+服务器常用命令：
+
+```bash
+bash deploy/source/ktv.sh cover-thumbnails -- \
+  --source-root /opt/home-ktv-system/runtime/media/covers/nas \
+  --output-root /opt/home-ktv-system/runtime/media/covers/nas/thumbs \
+  --size 160 \
+  --concurrency 20
+```
+
+如果缺少 Pillow：
+
+```bash
+python3 -m pip install --user pillow
+```
+
+相关测试：
+
+```bash
+python3 scripts/tools/generate_cover_thumbnails_test.py
 ```
 
 ## fetch_chart_scores.py

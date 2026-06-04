@@ -61,6 +61,25 @@ describe("song cover media route", () => {
     expect(response.headers["cache-control"]).toBe("public, max-age=2592000, immutable");
   });
 
+  it("streams locally generated NAS cover thumbnails by song id", async () => {
+    const coverRoot = await mkdtemp(join(tmpdir(), "home-ktv-covers-"));
+    await mkdir(join(coverRoot, "nas", "thumbs"), { recursive: true });
+    await writeFile(join(coverRoot, "nas", "thumbs", "song-4.jpg"), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+    const server = Fastify();
+    await registerMediaRoutes(server, { coverRoot });
+    await server.ready();
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/media/covers/nas/thumbs/song-4.jpg"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("image/jpeg");
+    expect(response.headers["cache-control"]).toBe("public, max-age=2592000, immutable");
+    expect(response.rawPayload).toEqual(Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+  });
+
   it("rejects unsafe cover ids before reading from disk", async () => {
     const coverRoot = await mkdtemp(join(tmpdir(), "home-ktv-covers-"));
     const server = Fastify();

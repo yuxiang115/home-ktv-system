@@ -17,6 +17,22 @@ export interface MediaRouteContext {
 }
 
 export async function registerMediaRoutes(fastify: FastifyInstance, context: MediaRouteContext): Promise<void> {
+  fastify.get<{ Params: { "*": string } }>("/media/covers/nas/thumbs/*", async (request, reply) => {
+    if (!context.coverRoot) {
+      return reply.status(503).send({ error: "SONG_COVER_MEDIA_UNAVAILABLE" });
+    }
+
+    const songId = parseNasCoverSongId(request.params["*"]);
+    if (!songId) {
+      return reply.status(400).send({ error: "INVALID_COVER_ID" });
+    }
+
+    return sendNasCoverImage(reply, {
+      filePath: join(context.coverRoot, "nas", "thumbs", `${songId}.jpg`),
+      rangeHeader: request.headers.range
+    });
+  });
+
   fastify.get<{ Params: { "*": string } }>("/media/covers/nas/*", async (request, reply) => {
     if (!context.coverRoot) {
       return reply.status(503).send({ error: "SONG_COVER_MEDIA_UNAVAILABLE" });
@@ -27,24 +43,9 @@ export async function registerMediaRoutes(fastify: FastifyInstance, context: Med
       return reply.status(400).send({ error: "INVALID_COVER_ID" });
     }
 
-    const coverPath = join(context.coverRoot, "nas", `${songId}.jpg`);
-    let coverStat: Awaited<ReturnType<typeof stat>>;
-    try {
-      coverStat = await stat(coverPath);
-    } catch {
-      return reply.status(404).send({ error: "SONG_COVER_NOT_FOUND" });
-    }
-
-    if (!coverStat.isFile()) {
-      return reply.status(404).send({ error: "SONG_COVER_NOT_FOUND" });
-    }
-
-    return sendResolvedMedia(reply, {
-      filePath: coverPath,
-      contentLength: coverStat.size,
-      contentType: await inferCoverImageContentType(coverPath),
-      rangeHeader: request.headers.range,
-      cacheControl: "public, max-age=2592000, immutable"
+    return sendNasCoverImage(reply, {
+      filePath: join(context.coverRoot, "nas", `${songId}.jpg`),
+      rangeHeader: request.headers.range
     });
   });
 
@@ -122,6 +123,30 @@ function parseNasCoverSongId(coverFileName: string): string | null {
     return null;
   }
   return coverFileName.slice(0, -".jpg".length);
+}
+
+async function sendNasCoverImage(
+  reply: FastifyReply,
+  input: { filePath: string; rangeHeader: string | undefined }
+): Promise<FastifyReply> {
+  let coverStat: Awaited<ReturnType<typeof stat>>;
+  try {
+    coverStat = await stat(input.filePath);
+  } catch {
+    return reply.status(404).send({ error: "SONG_COVER_NOT_FOUND" });
+  }
+
+  if (!coverStat.isFile()) {
+    return reply.status(404).send({ error: "SONG_COVER_NOT_FOUND" });
+  }
+
+  return sendResolvedMedia(reply, {
+    filePath: input.filePath,
+    contentLength: coverStat.size,
+    contentType: await inferCoverImageContentType(input.filePath),
+    rangeHeader: input.rangeHeader,
+    cacheControl: "public, max-age=2592000, immutable"
+  });
 }
 
 async function inferCoverImageContentType(filePath: string): Promise<string> {

@@ -9,6 +9,7 @@ export interface SongCoverLookupKey {
 
 export interface SongCoverEntry extends SongCoverLookupKey {
   imageUrl: string;
+  thumbnailImageUrl?: string;
 }
 
 export function songCoverKey(key: SongCoverLookupKey): string {
