@@ -152,6 +152,11 @@ async function main(currentCommand, currentArg, currentArgs) {
       ensureDirs();
       await runForeground("pnpm", ["-F", "@home-ktv/api", "probe:ktv-index", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
       return;
+    case "import-songs":
+      requireEnvFile();
+      ensureDirs();
+      await runForeground("pnpm", ["-F", "@home-ktv/api", "import:songs", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
+      return;
     case "fetch-covers":
       requireEnvFile();
       ensureDirs();
@@ -529,6 +534,7 @@ function printUsage(error = false) {
     "  logs [svc]  Follow logs for all services or one service",
     "  doctor      Run deployment self-checks",
     "  smoke       Run public web deployment smoke checks",
+    "  import-songs Import songs from one NAS subdirectory without marking others missing",
     "  probe-index Probe indexed KTV media technical metadata",
     "  fetch-covers Batch fetch and cache song cover images",
     "  cover-coverage Test cover lookup coverage without writing database rows",

@@ -12,6 +12,7 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "migrate": "node scripts/apply-migrations.mjs",
     "index:ktv": "tsx src/scripts/ktv-full-index.ts",
+    "import:songs": "tsx src/scripts/ktv-song-import.ts",
     "probe:ktv-index": "tsx src/scripts/ktv-index-probe.ts",
     "clean:variety-show-metadata": "tsx src/scripts/clean-variety-show-metadata.ts",
     "covers:songs": "python3 ../../scripts/tools/fetch_song_covers.py fetch",

@@ -10,8 +10,8 @@
 
 ```text
 OpenList 下载到指定目录
-  -> 扫描曲库并写入 ktv_songs
-  -> 初步筛选，必要时删除一部分
+  -> 扫描导入目录并写入 ktv_songs
+  -> 可选：初步筛选，必要时删除一部分
   -> probe 媒体探测，补音轨和编码信息
   -> 风格标签补全
   -> 封面缓存补全
@@ -29,10 +29,16 @@ OpenList 下载目标应放在 NAS 曲库根目录下面，例如：
 
 文件最终必须位于 `/mnt/nas/KTV歌曲` 下面，才能被当前曲库扫描纳入。
 
-当前索引脚本是全量曲库扫描，不是真正的 partial import。不要把 `--source-root` 指向 `_imports/<批次名>` 这种子目录来做正式入库，否则全量缺失标记逻辑会把主曲库中本轮没有扫到的歌曲标记为 `missing`。正式入库时仍然扫描完整曲库根目录：
+正式导入使用 partial import 脚本。它只扫描指定批次目录，并用完整 NAS 曲库根目录计算 `relative_path`；不会把主曲库其它歌曲标记为 `missing`。
 
-```text
-/mnt/nas/KTV歌曲
+不要把全量索引脚本 `index:ktv --source-root` 指向 `_imports/<批次名>` 这种子目录来做正式入库。
+
+正式导入时，批次目录仍应位于完整曲库根目录下面：
+
+```bash
+bash deploy/source/ktv.sh import-songs -- \
+  --import-root /mnt/nas/KTV歌曲/_imports/<批次名> \
+  --library-root /mnt/nas/KTV歌曲
 ```
 
 ## 1. 用 OpenList 下载歌曲
@@ -62,7 +68,7 @@ find /mnt/nas/KTV歌曲/_imports/<批次名> -type f \
 
 不符合规则的目录或文件名，应先补解析规则和测试，再纳入主曲库。
 
-## 2. 扫描入库
+## 2. 扫描导入目录入库
 
 在 `lxc-dev` 上执行。源码部署会通过 `deploy/source/.env` 提供数据库连接等环境变量：
 
@@ -72,26 +78,37 @@ set -a
 . deploy/source/.env
 set +a
 
-pnpm -F @home-ktv/api index:ktv -- \
-  --source-root /mnt/nas/KTV歌曲 \
-  --preserve-existing
+bash deploy/source/ktv.sh import-songs -- \
+  --import-root /mnt/nas/KTV歌曲/_imports/<批次名> \
+  --library-root /mnt/nas/KTV歌曲
 ```
 
 涉及代码：
 
 ```text
 apps/api/src/scripts/ktv-full-index.ts
+apps/api/src/scripts/ktv-song-import.ts
 apps/api/src/modules/ingest/ktv-full-index.ts
 apps/api/src/modules/ingest/ktv-sample-index.ts
 ```
 
 这一步会：
 
-- 遍历 `/mnt/nas/KTV歌曲` 下的 `.mkv`、`.mpg`、`.mpeg` 文件。
+- 遍历 `--import-root` 下的 `.mkv`、`.mpg`、`.mpeg` 文件。
 - 解析歌名、歌手、文件路径、文件大小和修改时间。
 - 按 `file_path` upsert 到 `ktv_songs`。
 - 新入库歌曲默认 `technical_status = 'pending'`。
-- 使用 `--preserve-existing` 时，同路径已有记录会保留标题、歌手、标签、封面和探测信息，只刷新存在性和文件信息。
+- 默认保留同路径已有记录的标题、歌手、标签、封面和探测信息，只刷新存在性和文件信息。
+- 不标记其它目录歌曲为 `missing`。
+
+如果确实要重解析并覆盖同路径已有歌曲的元数据，可以显式加 `--overwrite-existing`：
+
+```bash
+bash deploy/source/ktv.sh import-songs -- \
+  --import-root /mnt/nas/KTV歌曲/_imports/<批次名> \
+  --library-root /mnt/nas/KTV歌曲 \
+  --overwrite-existing
+```
 
 扫描后可查看曲库总量：
 
@@ -104,9 +121,9 @@ from ktv_songs;
 "
 ```
 
-## 3. 初步筛选
+## 3. 可选：初步筛选
 
-扫描后可以先做一轮人工或脚本筛选。筛选可能删除一部分歌曲，常见依据包括：
+扫描后可以先做一轮人工或脚本筛选，但这不是必做阶段。筛选可能删除一部分歌曲，常见依据包括：
 
 - 文件名明显不合规。
 - 歌手和歌名解析错误。
@@ -348,14 +365,3 @@ bash deploy/source/ktv.sh cover-status
 curl -sS 'https://ktv-api.shaolongfei.com/admin/ktv-index/diagnostics?sampleSize=0' \
   | jq '{activeAssetCount, songCount, technicalStatusCounts, probePendingCount, probeFailedCount, probeCoveragePercent}'
 ```
-
-## 当前缺口
-
-当前还没有专门的“只导入指定目录且不影响其它歌曲”的 partial import 脚本。现阶段正式入库仍使用完整曲库根目录扫描，并依赖 `--preserve-existing` 保护已有歌曲元数据。
-
-如果后续频繁按批次导入，建议新增一个只处理指定目录的导入脚本，要求：
-
-- 只 upsert 指定目录下的文件。
-- 不标记其它目录歌曲为 `missing`。
-- 输出本批新增、更新、跳过和失败清单。
-- 自动串联 probe、标签、封面任务或生成下一步命令。

@@ -9,6 +9,7 @@ import type { RoomRepository } from "../modules/rooms/repositories/room-reposito
 import { registerSongDiscoveryRoutes } from "../routes/song-discovery.js";
 
 const now = "2026-05-28T10:00:00.000Z";
+type FakeCoverEntry = string | { imageUrl: string; thumbnailImageUrl?: string };
 
 describe("song discovery routes", () => {
   it("returns ROOM_NOT_FOUND for missing rooms", async () => {
@@ -269,7 +270,7 @@ async function createHarness(input: {
   ktvIndex?: KtvIndexReadRepository;
   queueEntries?: readonly QueueEntry[];
   playCounts?: Record<string, number>;
-  coverEntries?: Record<string, string>;
+  coverEntries?: Record<string, FakeCoverEntry>;
 } = {}) {
   const server = Fastify();
   const queueEntries = new FakeQueueEntryRepository(input.queueEntries ?? [], input.playCounts ?? {});
@@ -371,7 +372,7 @@ class FakeQueueEntryRepository implements QueueEntryRepository {
 class FakeSongCovers implements Pick<SongCoverRepository, "findBySongKeys"> {
   readonly lookupCalls: SongCoverLookupKey[][] = [];
 
-  constructor(private readonly entries: Record<string, string | { imageUrl: string; thumbnailImageUrl?: string }>) {}
+  constructor(private readonly entries: Record<string, FakeCoverEntry>) {}
 
   async findBySongKeys(keys: readonly SongCoverLookupKey[]) {
     this.lookupCalls.push([...keys]);
