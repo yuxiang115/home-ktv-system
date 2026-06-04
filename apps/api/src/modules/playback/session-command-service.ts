@@ -237,6 +237,7 @@ export async function handlePlayerEnded(input: HandlePlayerEndedInput): Promise<
     return { status: "rejected", snapshot: null, sessionVersion: 0 };
   }
 
+  const currentPlayback = await currentPlaybackTelemetryMatch(input, room);
   await input.playbackEvents.append({
     roomId: room.id,
     queueEntryId: input.queueEntryId,
@@ -246,9 +247,15 @@ export async function handlePlayerEnded(input: HandlePlayerEndedInput): Promise<
       sessionVersion: input.sessionVersion,
       assetId: input.assetId,
       playbackPositionMs: input.playbackPositionMs,
+      ignored: !currentPlayback.matches,
+      ignoreReason: currentPlayback.matches ? null : currentPlayback.reason,
       emittedAt: now.toISOString()
     }
   });
+
+  if (!currentPlayback.matches) {
+    return { status: "rejected", snapshot: null, sessionVersion: currentPlayback.sessionVersion };
+  }
 
   const result = await advanceToNext({
     room,
@@ -281,6 +288,38 @@ export async function handlePlayerFailed(input: HandlePlayerFailedInput): Promis
       status: "rejected",
       snapshot: null,
       sessionVersion: 0,
+      failureCause: input.failureCause,
+      fallbackResult: "skipped_to_idle",
+      notice: playbackFailedNotice(input.failureCause, "skipped_to_idle")
+    };
+  }
+
+  const currentPlayback = await currentPlaybackTelemetryMatch(input, room);
+  if (!currentPlayback.matches) {
+    await input.playbackEvents.append({
+      roomId: room.id,
+      queueEntryId: input.queueEntryId,
+      eventType: "failed",
+      eventPayload: {
+        deviceId: input.deviceId,
+        sessionVersion: input.sessionVersion,
+        assetId: input.assetId,
+        playbackPositionMs: input.playbackPositionMs,
+        failureCause: input.failureCause,
+        fallbackResult: "ignored_stale",
+        message: input.message ?? null,
+        errorCode: input.errorCode ?? null,
+        stage: input.stage ?? null,
+        ignored: true,
+        ignoreReason: currentPlayback.reason,
+        emittedAt: now.toISOString()
+      }
+    });
+
+    return {
+      status: "rejected",
+      snapshot: null,
+      sessionVersion: currentPlayback.sessionVersion,
       failureCause: input.failureCause,
       fallbackResult: "skipped_to_idle",
       notice: playbackFailedNotice(input.failureCause, "skipped_to_idle")
@@ -426,6 +465,43 @@ export async function advanceToNext(input: AdvanceToNextInput): Promise<{
     snapshot,
     sessionVersion: updatedSession?.version ?? snapshot?.sessionVersion ?? session.version
   };
+}
+
+async function currentPlaybackTelemetryMatch(
+  input: HandlePlayerEndedInput,
+  room: Room
+): Promise<{ matches: true; sessionVersion: number } | { matches: false; sessionVersion: number; reason: string }> {
+  const session = await input.repositories.playbackSessions.findByRoomId(room.id);
+  if (!session) {
+    return { matches: false, sessionVersion: 0, reason: "playback_session_missing" };
+  }
+
+  if (session.currentQueueEntryId !== input.queueEntryId) {
+    return {
+      matches: false,
+      sessionVersion: session.version,
+      reason: "queue_entry_not_current"
+    };
+  }
+
+  const currentEntry = await input.repositories.queueEntries.findById(input.queueEntryId);
+  if (!currentEntry || currentEntry.roomId !== room.id) {
+    return {
+      matches: false,
+      sessionVersion: session.version,
+      reason: "queue_entry_missing"
+    };
+  }
+
+  if (currentEntry.assetId !== input.assetId) {
+    return {
+      matches: false,
+      sessionVersion: session.version,
+      reason: "asset_not_current"
+    };
+  }
+
+  return { matches: true, sessionVersion: session.version };
 }
 
 function playbackFailedNotice(

@@ -100,6 +100,7 @@ class MainActivity : Activity() {
     private var desiredVolumePercent = DEFAULT_ROOM_VOLUME_PERCENT
     private var renderedQrPayload: String? = null
     private var renderedNoticeMessage: String? = null
+    private var suppressReplacementTerminalEvents = false
     private val sentTelemetryKeys = mutableSetOf<String>()
     private val blessingInteractions = linkedMapOf<String, Pair<RoomInteractionEvent, View>>()
     private val rainbowPraiseCards = linkedMapOf<String, View>()
@@ -791,6 +792,8 @@ class MainActivity : Activity() {
         logCurrentPlaybackUrl(url, sample, target)
 
         if (mediaPlayer.hasMedia()) {
+            suppressReplacementTerminalEvents = true
+            roomHandler.postDelayed({ suppressReplacementTerminalEvents = false }, MEDIA_REPLACEMENT_SUPPRESSION_MS)
             mediaPlayer.stop()
         }
         val media = Media(libVlc, Uri.parse(url))
@@ -955,6 +958,9 @@ class MainActivity : Activity() {
             }
 
             MediaPlayer.Event.EndReached -> {
+                if (consumeSuppressedReplacementTerminalEvent("ended")) {
+                    return
+                }
                 setStatus("播放结束")
                 updateProgress()
                 activeTarget?.let { target ->
@@ -971,6 +977,9 @@ class MainActivity : Activity() {
             }
 
             MediaPlayer.Event.EncounteredError -> {
+                if (consumeSuppressedReplacementTerminalEvent("failed")) {
+                    return
+                }
                 setStatus("播放失败")
                 activeTarget?.let { target ->
                     sendTelemetryOnce(
@@ -1234,7 +1243,13 @@ class MainActivity : Activity() {
         }
 
         if (::playbackStateText.isInitialized) {
-            playbackStateText.text = playbackStateLabel()
+            playbackStateText.text = playbackStateLabelForRefresh(
+                currentLabel = playbackStateText.text.toString(),
+                roomModeActive = roomModeActive,
+                hasActiveTarget = activeTarget != null,
+                hasCurrentMedia = currentMediaUrl != null,
+                isPlayerPlaying = ::mediaPlayer.isInitialized && mediaPlayer.isPlaying,
+            )
             playbackStateText.setTextColor(playbackStateColor(playbackStateText.text.toString()))
         }
 
@@ -1299,9 +1314,18 @@ class MainActivity : Activity() {
 
     private fun updatePlaybackState(value: String) {
         if (!::playbackStateText.isInitialized) return
-        val label = playbackStateLabelForStatus(value) ?: playbackStateLabel()
+        val label = playbackStateLabelForStatus(value, roomModeActive) ?: playbackStateLabel()
         playbackStateText.text = label
         playbackStateText.setTextColor(playbackStateColor(label))
+    }
+
+    private fun consumeSuppressedReplacementTerminalEvent(kind: String): Boolean {
+        if (!suppressReplacementTerminalEvents) {
+            return false
+        }
+        suppressReplacementTerminalEvents = false
+        Log.i(TAG, "Ignored stale libVLC $kind event during media replacement")
+        return true
     }
 
     private fun showStatusNotice(notice: TvStatusNotice) {
@@ -2025,12 +2049,12 @@ class MainActivity : Activity() {
     }
 
     private fun playbackStateLabel(): String {
-        return when {
-            activeTarget == null && roomModeActive -> "待点歌"
-            ::mediaPlayer.isInitialized && mediaPlayer.isPlaying -> "播放中"
-            currentMediaUrl != null -> "准备中"
-            else -> "待播放"
-        }
+        return playbackStateLabelForMedia(
+            roomModeActive = roomModeActive,
+            hasActiveTarget = activeTarget != null,
+            hasCurrentMedia = currentMediaUrl != null,
+            isPlayerPlaying = ::mediaPlayer.isInitialized && mediaPlayer.isPlaying,
+        )
     }
 
     private fun vocalModeColor(vocalMode: String?): Int {
@@ -2047,17 +2071,6 @@ class MainActivity : Activity() {
             "准备中" -> Color.rgb(251, 191, 36)
             "异常" -> Color.rgb(248, 113, 113)
             else -> Color.rgb(203, 213, 225)
-        }
-    }
-
-    private fun playbackStateLabelForStatus(value: String): String? {
-        return when {
-            value.startsWith("正在播放") -> "播放中"
-            value == "已暂停" -> "已暂停"
-            value == "已停止" || value == "播放结束" -> if (roomModeActive) "待点歌" else "待播放"
-            value.contains("播放失败") -> "异常"
-            value.contains("正在打开") || value.contains("缓冲") || value.contains("正在切换") -> "准备中"
-            else -> null
         }
     }
 
@@ -2136,6 +2149,7 @@ class MainActivity : Activity() {
         private const val PREFERENCE_DEVICE_ID = "device-id"
         private const val HEARTBEAT_INTERVAL_MS = 10_000L
         private const val SNAPSHOT_POLL_INTERVAL_MS = 5_000L
+        private const val MEDIA_REPLACEMENT_SUPPRESSION_MS = 1_200L
     }
 }
 
