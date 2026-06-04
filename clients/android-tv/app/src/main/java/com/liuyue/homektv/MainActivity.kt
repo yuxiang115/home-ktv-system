@@ -1335,7 +1335,11 @@ class MainActivity : Activity() {
 
     private fun updatePlaybackState(value: String) {
         if (!::playbackStateText.isInitialized) return
-        val label = playbackStateLabelForStatus(value, roomModeActive) ?: playbackStateLabel()
+        val label = playbackStateLabelForStatus(
+            value = value,
+            roomModeActive = roomModeActive,
+            currentLabel = playbackStateText.text.toString(),
+        ) ?: playbackStateLabel()
         playbackStateText.text = label
         playbackStateText.setTextColor(playbackStateColor(label))
     }

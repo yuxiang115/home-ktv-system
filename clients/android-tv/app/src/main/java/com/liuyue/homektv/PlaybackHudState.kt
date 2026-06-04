@@ -1,11 +1,12 @@
 package com.liuyue.homektv
 
-fun playbackStateLabelForStatus(value: String, roomModeActive: Boolean): String? {
+fun playbackStateLabelForStatus(value: String, roomModeActive: Boolean, currentLabel: String? = null): String? {
     return when {
         value.startsWith("正在播放") -> "播放中"
         value == "已暂停" -> "已暂停"
         value == "已停止" || value == "播放结束" -> if (roomModeActive) "待点歌" else "待播放"
         value.contains("播放失败") -> "异常"
+        value.contains("缓冲") && currentLabel == "播放中" -> "播放中"
         value.contains("正在打开") || value.contains("缓冲") || value.contains("正在切换") -> "准备中"
         else -> null
     }

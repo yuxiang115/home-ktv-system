@@ -10,6 +10,22 @@ class PlaybackHudStateTest {
     }
 
     @Test
+    fun keepsPlayingLabelWhenBufferingEventArrivesDuringPlayback() {
+        assertEquals(
+            "播放中",
+            playbackStateLabelForStatus("缓冲中 100%", roomModeActive = true, currentLabel = "播放中"),
+        )
+    }
+
+    @Test
+    fun mapsBufferingBeforePlaybackToPreparingLabel() {
+        assertEquals(
+            "准备中",
+            playbackStateLabelForStatus("缓冲中 12%", roomModeActive = true, currentLabel = "准备中"),
+        )
+    }
+
+    @Test
     fun keepsPlayingLabelDuringAudioTrackRefreshEvenWhenRuntimeFlagIsLate() {
         val label = playbackStateLabelForRefresh(
             currentLabel = "播放中",
