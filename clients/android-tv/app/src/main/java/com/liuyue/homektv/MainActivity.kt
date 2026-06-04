@@ -101,6 +101,10 @@ class MainActivity : Activity() {
     private var renderedQrPayload: String? = null
     private var renderedNoticeMessage: String? = null
     private var suppressReplacementTerminalEvents = false
+    private val playbackErrorRecovery = PlaybackErrorRecovery(
+        maxRetriesPerQueueEntry = PLAYBACK_ERROR_RECOVERY_RETRIES,
+        rewindMs = PLAYBACK_ERROR_RECOVERY_REWIND_MS,
+    )
     private val sentTelemetryKeys = mutableSetOf<String>()
     private val blessingInteractions = linkedMapOf<String, Pair<RoomInteractionEvent, View>>()
     private val rainbowPraiseCards = linkedMapOf<String, View>()
@@ -611,6 +615,7 @@ class MainActivity : Activity() {
         selectedTrackKey = null
         renderedNoticeMessage = null
         sentTelemetryKeys.clear()
+        playbackErrorRecovery.clear()
         currentMediaUrl = null
         if (::mediaPlayer.isInitialized && mediaPlayer.hasMedia()) {
             mediaPlayer.stop()
@@ -980,6 +985,9 @@ class MainActivity : Activity() {
                 if (consumeSuppressedReplacementTerminalEvent("failed")) {
                     return
                 }
+                if (recoverFromPlaybackError()) {
+                    return
+                }
                 setStatus("播放失败")
                 activeTarget?.let { target ->
                     sendTelemetryOnce(
@@ -1002,6 +1010,19 @@ class MainActivity : Activity() {
                 refreshAudioTrackText()
             }
         }
+    }
+
+    private fun recoverFromPlaybackError(): Boolean {
+        val target = activeTarget ?: return false
+        val retryPosition = playbackErrorRecovery.nextRetryPosition(
+            queueEntryId = target.queueEntryId,
+            currentPositionMs = currentPlaybackPositionMs(),
+        ) ?: return false
+
+        setStatus("播放异常，正在恢复")
+        Log.w(TAG, "Recovering playback error at ${currentPlaybackPositionMs()}ms; retryFrom=${retryPosition}ms")
+        playUrl(target.playbackUrl, target = target.copy(resumePositionMs = retryPosition))
+        return true
     }
 
     private fun applyPendingTrackSelection() {
@@ -2150,6 +2171,8 @@ class MainActivity : Activity() {
         private const val HEARTBEAT_INTERVAL_MS = 10_000L
         private const val SNAPSHOT_POLL_INTERVAL_MS = 5_000L
         private const val MEDIA_REPLACEMENT_SUPPRESSION_MS = 1_200L
+        private const val PLAYBACK_ERROR_RECOVERY_RETRIES = 1
+        private const val PLAYBACK_ERROR_RECOVERY_REWIND_MS = 1_500L
     }
 }
 
