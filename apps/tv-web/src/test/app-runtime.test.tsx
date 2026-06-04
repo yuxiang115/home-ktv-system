@@ -269,6 +269,25 @@ describe("tv app runtime", () => {
     await waitFor(() => expect(screen.queryByText("点击电视开始播放")).toBeNull());
   });
 
+  it("retries blocked playback when the first-play prompt is clicked", async () => {
+    const playbackSnapshot = snapshot({ state: "loading", targetVocalMode: "original" });
+    mocks.roomSnapshot.mockImplementation(() => playbackSnapshot);
+    mocks.activePlaybackEnsurePlaying.mockResolvedValueOnce({
+      status: "blocked",
+      message: "play() failed"
+    });
+    mocks.createBrowserPlayerClient.mockReturnValue(createClient());
+    mocks.createBrowserVideoPool.mockReturnValue(createPool({ activeTarget: playbackSnapshot.currentTarget }));
+
+    render(<App />);
+
+    const unlockButton = await screen.findByRole("button", { name: "点击电视开始播放" });
+    fireEvent.click(unlockButton);
+
+    await waitFor(() => expect(mocks.activePlaybackEnsurePlaying).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "点击电视开始播放" })).toBeNull());
+  });
+
   it("keeps playback alive when initial audio-track selection degrades to the browser default track", async () => {
     const playbackSnapshot = snapshot({ state: "loading", targetVocalMode: "instrumental" });
     mocks.roomSnapshot.mockImplementation(() => playbackSnapshot);

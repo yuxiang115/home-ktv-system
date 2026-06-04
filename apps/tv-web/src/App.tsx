@@ -30,7 +30,8 @@ export function App() {
           runtime.roomState.errorMessage,
           runtime.playbackPositionMs,
           runtime.durationMs,
-          runtime.firstPlayBlocked
+          runtime.firstPlayBlocked,
+          runtime.handleFirstPlayPromptClick
         )}
       </div>
       <InteractionOverlay interactions={runtime.interactions} />
@@ -44,7 +45,8 @@ function renderScreen(
   errorMessage: string | null,
   playbackPositionMs: number,
   durationMs: number | null,
-  firstPlayBlocked: boolean
+  firstPlayBlocked: boolean,
+  onFirstPlayPromptClick: () => void
 ) {
   const displayState = deriveTvDisplayState({
     errorMessage,
@@ -74,7 +76,15 @@ function renderScreen(
   }
 
   if (snapshot.state === "playing" || snapshot.state === "loading" || snapshot.state === "recovering") {
-    return <PlayingScreen displayState={displayState} snapshot={snapshot} playbackPositionMs={playbackPositionMs} durationMs={durationMs} />;
+    return (
+      <PlayingScreen
+        displayState={displayState}
+        snapshot={snapshot}
+        playbackPositionMs={playbackPositionMs}
+        durationMs={durationMs}
+        onFirstPlayPromptClick={onFirstPlayPromptClick}
+      />
+    );
   }
 
   return <IdleScreen displayState={displayState} pairing={snapshot.pairing} />;

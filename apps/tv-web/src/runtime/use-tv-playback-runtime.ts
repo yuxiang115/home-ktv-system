@@ -21,6 +21,7 @@ export interface UseTvPlaybackRuntimeInput {
 export interface TvPlaybackRuntimeState {
   durationMs: number | null;
   firstPlayBlocked: boolean;
+  handleFirstPlayPromptClick(): void;
   handleVideoEnded(event: SyntheticEvent<HTMLVideoElement>): void;
   interactions: readonly RoomInteractionEvent[];
   playbackPositionMs: number;
@@ -99,28 +100,32 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
     return () => globalThis.clearInterval(intervalId);
   }, [roomState.snapshot?.currentTarget?.queueEntryId]);
 
+  const retryCurrentPlayback = useCallback(() => {
+    const pool = videoPoolRef.current;
+    const snapshot = latestSnapshotRef.current;
+    if (!pool || !snapshot) {
+      return;
+    }
+
+    void synchronizePlayback({
+      client,
+      pool,
+      snapshot,
+      setFirstPlayBlocked,
+      sentPlaybackTelemetryRef,
+      setLocalNotice,
+      switchInFlightRef: vocalModeSwitchInFlightRef
+    });
+  }, [client]);
+
   useEffect(() => {
     const handlePointerDown = () => {
-      const pool = videoPoolRef.current;
-      const snapshot = roomState.snapshot;
-      if (!pool || !snapshot) {
-        return;
-      }
-
-      void synchronizePlayback({
-        client,
-        pool,
-        snapshot,
-        setFirstPlayBlocked,
-        sentPlaybackTelemetryRef,
-        setLocalNotice,
-        switchInFlightRef: vocalModeSwitchInFlightRef
-      });
+      retryCurrentPlayback();
     };
 
     globalThis.addEventListener("pointerdown", handlePointerDown);
     return () => globalThis.removeEventListener("pointerdown", handlePointerDown);
-  }, [client, roomState.snapshot]);
+  }, [retryCurrentPlayback]);
 
   useEffect(() => {
     const sendHeartbeat = () => {
@@ -215,6 +220,7 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
   return {
     durationMs,
     firstPlayBlocked,
+    handleFirstPlayPromptClick: retryCurrentPlayback,
     handleVideoEnded,
     interactions: roomState.interactions,
     playbackPositionMs,

@@ -10,9 +10,10 @@ export interface PlayingScreenProps {
   snapshot: RoomSnapshot;
   playbackPositionMs: number;
   durationMs: number | null;
+  onFirstPlayPromptClick?: () => void;
 }
 
-export function PlayingScreen({ displayState, snapshot, playbackPositionMs, durationMs }: PlayingScreenProps) {
+export function PlayingScreen({ displayState, snapshot, playbackPositionMs, durationMs, onFirstPlayPromptClick }: PlayingScreenProps) {
   const target = snapshot.currentTarget;
   const modeLabel = modeLabelFor(target?.vocalMode ?? "unknown");
   const clock = formatPlaybackClock(playbackPositionMs, durationMs);
@@ -36,9 +37,15 @@ export function PlayingScreen({ displayState, snapshot, playbackPositionMs, dura
       </footer>
       {displayState.firstPlayPrompt.visible ? (
         <div role="status" style={styles.firstPlayPrompt}>
-          <h2 aria-label="点击电视开始播放" style={styles.promptHeading}>
+          <button
+            aria-label="点击电视开始播放"
+            onClick={onFirstPlayPromptClick}
+            onPointerDown={(event) => event.stopPropagation()}
+            style={styles.promptButton}
+            type="button"
+          >
             {displayState.firstPlayPrompt.heading}
-          </h2>
+          </button>
           <p style={styles.promptBody}>{displayState.firstPlayPrompt.body}</p>
         </div>
       ) : null}
@@ -199,8 +206,14 @@ const styles = {
     transform: "translate(-50%, -50%)",
     width: "min(720px, calc(100vw - 128px))"
   },
-  promptHeading: {
+  promptButton: {
+    appearance: "none",
+    background: "transparent",
+    border: 0,
     color: tvTheme.colors.warning,
+    cursor: "pointer",
+    display: "block",
+    fontFamily: tvTheme.fonts.heading,
     fontSize: 44,
     fontWeight: 950,
     letterSpacing: 0,
