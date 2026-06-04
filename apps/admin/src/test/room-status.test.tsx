@@ -101,7 +101,9 @@ describe("room status view", () => {
     expect(screen.getByText("provider-timeout")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "最近事件" })).toBeTruthy();
     expect(screen.getByText("播放失败")).toBeTruthy();
-    expect(screen.getByText("player.failed")).toBeTruthy();
+    expect(screen.getByText("恢复时从头播放")).toBeTruthy();
+    expect(screen.getByText("failed", { selector: "code" })).toBeTruthy();
+    expect(screen.getByText("recovery_fallback_start_over", { selector: "code" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "入库任务 task-ready" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "刷新配对 token" }));
@@ -441,9 +443,17 @@ function roomStatus(tokenExpiresAt: string, promoted = false) {
         id: "playback-event-failed",
         roomId: "living-room",
         queueEntryId: "queue-current",
-        eventType: "player.failed",
+        eventType: "failed",
         eventPayload: { reason: "media-error", recovery: "skipped-to-next" },
         createdAt: "2026-05-04T10:03:00.000Z"
+      },
+      {
+        id: "playback-event-recovery",
+        roomId: "living-room",
+        queueEntryId: "queue-current",
+        eventType: "recovery_fallback_start_over",
+        eventPayload: { previousPositionMs: 12000, resumedPositionMs: 0 },
+        createdAt: "2026-05-04T10:02:30.000Z"
       }
     ],
     onlineTasks
