@@ -16,6 +16,11 @@
 | `web-deploy-smoke.mjs` | 部署后的公开入口 smoke，验证 CORS、TV bootstrap、heartbeat、控制端看到 TV 在线、推荐列表非空。 | `pnpm deploy:smoke` / `bash deploy/source/ktv.sh smoke` |
 | `repo-hygiene-check.mjs` | 提交前仓库卫生检查，区分 tracked dirty、高风险未跟踪文件和本地运行产物。 | `pnpm repo:hygiene` |
 | `fetch_song_covers.py` | 批量查询、下载并缓存歌曲封面，也支持单首歌封面探测；把本地公开封面 URL 写回 `ktv_songs.cover_image_url`。 | `bash deploy/source/ktv.sh fetch-covers -- ...` / `python3 scripts/tools/fetch_song_covers.py probe 夜之光 花姐` |
+| `fetch_hot_song_candidates.py` | Python 入口，复用 `packages/hot-songs` 现有流水线，并发抓热门歌曲来源后输出总榜候选。 | `python3 scripts/tools/fetch_hot_song_candidates.py collect --concurrency 10` |
+| `fetch_chart_scores.py` | 抓取中文主流音乐平台全部榜单，按歌曲在不同榜单出现次数累计积分，输出聚合 CSV 供曲库清理筛选。 | `python3 scripts/tools/fetch_chart_scores.py collect --platforms qq,kugou,kuwo,migu --concurrency 10` |
+| `fetch_playlist_scores.py` | 抓取中文主流音乐平台的用户歌单歌曲，支持关键词搜歌单和直接抓歌单链接/ID，按歌曲在不同歌单出现次数累计积分。 | `python3 scripts/tools/fetch_playlist_scores.py collect --keywords 周杰伦 --concurrency 10` |
+| `merge_music_scores.py` | 合并热门歌曲、全部榜单、歌单三份积分产物，按歌曲名+歌手去重，输出总分表。 | `python3 scripts/tools/merge_music_scores.py merge --hot-input <dir> --chart-input <dir> --playlist-input <dir>` |
+| `delete_uncovered_songs.py` | 根据待删 CSV 执行删歌，删除数据库记录、封面缓存和 NAS 媒体文件；支持 `plan` 和 `apply`。 | `python3 scripts/tools/delete_uncovered_songs.py plan --input runtime/.../delete-uncovered-songs.csv` |
 | `run_style_tagging_llm_batch.py` | 离线批量给歌曲补风格标签，先生成 JSONL，再导入 `ktv_songs.style_tags`。 | `pnpm ktv:tags:llm-batch:py -- ...` |
 | `ui-visual-check.mjs` | 控制端和 Admin 的 Chrome 截图检查。 | `pnpm ui:visual-check` |
 | `tv-visual-check.mjs` | Web TV 的 Chrome 截图检查。 | `pnpm tv:visual-check` |
@@ -32,6 +37,11 @@
 | `web-deploy-smoke.test.mjs` | Web smoke 的 CORS、页面可达性、TV bootstrap/heartbeat、控制端 session 和 discovery 检查。 |
 | `repo-hygiene-check.test.mjs` | Git 状态解析、高风险未跟踪路径识别和 dirty 报告。 |
 | `fetch_song_covers_test.py` | 封面路径、公开 URL、并发调度、图片校验、历史跳过、匹配评分、provider fallback、单首探测和 JSONL 历史读取。 |
+| `fetch_hot_song_candidates_test.py` | 热门歌曲 Python 入口的 CLI 默认值、来源筛选、并发调度和聚合报告格式。 |
+| `fetch_chart_scores_test.py` | 榜单积分脚本的 CLI 默认值、并发调度、歌曲归一化、积分聚合和各平台榜单解析契约。 |
+| `fetch_playlist_scores_test.py` | 歌单积分脚本的 CLI 默认值、歌单引用解析、并发调度、歌曲归一化、积分聚合和各平台歌单解析契约。 |
+| `merge_music_scores_test.py` | 三份积分 CSV 的路径解析、归一化去重、分数合并和本地输出写入。 |
+| `delete_uncovered_songs_test.py` | 待删 CSV 读取、路径转换、删除 SQL 模板和 dry-run 报告输出。 |
 | `run_style_tagging_llm_batch_test.py` | LLM 标签批处理的短 ID prompt、返回校验、标签过滤和导入 SQL。 |
 | `ui-visual-check.test.mjs` | 控制端视觉截图 URL 的 pairing token 刷新和错误处理。 |
 | `real-mv-playback-risk-spike.test.mjs` | MV 播放风险报告的 controlled/local sample 输出。 |
@@ -185,6 +195,279 @@ python3 -m pip install --user --break-system-packages spotifyscraper
 
 ```bash
 python3 scripts/tools/fetch_song_covers_test.py
+```
+
+## fetch_chart_scores.py
+
+`fetch_chart_scores.py` 用于离线抓取中文主流音乐平台的榜单歌曲，并按“同一首歌每出现在一个榜单里记 10 分”的规则输出聚合结果，作为后续曲库淘汰的基础表单。
+
+当前脚本入口只提供 `collect` 子命令，默认 `--concurrency 10`。第一版支持：
+
+- `qq`
+- `kugou`
+- `kuwo`
+- `migu`
+- `netease`（依赖本地 `NeteaseCloudMusicApiBackup`，默认 `http://127.0.0.1:4300`）
+
+核心逻辑：
+
+1. 拉取各平台榜单入口，枚举全部榜单。
+2. 逐个榜单抓歌名和歌手。
+3. 对歌名和歌手做归一化，去掉常见噪音，如 `Live`、`DJ版`、括号版型差异、全半角差异、空白差异。
+4. 同一榜单内重复歌曲只计一次分。
+5. 汇总到 `runtime/chart-scores/run-时间戳/` 或显式 `--output` 目录。
+
+输出文件：
+
+- `source-report.json`：每个平台/榜单抓取状态，便于看哪些源失败
+- `chart-rows.json`：原始榜单行
+- `aggregated-songs.csv`：最终积分表
+
+常用命令：
+
+```bash
+python3 scripts/tools/fetch_chart_scores.py collect
+python3 scripts/tools/fetch_chart_scores.py collect --platforms qq,kugou,kuwo,migu --concurrency 10 --output runtime/chart-scores/smoke
+python3 scripts/tools/fetch_chart_scores.py collect --platforms netease --netease-base-url http://127.0.0.1:4300
+```
+
+常用参数：
+
+- `--platforms`：逗号分隔的平台列表，默认 `netease,qq,kugou,kuwo,migu`
+- `--per-source-points`：每命中一个榜单加多少分，默认 `10`
+- `--output`：输出目录
+- `--request-timeout-ms`：单请求超时，默认 `8000`
+- `--delay-ms`：请求之间的延迟，默认 `300`
+- `--concurrency`：榜单抓取并发数，默认 `10`
+- `--max-kugou-pages`：酷狗榜单最多翻页数，默认 `50`
+- `--netease-base-url`：本地网易云 API 地址
+
+说明：
+
+- `netease` 在本机未启动 API 时不会让整次任务失败，而会在 `source-report.json` 里记录 discovery error。
+- 2026-06-03 本地 smoke 已验证 `qq`、`kugou`、`kuwo`、`migu` 可抓取到真实榜单数据；`netease` 在当前机器上因 `127.0.0.1:4300` 未启动而返回连接失败记录。
+
+相关测试：
+
+```bash
+python3 scripts/tools/fetch_chart_scores_test.py
+```
+
+## fetch_playlist_scores.py
+
+`fetch_playlist_scores.py` 用于离线抓取歌单里的歌曲，并按“同一首歌每出现在一个歌单里记 10 分”的规则输出聚合结果。它和榜单脚本、热门歌曲脚本分开维护，后续再由单独的合并脚本统一汇总三份产物。
+
+当前脚本入口只提供 `collect` 子命令，默认 `--concurrency 10`。第一版支持两种模式：
+
+- 关键词搜歌单：
+  - `netease`
+  - `kuwo`
+- 直接抓歌单链接或 ID：
+  - `netease`
+  - `qq`
+  - `kugou`
+  - `kuwo`
+
+核心逻辑：
+
+1. 读取关键词和歌单链接 / ID 输入。
+2. 对 `netease`、`kuwo` 做关键词搜歌单，拿前 N 个歌单。
+3. 对发现的歌单和直接输入的歌单，拉取其中歌曲的歌名和歌手。
+4. 对歌名和歌手做归一化，去掉常见噪音，如 `Live`、`DJ版`、括号版型差异、全半角差异、空白差异。
+5. 同一歌单内重复歌曲只计一次分。
+6. 汇总到 `runtime/playlist-scores/run-时间戳/` 或显式 `--output` 目录。
+
+输出文件：
+
+- `source-report.json`：每个平台 / 歌单抓取状态，便于看哪些源失败
+- `playlist-rows.json`：原始歌单歌曲行
+- `aggregated-songs.csv`：最终积分表
+
+常用命令：
+
+```bash
+python3 scripts/tools/fetch_playlist_scores.py collect --keywords 周杰伦
+python3 scripts/tools/fetch_playlist_scores.py collect \
+  --keywords 周杰伦 \
+  --keywords 林俊杰 \
+  --search-limit-per-keyword 20 \
+  --concurrency 10 \
+  --netease-base-url http://127.0.0.1:4300
+python3 scripts/tools/fetch_playlist_scores.py collect \
+  --playlist-urls https://music.163.com/#/playlist?id=123456 \
+  --playlist-urls https://y.qq.com/n/ryqq/playlist/987654321
+python3 scripts/tools/fetch_playlist_scores.py collect \
+  --keywords-file runtime/playlist-inputs/keywords.txt \
+  --playlist-urls-file runtime/playlist-inputs/playlist-urls.txt
+```
+
+常用参数：
+
+- `--keywords`：关键词，可重复传入，也支持逗号分隔
+- `--keywords-file`：关键词文件，每行一个
+- `--playlist-urls`：歌单链接、平台前缀 ID，如 `qq:12345`，可重复传入
+- `--playlist-urls-file`：歌单链接 / ID 文件，每行一个
+- `--keyword-platforms`：关键词搜歌单的平台，默认 `netease,kuwo`
+- `--direct-platforms`：直接抓歌单的平台，默认 `netease,qq,kugou,kuwo`
+- `--search-limit-per-keyword`：每个平台每个关键词最多抓多少个歌单，默认 `10`
+- `--per-source-points`：每命中一个歌单加多少分，默认 `10`
+- `--output`：输出目录
+- `--request-timeout-ms`：单请求超时，默认 `8000`
+- `--delay-ms`：请求之间的延迟，默认 `300`
+- `--concurrency`：歌单抓取并发数，默认 `10`
+- `--fetch-concurrency`：旧参数别名，优先级高于 `--concurrency`
+- `--netease-base-url`：网易云 API 地址
+
+说明：
+
+- `netease` 关键词搜歌单和歌单详情依赖 `NeteaseCloudMusicApiBackup`。
+- `kuwo` 关键词搜歌单和歌单详情会调用仓库内调研代码里的 `kuwo.js` 生成 `reqId` 和 `Secret`。
+- `qq`、`kugou` 在第一版里只支持直接歌单抓取，不支持关键词搜歌单。
+- 关键词命中的同一歌单如果重复出现，只会按一个歌单计分，不会重复加分。
+
+相关测试：
+
+```bash
+python3 scripts/tools/fetch_playlist_scores_test.py
+```
+
+## fetch_hot_song_candidates.py
+
+`fetch_hot_song_candidates.py` 是热门歌曲工具的 Python 编排入口。它不会重写 `packages/hot-songs` 的采集/归一化/融合逻辑，而是：
+
+1. 读取 `packages/hot-songs/config/sources.example.json`
+2. 按 source 并发调用现有 `pnpm hot-songs:sources -- --source <id>`
+3. 合并 `source-rows.json` 和 `source-report.json`
+4. 继续调用现有 `hot-songs:normalize` 和 `hot-songs:fuse`
+5. 在一个输出目录里保留完整中间产物和最终 `ranked-songs.csv`
+
+默认并发是 `10`。这让三个音乐抓取脚本都统一成 Python 入口和相同的并发参数风格。
+
+输出目录：
+
+- `source-rows.json`
+- `source-report.json`
+- `normalized/candidate-snapshot.json`
+- `fused/ranked-songs.csv`
+- `ranked-songs.csv`
+- `ranked-songs.audit.json`
+- `near-duplicates.csv`
+
+常用命令：
+
+```bash
+python3 scripts/tools/fetch_hot_song_candidates.py collect
+python3 scripts/tools/fetch_hot_song_candidates.py collect --concurrency 10 --output runtime/hot-song-candidates/smoke
+python3 scripts/tools/fetch_hot_song_candidates.py collect --source qq-hot-toplist --source kugou-top500
+python3 scripts/tools/fetch_hot_song_candidates.py collect --fixture --output runtime/hot-song-candidates/fixture
+```
+
+常用参数：
+
+- `--manifest`：热门歌曲来源 manifest，默认 `packages/hot-songs/config/sources.example.json`
+- `--output`：输出目录
+- `--concurrency`：来源并发数，默认 `10`
+- `--timeout-ms`：传给底层单来源抓取的超时，默认 `10000`
+- `--source`：只抓指定来源，可重复传入
+- `--fixture`：底层用 fixture 数据跑，不访问真实网络
+- `--aliases`：融合时传入 alias 文件
+
+相关测试：
+
+```bash
+python3 scripts/tools/fetch_hot_song_candidates_test.py
+```
+
+## merge_music_scores.py
+
+`merge_music_scores.py` 用于把三份已经抓好的积分结果合并成一张总表：
+
+- `fetch_hot_song_candidates.py` 的 `ranked-songs.csv`
+- `fetch_chart_scores.py` 的 `aggregated-songs.csv`
+- `fetch_playlist_scores.py` 的 `aggregated-songs.csv`
+
+它不访问网络，也不重新抓取数据，只做本地读表、归一化去重和分数相加。
+
+合并规则：
+
+1. 用和榜单/歌单脚本一致的歌曲归一化规则构造 `normalized_key`
+2. 按 `歌曲名 + 歌手` 去重
+3. `score = hot_score + chart_score + playlist_score`
+
+输入既可以是 CSV 文件，也可以是对应脚本的输出目录：
+
+- 热门歌曲目录会自动读取 `ranked-songs.csv`
+- 榜单目录会自动读取 `aggregated-songs.csv`
+- 歌单目录会自动读取 `aggregated-songs.csv`
+
+输出目录：
+
+- `merged-songs.csv`
+- `merge-report.json`
+
+`merged-songs.csv` 字段：
+
+- `title`
+- `artist_name`
+- `score`
+- `hot_score`
+- `chart_score`
+- `playlist_score`
+- `normalized_key`
+
+常用命令：
+
+```bash
+python3 scripts/tools/merge_music_scores.py merge \
+  --hot-input runtime/hot-song-candidates/fixture-20260603 \
+  --chart-input runtime/chart-scores/smoke-20260603 \
+  --playlist-input runtime/playlist-scores/smoke-20260603
+
+python3 scripts/tools/merge_music_scores.py merge \
+  --hot-input runtime/hot-song-candidates/fixture-20260603/ranked-songs.csv \
+  --chart-input runtime/chart-scores/smoke-20260603/aggregated-songs.csv \
+  --playlist-input runtime/playlist-scores/smoke-20260603/aggregated-songs.csv \
+  --output runtime/merged-music-scores/smoke
+```
+
+相关测试：
+
+```bash
+python3 scripts/tools/merge_music_scores_test.py
+```
+
+## delete_uncovered_songs.py
+
+`delete_uncovered_songs.py` 用于消费 `delete-uncovered-songs.csv` 这类待删清单，并真正执行清理。它默认假设：
+
+- 数据库在 `dev`，通过 `docker exec home-ktv-postgres-1 psql` 删除 `queue_entries` 和 `ktv_songs`
+- 封面缓存也在 `dev`，路径默认 `/opt/home-ktv-system/runtime/media/covers/nas`
+- NAS 媒体文件在 `pve`，把 CSV 里的 `/mnt/nas/...` 转成 `/hdd-pool/nas/...` 再删除
+
+子命令：
+
+- `plan`：只读 CSV，输出待删歌曲数、封面数、媒体文件数和体积汇总
+- `apply`：实际删除数据库记录、封面文件和 NAS 媒体文件
+
+常用命令：
+
+```bash
+python3 scripts/tools/delete_uncovered_songs.py plan \
+  --input runtime/merged-music-scores/final-20260603/delete-uncovered-songs.csv
+
+python3 scripts/tools/delete_uncovered_songs.py apply \
+  --input runtime/merged-music-scores/final-20260603/delete-uncovered-songs.csv
+```
+
+输出：
+
+- 默认会在输入 CSV 同目录写 `delete-uncovered-songs.plan.json` 或 `delete-uncovered-songs.apply.json`
+- `apply` 报告里会包含数据库删除数量、封面删除结果和媒体文件删除结果
+
+相关测试：
+
+```bash
+python3 scripts/tools/delete_uncovered_songs_test.py
 ```
 
 ## run_style_tagging_llm_batch.py
