@@ -136,17 +136,42 @@ describe("ktv sample index helpers", () => {
     }
   });
 
-  it("keeps variety-show title parentheses for the comprehensive compilation root", () => {
+  it("strips variety-show title markers for comprehensive compilation variety roots", () => {
     const result = inferKtvSampleMetadata(
       "综合专辑 9300首1.4T/综艺专区1（2900首）/中国好声音/康树龙-魔鬼中的天使(2018中国好声音)-国语-流行.mpg"
     );
 
     expect(result).toMatchObject({
-      title: "魔鬼中的天使(2018中国好声音)",
+      title: "魔鬼中的天使",
       artistName: "康树龙",
       category: "流行",
       parseStrategy: "filename"
     });
+  });
+
+  it("strips bracketed variety-show title markers from the variety roots", () => {
+    const cases = [
+      {
+        relativePath: "综合专辑 9300首1.4T/综艺专区1（2900首）/不凡的改变/腾格尔-隐形的翅膀[不凡的改变]-国语-流行.mpg",
+        title: "隐形的翅膀"
+      },
+      {
+        relativePath: "综合专辑 9300首1.4T/综艺专区2（1000首）/异口同声/李琦-你的样子（异口同声720P）-国语-流行.mpg",
+        title: "你的样子"
+      },
+      {
+        relativePath: "综合专辑 9300首1.4T/综艺专区2（1000首）/异口同声/黄龄-傻瓜与傻丫头（异口同声720P）-国语-流行.mpg",
+        title: "傻瓜与傻丫头"
+      }
+    ] as const;
+
+    for (const testCase of cases) {
+      expect(inferKtvSampleMetadata(testCase.relativePath)).toMatchObject({
+        title: testCase.title,
+        category: "流行",
+        parseStrategy: "filename"
+      });
+    }
   });
 
   it("does not support underscore-delimited exception files after cleanup", () => {

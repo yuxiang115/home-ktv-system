@@ -173,7 +173,7 @@ function parseKtvFilename(relativePath: string): FilenameMetadataDraft {
 }
 
 type KtvFilenameRule = (stem: string) => FilenameMetadataDraft | null;
-type KtvRootFolderProfile = "strict_dash_tail" | "strict_dash_tail_keep_trailing_parens";
+type KtvRootFolderProfile = "strict_dash_tail" | "strict_dash_tail_keep_trailing_parens" | "strict_dash_tail_strip_variety_markers";
 
 const KTV_ROOT_FOLDER_PROFILES: Record<string, KtvRootFolderProfile> = {
   "1080P全高清MPG2026年更新（更新中）": "strict_dash_tail",
@@ -182,7 +182,7 @@ const KTV_ROOT_FOLDER_PROFILES: Record<string, KtvRootFolderProfile> = {
   "流行歌曲": "strict_dash_tail",
   "流行歌曲(2.5万首880G)": "strict_dash_tail",
   "流行精选": "strict_dash_tail",
-  "综合专辑 9300首1.4T": "strict_dash_tail_keep_trailing_parens",
+  "综合专辑 9300首1.4T": "strict_dash_tail_strip_variety_markers",
   "网络热歌(有新歌加入)": "strict_dash_tail",
   "酷狗排行TOP": "strict_dash_tail"
 };
@@ -194,6 +194,8 @@ function ruleForRootFolder(rootFolder: string): ((stem: string) => FilenameMetad
       return parseStrictDashTailKtvFilename;
     case "strict_dash_tail_keep_trailing_parens":
       return parseStrictDashTailKeepTrailingParensKtvFilename;
+    case "strict_dash_tail_strip_variety_markers":
+      return parseStrictDashTailStripVarietyMarkersKtvFilename;
     default:
       return null;
   }
@@ -201,20 +203,26 @@ function ruleForRootFolder(rootFolder: string): ((stem: string) => FilenameMetad
 
 function parseStrictDashTailKtvFilename(stem: string): FilenameMetadataDraft | null {
   return parseStrictDashTailKtvFilenameWithOptions(stem, {
-    stripTrailingDisplayMarkerFromTitle: true
+    trailingTitleMarkerMode: "parentheses"
   });
 }
 
 function parseStrictDashTailKeepTrailingParensKtvFilename(stem: string): FilenameMetadataDraft | null {
   return parseStrictDashTailKtvFilenameWithOptions(stem, {
-    stripTrailingDisplayMarkerFromTitle: false
+    trailingTitleMarkerMode: "none"
+  });
+}
+
+function parseStrictDashTailStripVarietyMarkersKtvFilename(stem: string): FilenameMetadataDraft | null {
+  return parseStrictDashTailKtvFilenameWithOptions(stem, {
+    trailingTitleMarkerMode: "all"
   });
 }
 
 function parseStrictDashTailKtvFilenameWithOptions(
   stem: string,
   options: {
-    stripTrailingDisplayMarkerFromTitle: boolean;
+    trailingTitleMarkerMode: "parentheses" | "all" | "none";
   }
 ): FilenameMetadataDraft | null {
   const normalizedStem = stem.replace(/[－—–]/gu, "-");
@@ -227,7 +235,7 @@ function parseStrictDashTailKtvFilenameWithOptions(
     if (artistName && title && category) {
       return {
         artistName,
-        title: options.stripTrailingDisplayMarkerFromTitle ? stripTrailingDisplayMarker(title) : title,
+        title: stripTrailingTitleMarker(title, options.trailingTitleMarkerMode),
         genre: [normalizeCategory(category)]
       };
     }
@@ -329,10 +337,19 @@ function stripExtension(fileName: string): string {
   return fileName.slice(0, fileName.length - path.extname(fileName).length);
 }
 
-function stripTrailingDisplayMarker(value: string): string {
-  return value
-    .replace(/\s*[\(（][^()（）]*[\)）]\s*$/u, "")
-    .trim();
+function stripTrailingTitleMarker(value: string, mode: "parentheses" | "all" | "none"): string {
+  if (mode === "none") {
+    return value.trim();
+  }
+
+  const markerPattern = mode === "all"
+    ? /\s*(?:[\(（][^()（）]*[\)）]|\[[^\[\]]*\]|【[^【】]*】)\s*$/u
+    : /\s*[\(（][^()（）]*[\)）]\s*$/u;
+  let stripped = value.trim();
+  while (markerPattern.test(stripped)) {
+    stripped = stripped.replace(markerPattern, "").trim();
+  }
+  return stripped;
 }
 
 function countBy<T, TKey>(items: readonly T[], keyFn: (item: T) => TKey): Map<TKey, number> {

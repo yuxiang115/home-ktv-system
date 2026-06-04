@@ -7,6 +7,7 @@ import {
   type KtvSampleParseStrategy,
   type KtvSampleSourceFile
 } from "./ktv-sample-index.js";
+import { isVarietyShowName } from "./variety-show-metadata.js";
 
 export interface KtvIndexAssetDraft {
   title: string;
@@ -108,8 +109,8 @@ function splitArtistNames(value: string): string[] {
   const parts = value
     .split(/(?:_|&|、|，|,|\/|\s{2,})/u)
     .map((part) => part.trim())
-    .filter(Boolean);
-  return parts.length ? parts : [value.trim() || "Unknown Artist"];
+    .filter((part) => part && !isVarietyShowName(part));
+  return parts.length ? parts : ["Unknown Artist"];
 }
 
 async function startRun(db: QueryExecutor, input: IndexKtvAssetDraftsInput): Promise<string> {

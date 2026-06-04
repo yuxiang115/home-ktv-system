@@ -74,6 +74,34 @@ describe("KTV full index importer", () => {
     });
   });
 
+  it("does not treat variety show names as artists when splitting filename artist text", () => {
+    const cases = [
+      {
+        relativePath: "流行歌曲(2.5万首880G)/推荐0038/张杰_吴汶芳_最美和声-夜夜夜夜(演唱会)-国语-流行.mkv",
+        expectedArtists: ["张杰", "吴汶芳"]
+      },
+      {
+        relativePath: "流行歌曲(2.5万首880G)/推荐0062/姚贝娜_中国好声音-DEAR FRIEND(演唱会)-国语-流行.mkv",
+        expectedArtists: ["姚贝娜"]
+      },
+      {
+        relativePath: "综合专辑 9300首1.4T/综艺专区2（1000首）/我是歌手/张宇_我是歌手-20岁的眼泪(演唱会)-国语-流行.mpg",
+        expectedArtists: ["张宇"]
+      }
+    ] as const;
+
+    for (const testCase of cases) {
+      const draft = buildKtvIndexAssetDraft({
+        sourcePath: `/mnt/nas/KTV歌曲/${testCase.relativePath}`,
+        relativePath: testCase.relativePath,
+        sizeBytes: 123,
+        mtimeMs: 456
+      });
+
+      expect(draft.artistNames).toEqual(testCase.expectedArtists);
+    }
+  });
+
   it("upserts one playable song row per NAS file", async () => {
     const db = createRecordingDb();
     const drafts: KtvIndexAssetDraft[] = [
