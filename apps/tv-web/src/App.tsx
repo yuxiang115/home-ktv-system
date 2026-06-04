@@ -20,6 +20,7 @@ export function App() {
 
   return (
     <main style={styles.shell}>
+      <style>{globalStyles}</style>
       <video ref={activeVideoRef} onEnded={runtime.handleVideoEnded} playsInline preload="auto" style={styles.video} />
       <video ref={standbyVideoRef} onEnded={runtime.handleVideoEnded} playsInline preload="auto" style={styles.video} />
       <div style={isPlaybackScreen ? styles.playbackShade : styles.atmosphere} />
@@ -175,3 +176,19 @@ const styles = {
     overflowWrap: "anywhere"
   }
 } satisfies Record<string, CSSProperties>;
+
+const globalStyles = `
+html,
+body,
+#root {
+  background: ${tvTheme.colors.background};
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+`;

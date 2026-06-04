@@ -1,5 +1,6 @@
 import type { RoomSnapshot } from "@home-ktv/player-contracts";
 import type { CSSProperties } from "react";
+import { useRef } from "react";
 import { PairingQr } from "../components/PairingQr.js";
 import { PlaybackStatusBanner } from "../components/PlaybackStatusBanner.js";
 import { formatPlaybackClock, type TvDisplayState } from "./tv-display-model.js";
@@ -26,6 +27,11 @@ export function PlayingScreen({
   const modeLabel = modeLabelFor(target?.vocalMode ?? "unknown");
   const clock = formatPlaybackClock(playbackPositionMs, durationMs);
   const audioTrackLabel = audioTrackLabelFor(target?.selectedTrackRef ?? null);
+  const pointerActivatedPromptRef = useRef(false);
+
+  const activateFirstPlayPrompt = () => {
+    onFirstPlayPromptClick?.();
+  };
 
   return (
     <section style={styles.screen}>
@@ -44,18 +50,28 @@ export function PlayingScreen({
         </span>
       </footer>
       {displayState.firstPlayPrompt.visible ? (
-        <div role="status" style={styles.firstPlayPrompt}>
-          <button
-            aria-label="点击电视开始播放"
-            onClick={onFirstPlayPromptClick}
-            onPointerDown={(event) => event.stopPropagation()}
-            style={styles.promptButton}
-            type="button"
-          >
+        <button
+          aria-label="点击电视开始播放"
+          onClick={() => {
+            if (pointerActivatedPromptRef.current) {
+              pointerActivatedPromptRef.current = false;
+              return;
+            }
+            activateFirstPlayPrompt();
+          }}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            pointerActivatedPromptRef.current = true;
+            activateFirstPlayPrompt();
+          }}
+          style={styles.firstPlayPrompt}
+          type="button"
+        >
+          <span style={styles.promptHeading}>
             {displayState.firstPlayPrompt.heading}
-          </button>
-          <p style={styles.promptBody}>{displayState.firstPlayPrompt.body}</p>
-        </div>
+          </span>
+          <span style={styles.promptBody}>{displayState.firstPlayPrompt.body}</span>
+        </button>
       ) : null}
     </section>
   );
@@ -200,26 +216,29 @@ const styles = {
     fontWeight: 850
   },
   firstPlayPrompt: {
+    appearance: "none",
     backdropFilter: "blur(18px)",
     background: tvTheme.colors.surface,
     border: "1px solid rgba(251, 191, 36, 0.46)",
     borderRadius: tvTheme.radii.panel,
     boxShadow: "0 24px 80px rgba(0, 0, 0, 0.42)",
+    color: tvTheme.colors.text,
+    cursor: "pointer",
+    display: "grid",
+    fontFamily: tvTheme.fonts.body,
+    gap: 18,
     left: "50%",
-    maxWidth: 720,
-    padding: "28px 32px",
+    maxWidth: 940,
+    padding: "30px 40px",
     position: "absolute",
+    placeItems: "center",
     textAlign: "center",
     top: "50%",
     transform: "translate(-50%, -50%)",
-    width: "min(720px, calc(100vw - 128px))"
+    width: "min(940px, calc(100vw - 160px))"
   },
-  promptButton: {
-    appearance: "none",
-    background: "transparent",
-    border: 0,
+  promptHeading: {
     color: tvTheme.colors.warning,
-    cursor: "pointer",
     display: "block",
     fontFamily: tvTheme.fonts.heading,
     fontSize: 44,
@@ -227,14 +246,18 @@ const styles = {
     letterSpacing: 0,
     lineHeight: 1.08,
     margin: 0,
-    overflowWrap: "anywhere"
+    overflowWrap: "anywhere",
+    width: "100%"
   },
   promptBody: {
     color: tvTheme.colors.text,
-    fontSize: 28,
+    display: "block",
+    fontSize: 26,
     fontWeight: 800,
-    lineHeight: 1.25,
-    margin: "18px 0 0",
-    overflowWrap: "anywhere"
+    lineHeight: 1.28,
+    margin: 0,
+    maxWidth: 820,
+    overflowWrap: "anywhere",
+    width: "100%"
   }
 } satisfies Record<string, CSSProperties>;
