@@ -43,7 +43,8 @@ export async function registerMediaRoutes(fastify: FastifyInstance, context: Med
       filePath: coverPath,
       contentLength: coverStat.size,
       contentType: await inferCoverImageContentType(coverPath),
-      rangeHeader: request.headers.range
+      rangeHeader: request.headers.range,
+      cacheControl: "public, max-age=2592000, immutable"
     });
   });
 
@@ -205,6 +206,7 @@ function sendResolvedMedia(
     contentLength: number;
     contentType: string;
     rangeHeader: string | undefined;
+    cacheControl?: string;
   }
 ) {
   const byteRange = parseByteRange(input.rangeHeader, input.contentLength);
@@ -217,6 +219,9 @@ function sendResolvedMedia(
 
   reply.type(input.contentType);
   reply.header("accept-ranges", "bytes");
+  if (input.cacheControl) {
+    reply.header("cache-control", input.cacheControl);
+  }
 
   if (byteRange) {
     const contentLength = byteRange.end - byteRange.start + 1;

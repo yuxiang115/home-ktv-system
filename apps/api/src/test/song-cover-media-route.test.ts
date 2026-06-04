@@ -44,6 +44,23 @@ describe("song cover media route", () => {
     expect(response.headers["content-type"]).toContain("image/webp");
   });
 
+  it("allows browsers to reuse immutable cached cover images", async () => {
+    const coverRoot = await mkdtemp(join(tmpdir(), "home-ktv-covers-"));
+    await mkdir(join(coverRoot, "nas"), { recursive: true });
+    await writeFile(join(coverRoot, "nas", "song-3.jpg"), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+    const server = Fastify();
+    await registerMediaRoutes(server, { coverRoot });
+    await server.ready();
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/media/covers/nas/song-3.jpg"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("public, max-age=2592000, immutable");
+  });
+
   it("rejects unsafe cover ids before reading from disk", async () => {
     const coverRoot = await mkdtemp(join(tmpdir(), "home-ktv-covers-"));
     const server = Fastify();

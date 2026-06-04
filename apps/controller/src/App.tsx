@@ -1392,9 +1392,11 @@ function DiscoverySongRow({
             alt=""
             decoding="async"
             draggable={false}
+            height={40}
             loading="lazy"
             referrerPolicy="no-referrer"
             src={song.coverImageUrl}
+            width={40}
             onError={() => setCoverFailed(true)}
           />
         ) : (

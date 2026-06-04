@@ -61,20 +61,35 @@ export const VARIETY_SHOW_NAMES = [
 const varietyShowNameSet = new Set(VARIETY_SHOW_NAMES.map(normalizeVarietyShowName));
 
 export function isVarietyShowName(value: string): boolean {
-  return varietyShowNameSet.has(normalizeVarietyShowName(value));
+  const normalized = normalizeVarietyShowName(value);
+  if (varietyShowNameSet.has(normalized)) {
+    return true;
+  }
+  return Array.from(varietyShowNameSet).some((showName) => (
+    normalized.startsWith(showName) && /^(?:\d+|第.+季|[一二三四五六七八九十]+强|\d+强)$/u.test(normalized.slice(showName.length))
+  ));
 }
 
 export function stripVarietyShowTitleMarker(value: string): string {
   const markerPattern = /\s*(?:[\(（][^()（）]*[\)）]|\[[^\[\]]*\]|【[^【】]*】)\s*$/u;
+  const markerWithLanguagePattern = /\s*(?:[\(（][^()（）]*[\)）]|\[[^\[\]]*\]|【[^【】]*】)\s*(?:国语|国语歌曲|普通话|粤语|闽南|闽南语|台语|英语|日语|韩语|其它|其他|外语)?\s*$/u;
+  const duplicatedTailPattern = /\s*[-－—–]\s*(?:国语|国语歌曲|普通话|粤语|闽南|闽南语|台语|英语|日语|韩语|其它|其他|外语)\s*[-－—–]\s*[^-－—–]+$/u;
   let stripped = value.trim();
-  while (markerPattern.test(stripped)) {
-    stripped = stripped.replace(markerPattern, "").trim();
+  while (true) {
+    const previous = stripped;
+    stripped = stripped
+      .replace(duplicatedTailPattern, "")
+      .replace(markerWithLanguagePattern, "")
+      .replace(markerPattern, "")
+      .trim();
+    if (stripped === previous) {
+      return stripped;
+    }
   }
-  return stripped;
 }
 
 export function cleanArtistNames(value: readonly string[], fallbackPrimaryArtistName = "Unknown Artist"): string[] {
-  const cleaned = uniqueNonEmpty(value.filter((artistName) => !isVarietyShowName(artistName)));
+  const cleaned = uniqueNonEmpty(value.flatMap(cleanArtistNameToken));
   if (cleaned.length > 0) {
     return cleaned;
   }
@@ -84,10 +99,8 @@ export function cleanArtistNames(value: readonly string[], fallbackPrimaryArtist
 export function cleanKtvSongVarietyMetadata(row: KtvSongVarietyMetadataRow): KtvSongVarietyMetadataCleanResult {
   const title = isComprehensiveVarietyPath(row.relativePath) ? stripVarietyShowTitleMarker(row.title) : row.title.trim();
   const artistNames = cleanArtistNames(row.artistNames, row.primaryArtistName);
-  const fallbackArtistName = row.primaryArtistName.trim() || artistNames[0] || "Unknown Artist";
-  const primaryArtistName = isVarietyShowName(row.primaryArtistName)
-    ? artistNames[0] ?? "Unknown Artist"
-    : fallbackArtistName;
+  const cleanedPrimaryArtistName = cleanArtistNameToken(row.primaryArtistName)[0];
+  const primaryArtistName = cleanedPrimaryArtistName || artistNames[0] || "Unknown Artist";
 
   return {
     id: row.id,
@@ -111,6 +124,27 @@ export function normalizeVarietyShowName(value: string): string {
     .trim()
     .replace(/\s+/gu, "")
     .replace(/[\(（][^()（）]*[\)）]/gu, "");
+}
+
+function cleanArtistNameToken(value: string): string[] {
+  const cleaned = removeTrailingVarietyShowName(value.trim());
+  if (!cleaned || isVarietyShowName(cleaned)) {
+    return [];
+  }
+  return [cleaned];
+}
+
+function removeTrailingVarietyShowName(value: string): string {
+  let cleaned = value;
+  for (const showName of VARIETY_SHOW_NAMES) {
+    const suffixPattern = new RegExp(`(?:\\s+|_|、|，|,|/|&)+${escapeRegExp(showName)}$`, "u");
+    cleaned = cleaned.replace(suffixPattern, "").trim();
+  }
+  return cleaned;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 function uniqueNonEmpty(values: readonly string[]): string[] {
