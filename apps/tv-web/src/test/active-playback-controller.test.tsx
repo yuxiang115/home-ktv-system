@@ -139,6 +139,32 @@ describe("active playback controller", () => {
     expect(activeVideo.playCalls).toBe(1);
   });
 
+  it("blocks unsupported browser media profiles before attempting playback", async () => {
+    const activeVideo = new FakeVideo({ canPlayTypeResult: "" });
+    const pool = new DualVideoPool(activeVideo, new FakeVideo());
+
+    const result = await new ActivePlaybackController({ videoPool: pool }).ensurePlaying(
+      snapshot({
+        currentTarget: {
+          ...realMvPlaybackTarget(),
+          playbackProfile: {
+            kind: "single_file_audio_tracks",
+            container: "mpeg",
+            videoCodec: "mpeg2video",
+            audioCodecs: ["mp2"],
+            requiresAudioTrackSelection: true
+          }
+        }
+      })
+    );
+
+    expect(result).toMatchObject({
+      status: "blocked",
+      message: "media-not-supported: video/mpeg"
+    });
+    expect(activeVideo.playCalls).toBe(0);
+  });
+
   it("starts the first playback muted and restores audible playback after it begins", async () => {
     const activeVideo = new FakeVideo();
     const pool = new DualVideoPool(activeVideo, new FakeVideo());
@@ -187,11 +213,17 @@ class FakeVideo implements KtvVideoElement {
   readyState = 4;
   src = "";
   volume = 1;
+  private readonly canPlayTypeResult: "" | "maybe" | "probably";
 
-  constructor(input: { audioTracks?: SelectableAudioTrack[] } = {}) {
+  constructor(input: { audioTracks?: SelectableAudioTrack[]; canPlayTypeResult?: "" | "maybe" | "probably" } = {}) {
+    this.canPlayTypeResult = input.canPlayTypeResult ?? "probably";
     if (input.audioTracks) {
       this.audioTracks = Object.assign(input.audioTracks, { length: input.audioTracks.length });
     }
+  }
+
+  canPlayType(): "" | "maybe" | "probably" {
+    return this.canPlayTypeResult;
   }
 
   load(): void {}

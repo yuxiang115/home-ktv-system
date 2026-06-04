@@ -30,6 +30,7 @@ export interface KtvVideoElement {
   src: string;
   volume?: number;
   addEventListener(type: string, listener: () => void, options?: AddEventListenerOptions | boolean): void;
+  canPlayType?(type: string): "" | "maybe" | "probably";
   load(): void;
   pause(): void;
   play(): Promise<void>;

@@ -2,6 +2,8 @@ import type { PlaybackTarget, RoomSnapshot } from "@home-ktv/player-contracts";
 import { AUDIO_TRACK_SWITCH_UNSUPPORTED_MESSAGE } from "./playback-capability.js";
 import type { DualVideoPool } from "./video-pool.js";
 
+type PlaybackProfile = NonNullable<PlaybackTarget["playbackProfile"]>;
+
 export type ActivePlaybackResult =
   | { status: "playing"; warning?: string }
   | { status: "blocked"; message: string }
@@ -30,6 +32,13 @@ export class ActivePlaybackController {
     }
 
     this.videoPool.applyVolume(snapshot.volumePercent);
+    const contentType = contentTypeForPlaybackProfile(snapshot.currentTarget.playbackProfile);
+    if (contentType && this.videoPool.activeVideo.canPlayType?.(contentType) === "") {
+      return {
+        status: "blocked",
+        message: `media-not-supported: ${contentType}`
+      };
+    }
 
     const targetChanged = !isSamePlaybackTarget(this.videoPool.activeTarget, snapshot.currentTarget);
     if (targetChanged) {
@@ -81,6 +90,23 @@ export class ActivePlaybackController {
       };
     }
   }
+}
+
+function contentTypeForPlaybackProfile(profile: PlaybackProfile | null | undefined): string | null {
+  const container = profile?.container?.toLocaleLowerCase() ?? "";
+  if (container.includes("matroska") || container.includes("webm")) {
+    return "video/x-matroska";
+  }
+
+  if (container.includes("mpeg")) {
+    return "video/mpeg";
+  }
+
+  if (container.includes("mp4") || container.includes("mov") || container.includes("quicktime")) {
+    return "video/mp4";
+  }
+
+  return null;
 }
 
 export function isSamePlaybackTarget(

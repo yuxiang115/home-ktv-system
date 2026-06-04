@@ -468,5 +468,5 @@ function endedPlaybackPositionMs(video: HTMLVideoElement): number {
 }
 
 function isPlaybackCapabilityBlockedMessage(message: string): boolean {
-  return /audio-track switching|media-not-supported|cannot-play|preprocess|unsupported/iu.test(message);
+  return /audio-track switching|media-not-supported|cannot-play|preprocess|unsupported|not supported|no supported sources|notsupportederror|decode|demux|format/iu.test(message);
 }
