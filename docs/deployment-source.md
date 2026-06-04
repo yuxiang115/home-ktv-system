@@ -4,6 +4,16 @@
 
 源码部署不启动 PostgreSQL。数据库可以是宿主机 PostgreSQL，也可以继续由 Docker 提供；只要 `deploy/source/.env` 里的 `DATABASE_URL` 对源码进程可达即可。
 
+## 系统依赖
+
+源码部署主机需要安装：
+
+```bash
+apt-get install -y ffmpeg
+```
+
+`probe-index` 会调用 `ffprobe` 读取 NAS 歌曲的音轨和媒体信息。缺少 `ffprobe` 时，歌曲会被标记为 `technical_status = 'failed'`，需要安装依赖后使用 `--retry-failed` 重新探测。
+
 ## 第一次部署
 
 ```bash
