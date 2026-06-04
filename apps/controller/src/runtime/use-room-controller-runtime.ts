@@ -194,6 +194,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
   useEffect(() => {
     let cancelled = false;
     let websocket: WebSocket | null = null;
+    let realtimeConnecting = false;
     let fallbackTimer: ReturnType<typeof setInterval> | null = null;
     let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -229,6 +230,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
         if (!cancelled) {
           setSnapshot(restored.snapshot);
           setErrorMessage(null);
+          openRealtime();
         }
       } catch {
         if (!cancelled) {
@@ -238,6 +240,9 @@ export function useRoomControllerRuntime(): RoomControllerState {
     };
 
     const startFallbackPolling = () => {
+      if (cancelled) {
+        return;
+      }
       stopSessionRefresh();
       setConnectionStatus("reconnecting");
       if (!fallbackTimer) {
@@ -252,12 +257,26 @@ export function useRoomControllerRuntime(): RoomControllerState {
         return;
       }
 
-      websocket = new WebSocket(realtimeUrl({ roomSlug: initial.roomSlug, deviceId }));
-      websocket.onopen = () => {
+      if (realtimeConnecting) {
+        return;
+      }
+
+      let nextWebSocket: WebSocket;
+      try {
+        nextWebSocket = new WebSocket(realtimeUrl({ roomSlug: initial.roomSlug, deviceId }));
+      } catch {
+        startFallbackPolling();
+        return;
+      }
+      realtimeConnecting = true;
+      websocket = nextWebSocket;
+      nextWebSocket.onopen = () => {
         if (cancelled) {
           return;
         }
+        realtimeConnecting = false;
         stopFallbackPolling();
+        stopSessionRefresh();
         setConnectionStatus("connected");
         refreshTimer = setInterval(() => {
           void restoreControlSession({ roomSlug: initial.roomSlug, deviceId }).then((response) => {
@@ -267,15 +286,25 @@ export function useRoomControllerRuntime(): RoomControllerState {
           });
         }, sessionRefreshIntervalMs);
       };
-      websocket.onmessage = (event) => {
+      nextWebSocket.onmessage = (event) => {
+        if (websocket !== nextWebSocket) {
+          return;
+        }
         const message = parseRealtimeMessage(event.data);
         if (message?.type === "room.control.snapshot.updated" && message.payload) {
           setSnapshot(message.payload);
           setErrorMessage(null);
         }
       };
-      websocket.onclose = startFallbackPolling;
-      websocket.onerror = startFallbackPolling;
+      const handleRealtimeDisconnect = () => {
+        if (websocket === nextWebSocket) {
+          websocket = null;
+        }
+        realtimeConnecting = false;
+        startFallbackPolling();
+      };
+      nextWebSocket.onclose = handleRealtimeDisconnect;
+      nextWebSocket.onerror = handleRealtimeDisconnect;
     };
 
     const start = async () => {

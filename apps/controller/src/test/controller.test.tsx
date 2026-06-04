@@ -744,6 +744,31 @@ describe("mobile controller runtime", () => {
     expect(requests.filter((request) => request.url.includes("/control-session")).length).toBeGreaterThanOrEqual(2);
   });
 
+  it("opens a new realtime connection and clears reconnect state after fallback polling succeeds", async () => {
+    vi.useFakeTimers();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot())), json(sessionResponse(roomSnapshot({ sessionVersion: 2 })))]
+    });
+    const sockets = installWebSocketMock();
+
+    render(<App />);
+    await flush();
+    await openControlTab();
+    sockets[0]?.emitOpen();
+    sockets[0]?.emitClose();
+
+    await flush();
+    expect(screen.getByText("连接中断，正在重连")).toBeTruthy();
+    await vi.advanceTimersByTimeAsync(fallbackPollingIntervalMs);
+    await flush();
+    expect(sockets).toHaveLength(2);
+    sockets[1]?.emitOpen();
+    await flush();
+
+    expect(screen.queryByText("连接中断，正在重连")).toBeNull();
+    expect(requests.filter((request) => request.url.includes("/control-session")).length).toBeGreaterThanOrEqual(2);
+  });
+
   it("refreshes the httpOnly cookie Max-Age every 15 minutes while WebSocket is connected", async () => {
     vi.useFakeTimers();
     const { requests } = installControllerFetchMock({
