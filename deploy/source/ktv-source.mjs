@@ -98,6 +98,7 @@ async function main(currentCommand, currentArg, currentArgs) {
     case "start":
       requireEnvFile();
       ensureDirs();
+      await buildApps();
       await stopLegacyDockerAppContainers();
       await runMigration();
       for (const service of serviceNames()) {
@@ -108,6 +109,7 @@ async function main(currentCommand, currentArg, currentArgs) {
     case "restart":
       requireEnvFile();
       ensureDirs();
+      await buildApps();
       await stopLegacyDockerAppContainers();
       for (const service of serviceNames()) {
         await stopService(service);
