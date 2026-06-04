@@ -19,9 +19,6 @@ test("runWebDeploySmokeCheck verifies CORS, TV presence, page reachability, and 
         if (pathname === "/health") {
           return jsonResponse({ status: "ok" }, { "access-control-allow-origin": origin ?? "" });
         }
-        if (String(url) === "http://127.0.0.1:4273/?apiBaseUrl=http%3A%2F%2F127.0.0.1%3A4002&roomSlug=living-room&deviceName=Smoke+TV") {
-          return textResponse('<html><script type="module" src="/assets/tv.js"></script></html>');
-        }
         if (String(url) === "http://127.0.0.1:4273/") {
           return textResponse('<html><script type="module" src="/assets/tv.js"></script></html>');
         }

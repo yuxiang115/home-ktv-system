@@ -26,7 +26,7 @@ bash deploy/docker/ktv.sh doctor
 2. Admin Room 页面是否能看到 TV 在线。
 3. TV 端是否使用正确 API 地址，不要用 `localhost`。
 4. 查看 API 日志：`bash deploy/source/ktv.sh logs api`
-5. 如果是 Web TV，确认 URL 中有 `apiBaseUrl=https://ktv-api.shaolongfei.com`。
+5. 如果是 Web TV，正式部署优先使用裸地址 `https://ktv-tv.shaolongfei.com/`；只有临时指向其它 API 时才追加 `apiBaseUrl=...`。
 
 ## 手机控制器显示电视离线
 

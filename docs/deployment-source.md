@@ -104,5 +104,5 @@ bash deploy/source/ktv.sh smoke
 ```text
 http://<server-ip>:5174/
 http://<server-ip>:5176/controller?room=living-room
-http://<server-ip>:5173/?apiBaseUrl=http://<server-ip>:4000&roomSlug=living-room&deviceName=Web%20TV
+http://<server-ip>:5173/
 ```

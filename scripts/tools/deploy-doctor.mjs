@@ -231,10 +231,7 @@ export async function checkUrls(config, dependencies = {}) {
     ["api health", `${apiBase}/health`],
     ["admin", ensureTrailingSlash(config.adminBaseUrl)],
     ["controller", `${config.controllerBaseUrl.replace(/\/$/u, "")}/controller?room=${encodeURIComponent(config.roomSlug)}`],
-    [
-      "web tv",
-      `${config.tvWebBaseUrl.replace(/\/$/u, "")}/?apiBaseUrl=${encodeURIComponent(config.apiBaseUrl)}&roomSlug=${encodeURIComponent(config.roomSlug)}&deviceName=Web%20TV`
-    ]
+    ["web tv", ensureTrailingSlash(config.tvWebBaseUrl)]
   ];
 
   const checks = [];

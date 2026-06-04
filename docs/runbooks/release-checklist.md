@@ -44,7 +44,7 @@ bash deploy/source/ktv.sh status
 curl -I https://ktv-api.shaolongfei.com/health
 curl -I https://ktv-admin.shaolongfei.com/
 curl -I 'https://ktv-controller.shaolongfei.com/controller?room=living-room'
-curl -I 'https://ktv-tv.shaolongfei.com/?apiBaseUrl=https://ktv-api.shaolongfei.com&roomSlug=living-room&deviceName=Web%20TV'
+curl -I 'https://ktv-tv.shaolongfei.com/'
 bash deploy/source/ktv.sh smoke
 ```
 

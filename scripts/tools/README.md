@@ -586,7 +586,7 @@ node --test scripts/tools/ui-visual-check.test.mjs
 
 ```bash
 pnpm tv:visual-check
-TV_VISUAL_URL="https://ktv-tv.shaolongfei.com/?apiBaseUrl=https://ktv-api.shaolongfei.com&roomSlug=living-room&deviceName=Web%20TV" pnpm tv:visual-check
+TV_VISUAL_URL="https://ktv-tv.shaolongfei.com/" pnpm tv:visual-check
 ```
 
 输出目录：

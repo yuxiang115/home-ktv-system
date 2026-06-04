@@ -281,12 +281,7 @@ function apiUrl(config, pathname) {
 }
 
 function tvUrl(config) {
-  const params = new URLSearchParams({
-    apiBaseUrl: config.apiBaseUrl,
-    roomSlug: config.roomSlug,
-    deviceName: "Smoke TV"
-  });
-  return `${config.tvWebBaseUrl}/?${params.toString()}`;
+  return `${config.tvWebBaseUrl}/`;
 }
 
 function controllerUrl(config) {

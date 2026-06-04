@@ -35,7 +35,7 @@ KTV_NAS_HOST_PATH=/mnt/nas/KTV歌曲
 API:        https://ktv-api.shaolongfei.com
 Admin:      https://ktv-admin.shaolongfei.com
 Controller: https://ktv-controller.shaolongfei.com/controller?room=living-room
-Web TV:     https://ktv-tv.shaolongfei.com/?apiBaseUrl=https://ktv-api.shaolongfei.com&roomSlug=living-room&deviceName=Web%20TV
+Web TV:     https://ktv-tv.shaolongfei.com/
 ```
 
 `lxc-dev` 需要能读到 NAS 曲库。当前通过 PVE bind mount 将宿主机 `/hdd-pool/nas` 只读挂载到容器 `/mnt/nas`：
@@ -125,5 +125,5 @@ curl http://<server-ip>:4000/health
 ```text
 http://<server-ip>:5174/
 http://<server-ip>:5176/controller?room=living-room
-http://<server-ip>:5173/?apiBaseUrl=http://<server-ip>:4000&roomSlug=living-room&deviceName=Web%20TV
+http://<server-ip>:5173/
 ```

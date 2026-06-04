@@ -78,7 +78,7 @@ http://<server-ip>:5176/controller?room=living-room
 Web TV：
 
 ```text
-http://<server-ip>:5173/?apiBaseUrl=http://<server-ip>:4000&roomSlug=living-room&deviceName=Web%20TV
+http://<server-ip>:5173/
 ```
 
 Android TV 启动时传入：

@@ -496,9 +496,7 @@ function printUrls() {
   console.log(`  API health:  ${config.apiBaseUrl}/health`);
   console.log(`  Admin:       ${config.adminBaseUrl}/`);
   console.log(`  Controller:  ${config.controllerBaseUrl}/controller?room=${encodeURIComponent(config.roomSlug)}`);
-  console.log(
-    `  Web TV:      ${config.tvWebBaseUrl}/?apiBaseUrl=${encodeURIComponent(config.apiBaseUrl)}&roomSlug=${encodeURIComponent(config.roomSlug)}&deviceName=Web%20TV`
-  );
+  console.log(`  Web TV:      ${config.tvWebBaseUrl}/`);
   console.log("");
   console.log("Logs:");
   console.log(`  ${LOG_DIR}`);

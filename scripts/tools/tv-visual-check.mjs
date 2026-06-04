@@ -6,8 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const LOG_DIR = path.join(ROOT_DIR, "logs", "visual");
-const DEFAULT_URL =
-  "http://127.0.0.1:5173/?apiBaseUrl=http://127.0.0.1:4000&roomSlug=living-room&deviceName=Living%20Room%20TV";
+const DEFAULT_URL = "http://127.0.0.1:5173/";
 const DEFAULT_CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 const screenshots = [
