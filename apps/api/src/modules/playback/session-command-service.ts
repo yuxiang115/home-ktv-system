@@ -230,11 +230,12 @@ export async function handlePlayerEnded(input: HandlePlayerEndedInput): Promise<
   status: "accepted" | "rejected";
   snapshot: RoomControlSnapshot | null;
   sessionVersion: number;
+  rejectReason?: string;
 }> {
   const now = input.now ?? new Date();
   const room = await input.repositories.rooms.findBySlug(input.roomSlug);
   if (!room) {
-    return { status: "rejected", snapshot: null, sessionVersion: 0 };
+    return { status: "rejected", snapshot: null, sessionVersion: 0, rejectReason: "room_not_found" };
   }
 
   const currentPlayback = await currentPlaybackTelemetryMatch(input, room);
@@ -254,7 +255,12 @@ export async function handlePlayerEnded(input: HandlePlayerEndedInput): Promise<
   });
 
   if (!currentPlayback.matches) {
-    return { status: "rejected", snapshot: null, sessionVersion: currentPlayback.sessionVersion };
+    return {
+      status: "rejected",
+      snapshot: null,
+      sessionVersion: currentPlayback.sessionVersion,
+      rejectReason: currentPlayback.reason
+    };
   }
 
   const result = await advanceToNext({
@@ -280,6 +286,7 @@ export async function handlePlayerFailed(input: HandlePlayerFailedInput): Promis
   failureCause: string;
   fallbackResult: "skipped_to_next" | "skipped_to_idle";
   notice: PlaybackNotice;
+  rejectReason?: string;
 }> {
   const now = input.now ?? new Date();
   const room = await input.repositories.rooms.findBySlug(input.roomSlug);
@@ -290,7 +297,8 @@ export async function handlePlayerFailed(input: HandlePlayerFailedInput): Promis
       sessionVersion: 0,
       failureCause: input.failureCause,
       fallbackResult: "skipped_to_idle",
-      notice: playbackFailedNotice(input.failureCause, "skipped_to_idle")
+      notice: playbackFailedNotice(input.failureCause, "skipped_to_idle"),
+      rejectReason: "room_not_found"
     };
   }
 
@@ -322,7 +330,8 @@ export async function handlePlayerFailed(input: HandlePlayerFailedInput): Promis
       sessionVersion: currentPlayback.sessionVersion,
       failureCause: input.failureCause,
       fallbackResult: "skipped_to_idle",
-      notice: playbackFailedNotice(input.failureCause, "skipped_to_idle")
+      notice: playbackFailedNotice(input.failureCause, "skipped_to_idle"),
+      rejectReason: currentPlayback.reason
     };
   }
 

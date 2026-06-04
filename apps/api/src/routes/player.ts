@@ -179,6 +179,7 @@ export async function registerPlayerRoutes(server: FastifyInstance, dependencies
     }
 
     if (eventType === "ended") {
+      request.log.info(terminalTelemetryLogPayload(body, roomSlug), "player terminal telemetry received");
       const result = await handlePlayerEnded({
         roomSlug,
         deviceId: requiredString(body.deviceId, "deviceId"),
@@ -201,6 +202,11 @@ export async function registerPlayerRoutes(server: FastifyInstance, dependencies
         dependencies.broadcaster?.broadcastRoomSnapshot(roomSlug, result.snapshot);
       }
 
+      request.log.info(
+        terminalTelemetryResultLogPayload(body, roomSlug, result, snapshot),
+        "player terminal telemetry handled"
+      );
+
       await reply.send({
         status: result.status === "accepted" ? "ok" : "error",
         snapshot
@@ -214,6 +220,7 @@ export async function registerPlayerRoutes(server: FastifyInstance, dependencies
         message: body.message,
         stage: body.stage
       });
+      request.log.info(terminalTelemetryLogPayload(body, roomSlug, failureCause), "player terminal telemetry received");
       const result = await handlePlayerFailed({
         roomSlug,
         deviceId: requiredString(body.deviceId, "deviceId"),
@@ -240,6 +247,11 @@ export async function registerPlayerRoutes(server: FastifyInstance, dependencies
       if (result.snapshot) {
         dependencies.broadcaster?.broadcastRoomSnapshot(roomSlug, result.snapshot);
       }
+
+      request.log.info(
+        terminalTelemetryResultLogPayload(body, roomSlug, result, snapshot),
+        "player terminal telemetry handled"
+      );
 
       await reply.send({
         status: result.status === "accepted" ? "ok" : "error",
@@ -316,6 +328,53 @@ export async function registerPlayerRoutes(server: FastifyInstance, dependencies
 
     await reply.send({ ...result, snapshot });
   });
+}
+
+function terminalTelemetryLogPayload(body: TelemetryBody, roomSlug: string, failureCause?: string) {
+  return {
+    roomSlug,
+    eventType: body.eventType,
+    deviceId: body.deviceId,
+    queueEntryId: body.queueEntryId,
+    assetId: body.assetId,
+    sessionVersion: body.sessionVersion ?? 0,
+    playbackPositionMs: body.playbackPositionMs ?? 0,
+    stage: body.stage ?? null,
+    message: body.message ?? null,
+    errorCode: body.errorCode ?? null,
+    failureCause: failureCause ?? null
+  };
+}
+
+function terminalTelemetryResultLogPayload(
+  body: TelemetryBody,
+  roomSlug: string,
+  result: {
+    status: "accepted" | "rejected";
+    sessionVersion: number;
+    fallbackResult?: string;
+    failureCause?: string;
+    rejectReason?: string;
+  },
+  snapshot: Awaited<ReturnType<typeof buildRoomSnapshot>>
+) {
+  return {
+    roomSlug,
+    eventType: body.eventType,
+    queueEntryId: body.queueEntryId,
+    assetId: body.assetId,
+    playbackPositionMs: body.playbackPositionMs ?? 0,
+    resultStatus: result.status,
+    resultSessionVersion: result.sessionVersion,
+    rejectReason: result.rejectReason ?? null,
+    fallbackResult: result.fallbackResult ?? null,
+    failureCause: result.failureCause ?? null,
+    snapshotVersion: snapshot?.sessionVersion ?? null,
+    snapshotState: snapshot?.state ?? null,
+    snapshotCurrentQueueEntryId: snapshot?.currentTarget?.queueEntryId ?? null,
+    snapshotCurrentAssetId: snapshot?.currentTarget?.assetId ?? null,
+    snapshotNextQueueEntryId: snapshot?.currentTarget?.nextQueueEntryPreview?.queueEntryId ?? null
+  };
 }
 
 function noticeFromTelemetry(eventType: PlayerTelemetryKind) {

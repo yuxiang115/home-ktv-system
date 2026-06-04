@@ -737,7 +737,9 @@ class MainActivity : Activity() {
             return
         }
 
-        when (val action = RoomPlaybackDecision.decide(snapshot, activeTarget, switchInFlight)) {
+        val action = RoomPlaybackDecision.decide(snapshot, activeTarget, switchInFlight)
+        logSnapshotDecision(snapshot, action)
+        when (action) {
             PlaybackAction.KeepPlaying -> Unit
             PlaybackAction.StopPlayback -> stopActiveRoomPlayback(snapshot)
             is PlaybackAction.PlayNewTarget -> playTarget(action.target)
@@ -774,6 +776,7 @@ class MainActivity : Activity() {
     }
 
     private fun playTarget(target: PlaybackTarget) {
+        Log.i(TAG, "Play target: ${target.diagnosticLabel()} resume=${target.resumePositionMs}ms")
         activeTarget = target
         selectedTrackKey = null
         currentSampleIndex = -1
@@ -833,6 +836,11 @@ class MainActivity : Activity() {
     }
 
     private fun stopActiveRoomPlayback(snapshot: RoomSnapshot? = latestSnapshot) {
+        Log.w(
+            TAG,
+            "Stop room playback: state=${snapshot?.state} conflict=${snapshot?.conflict} " +
+                "active=${activeTarget?.diagnosticLabel()} pos=${currentPlaybackPositionMs()}ms",
+        )
         activeTarget = null
         selectedTrackKey = null
         renderedNoticeMessage = null
@@ -936,6 +944,7 @@ class MainActivity : Activity() {
     }
 
     private fun handlePlayerEvent(event: MediaPlayer.Event) {
+        logPlayerEvent(event)
         when (event.type) {
             MediaPlayer.Event.Opening -> setStatus("正在打开媒体")
             MediaPlayer.Event.Buffering -> setStatus("缓冲中 ${event.buffering.toInt()}%")
@@ -1020,7 +1029,7 @@ class MainActivity : Activity() {
         ) ?: return false
 
         setStatus("播放异常，正在恢复")
-        Log.w(TAG, "Recovering playback error at ${currentPlaybackPositionMs()}ms; retryFrom=${retryPosition}ms")
+        Log.w(TAG, "Recover playback error: target=${target.diagnosticLabel()} retryFrom=${retryPosition}ms")
         playUrl(target.playbackUrl, target = target.copy(resumePositionMs = retryPosition))
         return true
     }
@@ -1111,7 +1120,10 @@ class MainActivity : Activity() {
         errorCode: String? = null,
     ) {
         val key = listOf(eventType, target.queueEntryId, target.sourceType, target.assetId, target.vocalMode, stage).joinToString(":")
-        if (!sentTelemetryKeys.add(key)) return
+        if (!sentTelemetryKeys.add(key)) {
+            Log.i(TAG, "Skip duplicate telemetry: event=$eventType stage=$stage target=${target.diagnosticLabel()}")
+            return
+        }
         sendTelemetry(
             eventType = eventType,
             sessionVersion = target.sessionVersion,
@@ -1175,6 +1187,12 @@ class MainActivity : Activity() {
     ) {
         val client = playerClient ?: return
         if (!roomModeActive) return
+        Log.i(
+            TAG,
+            "Send telemetry: event=$eventType stage=$stage session=$sessionVersion " +
+                "queue=$queueEntryId asset=$assetId pos=${playbackPositionMs}ms mode=$vocalMode " +
+                "message=${message.orEmpty()} error=${errorCode.orEmpty()}",
+        )
         client.sendTelemetry(
             roomSlug = config.roomSlug,
             deviceId = deviceId,
@@ -1227,6 +1245,60 @@ class MainActivity : Activity() {
             )
 
             else -> Log.i(TAG, "Playing external mediaUrl=$url")
+        }
+    }
+
+    private fun logSnapshotDecision(snapshot: RoomSnapshot, action: PlaybackAction) {
+        Log.i(
+            TAG,
+            "Snapshot decision: version=${snapshot.sessionVersion} state=${snapshot.state} " +
+                "action=${action.diagnosticLabel()} active=${activeTarget?.diagnosticLabel() ?: "none"} " +
+                "target=${snapshot.currentTarget?.diagnosticLabel() ?: "none"} " +
+                "switchInFlight=$switchInFlight playerPos=${currentPlaybackPositionMs()}ms",
+        )
+    }
+
+    private fun logPlayerEvent(event: MediaPlayer.Event) {
+        if (event.type == MediaPlayer.Event.TimeChanged) return
+        Log.i(
+            TAG,
+            "VLC event: ${vlcEventName(event.type)} buffering=${event.buffering.toInt()} " +
+                "target=${activeTarget?.diagnosticLabel() ?: "none"} pos=${currentPlaybackPositionMs()}ms " +
+                "len=${if (::mediaPlayer.isInitialized) mediaPlayer.length else 0L}ms " +
+                "isPlaying=${::mediaPlayer.isInitialized && mediaPlayer.isPlaying} " +
+                "hasMedia=${::mediaPlayer.isInitialized && mediaPlayer.hasMedia()} " +
+                "switchInFlight=$switchInFlight suppressReplacement=$suppressReplacementTerminalEvents",
+        )
+    }
+
+    private fun PlaybackAction.diagnosticLabel(): String {
+        return when (this) {
+            PlaybackAction.KeepPlaying -> "keep"
+            PlaybackAction.StopPlayback -> "stop"
+            PlaybackAction.SwitchVocalMode -> "switch_vocal"
+            is PlaybackAction.PlayNewTarget -> "play_new:${target.queueEntryId}/${target.assetId}"
+        }
+    }
+
+    private fun PlaybackTarget.diagnosticLabel(): String {
+        return "${currentQueueEntryPreview.songTitle}-${currentQueueEntryPreview.artistName} queue=$queueEntryId asset=$assetId source=$sourceType mode=$vocalMode"
+    }
+
+    private fun vlcEventName(type: Int): String {
+        return when (type) {
+            MediaPlayer.Event.Opening -> "Opening"
+            MediaPlayer.Event.Buffering -> "Buffering"
+            MediaPlayer.Event.Playing -> "Playing"
+            MediaPlayer.Event.Paused -> "Paused"
+            MediaPlayer.Event.Stopped -> "Stopped"
+            MediaPlayer.Event.EndReached -> "EndReached"
+            MediaPlayer.Event.EncounteredError -> "EncounteredError"
+            MediaPlayer.Event.TimeChanged -> "TimeChanged"
+            MediaPlayer.Event.LengthChanged -> "LengthChanged"
+            MediaPlayer.Event.ESAdded -> "ESAdded"
+            MediaPlayer.Event.ESDeleted -> "ESDeleted"
+            MediaPlayer.Event.ESSelected -> "ESSelected"
+            else -> "Event$type"
         }
     }
 
