@@ -20,8 +20,12 @@ export function RoomStatusView() {
     <main className="admin-shell">
       <header className="admin-header">
         <div className="admin-title">
+          <span className="admin-eyebrow">Room Control</span>
           <h1>{t("rooms.title")}</h1>
           <p>{t("rooms.description")}</p>
+        </div>
+        <div className="admin-header-beam" aria-hidden="true">
+          <span />
         </div>
         <div className="admin-header-actions">
           <button className="secondary-button" type="button" onClick={() => void refreshRoomStatus()} disabled={isRefreshingRoom}>
@@ -36,23 +40,23 @@ export function RoomStatusView() {
       <section className="room-status-grid" aria-label={t("rooms.gridAria")}>
         {errorMessage ? <p className="room-status-error">{errorMessage}</p> : null}
         <dl className="room-status-summary">
-          <div>
+          <div className="metric-card metric-card--blue">
             <dt>{t("rooms.state")}</dt>
             <dd>{roomStatus ? roomStateText(roomStatus.room.status, t) : t("common.loading")}</dd>
           </div>
-          <div>
+          <div className="metric-card metric-card--magenta">
             <dt>{t("rooms.tokenExpires")}</dt>
             <dd>{roomStatus ? formatTime(roomStatus.pairing.tokenExpiresAt) : t("common.loading")}</dd>
           </div>
-          <div>
+          <div className="metric-card metric-card--green">
             <dt>{t("rooms.onlineControllers")}</dt>
             <dd>{roomStatus ? roomStatus.controllers.onlineCount : t("common.loading")}</dd>
           </div>
-          <div>
+          <div className={`metric-card ${roomStatus?.tvPresence.online ? "metric-card--green" : "metric-card--danger"}`}>
             <dt>{t("rooms.tvStatus")}</dt>
             <dd>{roomStatus ? (roomStatus.tvPresence.online ? t("rooms.tvOnline") : t("rooms.tvOffline")) : t("common.loading")}</dd>
           </div>
-          <div>
+          <div className="metric-card metric-card--blue">
             <dt>{t("rooms.sessionVersion")}</dt>
             <dd>{roomStatus ? roomStatus.sessionVersion : t("common.loading")}</dd>
           </div>
@@ -90,7 +94,7 @@ export function RoomStatusView() {
           </div>
           <div className="room-task-list">
             {(roomStatus?.onlineTasks.tasks ?? []).map((task) => (
-              <article className="room-task-row" key={task.taskId}>
+              <article className={`room-task-row room-task-row--${task.status}`} key={task.taskId}>
                 <div className="room-task-main">
                   <strong>{task.title}</strong>
                   <span>{task.artistName} / {task.sourceLabel}</span>

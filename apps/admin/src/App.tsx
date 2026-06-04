@@ -24,16 +24,32 @@ function AdminAppContent() {
 
   return (
     <div className="admin-app-frame">
+      <div className="admin-light-field" aria-hidden="true" />
       <nav className="admin-mode-tabs" aria-label={t("app.nav.aria")}>
-        <button className={view === "songs" ? "mode-tab active" : "mode-tab"} type="button" onClick={() => setView("songs")}>
-          {t("app.nav.songs")}
-        </button>
-        <button className={view === "rooms" ? "mode-tab active" : "mode-tab"} type="button" onClick={() => setView("rooms")}>
-          {t("app.nav.rooms")}
-        </button>
-        <LanguageSwitch />
+        <div className="admin-brand">
+          <span className="admin-brand-mark" aria-hidden="true" />
+          <span>
+            <strong>HomeKTV</strong>
+            <small>Neon Operations</small>
+          </span>
+        </div>
+        <div className="admin-tab-group">
+          <button className={view === "songs" ? "mode-tab active" : "mode-tab"} type="button" onClick={() => setView("songs")}>
+            {t("app.nav.songs")}
+          </button>
+          <button className={view === "rooms" ? "mode-tab active" : "mode-tab"} type="button" onClick={() => setView("rooms")}>
+            {t("app.nav.rooms")}
+          </button>
+        </div>
+        <div className="admin-nav-utilities">
+          <span className="system-pulse">
+            <span aria-hidden="true" />
+            Live Sync
+          </span>
+          <LanguageSwitch />
+        </div>
       </nav>
-      {view === "songs" ? <SongCatalogView /> : <RoomStatusView />}
+      <div className="admin-view-stage">{view === "songs" ? <SongCatalogView /> : <RoomStatusView />}</div>
     </div>
   );
 }

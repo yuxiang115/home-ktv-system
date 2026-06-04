@@ -17,8 +17,12 @@ export function SongCatalogView() {
     <main className="admin-shell">
       <header className="admin-header">
         <div className="admin-title">
+          <span className="admin-eyebrow">{t("ktvIndex.sectionLabel")}</span>
           <h1>{t("songs.title")}</h1>
           <p>{t("songs.description")}</p>
+        </div>
+        <div className="admin-header-beam" aria-hidden="true">
+          <span />
         </div>
       </header>
 
@@ -67,17 +71,17 @@ function NasLibraryDiagnosticsPanel({
       {isError ? <p className="queue-error-text">{t("ktvIndex.loadFailed")}</p> : null}
 
       <dl className="ktv-index-metrics">
-        <Metric label={t("ktvIndex.tables")} value={`${diagnostics?.tables.filter((table) => table.exists).length ?? 0}/${diagnostics?.tables.length ?? 0}`} />
-        <Metric label={t("ktvIndex.latestRun")} value={diagnostics?.latestRun?.status ?? t("common.none")} />
-        <Metric label={t("ktvIndex.sourceRoot")} value={diagnostics?.sourceRoot ?? t("common.none")} />
-        <Metric label={t("ktvIndex.activeAssets")} value={formatNumber(diagnostics?.activeAssetCount)} />
-        <Metric label={t("ktvIndex.missingAssets")} value={formatNumber(diagnostics?.missingAssetCount)} />
-        <Metric label={t("ktvIndex.songCount")} value={formatNumber(diagnostics?.songCount)} />
-        <Metric label={t("ktvIndex.artistCount")} value={formatNumber(diagnostics?.artistCount)} />
-        <Metric label={t("ktvIndex.probeCoverage")} value={formatPercent(diagnostics?.probeCoveragePercent)} />
-        <Metric label={t("ktvIndex.probePending")} value={formatNumber(diagnostics?.probePendingCount)} />
-        <Metric label={t("ktvIndex.probeFailed")} value={formatNumber(diagnostics?.probeFailedCount)} />
-        <Metric label={t("ktvIndex.lowConfidence")} value={formatNumber(diagnostics?.lowConfidenceCount)} />
+        <Metric tone="blue" label={t("ktvIndex.tables")} value={`${diagnostics?.tables.filter((table) => table.exists).length ?? 0}/${diagnostics?.tables.length ?? 0}`} />
+        <Metric tone="magenta" label={t("ktvIndex.latestRun")} value={diagnostics?.latestRun?.status ?? t("common.none")} />
+        <Metric tone="green" label={t("ktvIndex.sourceRoot")} value={diagnostics?.sourceRoot ?? t("common.none")} />
+        <Metric tone="blue" label={t("ktvIndex.activeAssets")} value={formatNumber(diagnostics?.activeAssetCount)} />
+        <Metric tone="danger" label={t("ktvIndex.missingAssets")} value={formatNumber(diagnostics?.missingAssetCount)} />
+        <Metric tone="magenta" label={t("ktvIndex.songCount")} value={formatNumber(diagnostics?.songCount)} />
+        <Metric tone="green" label={t("ktvIndex.artistCount")} value={formatNumber(diagnostics?.artistCount)} />
+        <Metric tone="blue" label={t("ktvIndex.probeCoverage")} value={formatPercent(diagnostics?.probeCoveragePercent)} />
+        <Metric tone="magenta" label={t("ktvIndex.probePending")} value={formatNumber(diagnostics?.probePendingCount)} />
+        <Metric tone="danger" label={t("ktvIndex.probeFailed")} value={formatNumber(diagnostics?.probeFailedCount)} />
+        <Metric tone="green" label={t("ktvIndex.lowConfidence")} value={formatNumber(diagnostics?.lowConfidenceCount)} />
       </dl>
 
       <div className="ktv-index-detail-grid">
@@ -196,9 +200,9 @@ function NasLibraryDiagnosticsPanel({
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, tone = "blue", value }: { label: string; tone?: "blue" | "magenta" | "green" | "danger"; value: string }) {
   return (
-    <div>
+    <div className={`metric-card metric-card--${tone}`}>
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
