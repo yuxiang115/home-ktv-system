@@ -1,9 +1,10 @@
 import type { DeviceSession, DeviceSessionId, Room, RoomId } from "@home-ktv/domain";
-import type { PairingInfo } from "@home-ktv/player-contracts";
+import type { PairingInfo, PlayerConflictState } from "@home-ktv/player-contracts";
 import type { QueryExecutor } from "../../db/query-executor.js";
 import type { RoomClientRow } from "../../db/schema.js";
 import { getOrCreatePairingInfo } from "../rooms/pairing-token-service.js";
 import type { RoomPairingTokenRepository } from "../rooms/repositories/pairing-token-repository.js";
+import { detectPlayerConflict } from "./conflict-service.js";
 
 export interface RegisterPlayerInput {
   room: Room;
@@ -18,10 +19,10 @@ export interface RegisterPlayerInput {
 }
 
 export interface RegisterPlayerResult {
-  status: "registered";
-  deviceSession: DeviceSession;
+  status: "registered" | "conflict";
+  deviceSession: DeviceSession | null;
   pairing: PairingInfo;
-  conflict: null;
+  conflict: PlayerConflictState | null;
 }
 
 export interface UpsertTvPlayerInput {
@@ -55,6 +56,21 @@ export async function registerPlayer(input: RegisterPlayerInput): Promise<Regist
     now,
     ...(input.controllerBaseUrl ? { controllerBaseUrl: input.controllerBaseUrl } : {})
   });
+  const conflict = await detectPlayerConflict({
+    roomId: input.room.id,
+    deviceId: input.deviceId,
+    repository: input.repository,
+    now
+  });
+  if (conflict) {
+    return {
+      status: "conflict",
+      deviceSession: null,
+      pairing,
+      conflict
+    };
+  }
+
   const deviceSession = await input.repository.upsertTvPlayer({
     roomId: input.room.id,
     deviceId: input.deviceId,

@@ -62,10 +62,57 @@ describe("player telemetry queue advancement", () => {
     expect((await harness.queueEntries.findById("queue-next"))?.status).toBe("queued");
     expect(harness.playbackSessions.currentQueueEntryId).toBe("queue-current");
   });
+
+  it("ignores failed telemetry from a non-owner TV in the same room", async () => {
+    const harness = createHarness({ defaultPlayerDeviceId: "android-tv" });
+
+    const result = await handlePlayerFailed({
+      roomSlug: "living-room",
+      deviceId: "web-tv",
+      queueEntryId: "queue-current",
+      assetId: "asset-current",
+      playbackPositionMs: 49_000,
+      sessionVersion: 8,
+      playbackEvents: harness.playbackEvents,
+      repositories: harness.repositories,
+      config: createConfig(),
+      failureCause: "TV_PLAYBACK_CAPABILITY_BLOCKED",
+      now
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(result.rejectReason).toBe("player_device_not_owner");
+    expect((await harness.queueEntries.findById("queue-current"))?.status).toBe("playing");
+    expect((await harness.queueEntries.findById("queue-next"))?.status).toBe("queued");
+    expect(harness.playbackSessions.currentQueueEntryId).toBe("queue-current");
+  });
+
+  it("ignores ended telemetry from a non-owner TV in the same room", async () => {
+    const harness = createHarness({ defaultPlayerDeviceId: "android-tv" });
+
+    const result = await handlePlayerEnded({
+      roomSlug: "living-room",
+      deviceId: "web-tv",
+      queueEntryId: "queue-current",
+      assetId: "asset-current",
+      playbackPositionMs: 180_000,
+      sessionVersion: 8,
+      playbackEvents: harness.playbackEvents,
+      repositories: harness.repositories,
+      config: createConfig(),
+      now
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(result.rejectReason).toBe("player_device_not_owner");
+    expect((await harness.queueEntries.findById("queue-current"))?.status).toBe("playing");
+    expect((await harness.queueEntries.findById("queue-next"))?.status).toBe("queued");
+    expect(harness.playbackSessions.currentQueueEntryId).toBe("queue-current");
+  });
 });
 
-function createHarness() {
-  const room = createRoom();
+function createHarness(input: { defaultPlayerDeviceId?: string | null } = {}) {
+  const room = createRoom(input.defaultPlayerDeviceId ?? null);
   const queueEntries = new InMemoryQueueEntryRepository([
     createQueueEntry("queue-current", "asset-current", "playing", 1),
     createQueueEntry("queue-next", "asset-next", "queued", 2)
@@ -242,13 +289,13 @@ class FakeDeviceSessionRepository implements PlayerDeviceSessionRepository {
   }
 }
 
-function createRoom(): Room {
+function createRoom(defaultPlayerDeviceId: string | null = null): Room {
   return {
     id: "room-1",
     slug: "living-room",
     name: "Living Room",
     status: "active",
-    defaultPlayerDeviceId: null,
+    defaultPlayerDeviceId,
     createdAt: now.toISOString(),
     updatedAt: now.toISOString()
   };

@@ -12,7 +12,7 @@ const serverConfig = {
 };
 
 describe("multi TV support", () => {
-  it("registers multiple TV players in one room and exposes every active TV in control snapshots", async () => {
+  it("keeps one active TV player per room and reports conflicts for additional TVs", async () => {
     const server = await createServer(serverConfig);
 
     const firstTv = await bootstrapTv(server, "tv-main", "客厅电视");
@@ -31,13 +31,15 @@ describe("multi TV support", () => {
     });
     expect(secondTv.statusCode).toBe(200);
     expect(secondTv.json()).toMatchObject({
-      status: "registered",
-      deviceSession: {
-        id: "tv-side",
-        deviceName: "餐厅电视"
-      },
+      status: "conflict",
+      deviceSession: null,
       snapshot: {
-        conflict: null
+        state: "conflict",
+        conflict: {
+          activeDeviceId: "tv-main",
+          activeDeviceName: "客厅电视",
+          kind: "active-player-conflict"
+        }
       }
     });
 
@@ -45,13 +47,9 @@ describe("multi TV support", () => {
 
     expect(snapshot.tvPresence).toMatchObject({
       online: true,
-      onlineCount: 2
+      onlineCount: 1
     });
-    expect(snapshot.tvPresence.devices).toHaveLength(2);
-    expect(snapshot.tvPresence.devices).toEqual(expect.arrayContaining([
-      expect.objectContaining({ deviceId: "tv-side", deviceName: "餐厅电视" }),
-      expect.objectContaining({ deviceId: "tv-main", deviceName: "客厅电视" })
-    ]));
+    expect(snapshot.tvPresence.devices).toEqual([expect.objectContaining({ deviceId: "tv-main", deviceName: "客厅电视" })]);
 
     await server.close();
   });

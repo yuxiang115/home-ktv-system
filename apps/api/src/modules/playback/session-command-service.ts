@@ -485,6 +485,14 @@ async function currentPlaybackTelemetryMatch(
     return { matches: false, sessionVersion: 0, reason: "playback_session_missing" };
   }
 
+  if (room.defaultPlayerDeviceId && room.defaultPlayerDeviceId !== input.deviceId) {
+    return {
+      matches: false,
+      sessionVersion: session.version,
+      reason: "player_device_not_owner"
+    };
+  }
+
   if (session.currentQueueEntryId !== input.queueEntryId) {
     return {
       matches: false,
