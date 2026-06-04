@@ -7,6 +7,7 @@ import {
   type KtvSampleParseStrategy,
   type KtvSampleSourceFile
 } from "./ktv-sample-index.js";
+import { cleanSongTitle } from "./song-title-cleanup.js";
 import { isVarietyShowName } from "./variety-show-metadata.js";
 
 export interface KtvIndexAssetDraft {
@@ -50,12 +51,13 @@ interface IdRow {
 
 export function buildKtvIndexAssetDraft(sourceFile: KtvSampleSourceFile): KtvIndexAssetDraft {
   const sample = buildKtvSampleRow(sourceFile);
-  const titleKeys = buildPinyinSearchKeys(sample.title);
+  const cleanTitle = cleanSongTitle({ title: sample.title }).title;
+  const titleKeys = buildPinyinSearchKeys(cleanTitle);
   const artistNames = splitArtistNames(sample.artistName);
 
   return {
-    title: sample.title,
-    normalizedTitle: normalizeSearchText(sample.title),
+    title: cleanTitle,
+    normalizedTitle: normalizeSearchText(cleanTitle),
     titlePinyin: titleKeys.pinyin,
     titleInitials: titleKeys.initials,
     artistNames,
@@ -105,7 +107,7 @@ export async function indexKtvAssetDrafts(
   }
 }
 
-function splitArtistNames(value: string): string[] {
+export function splitArtistNames(value: string): string[] {
   const parts = value
     .split(/(?:_|&|、|，|,|\/|\s{2,})/u)
     .map((part) => part.trim())
@@ -184,6 +186,7 @@ function buildKtvSongsUpsertSql(preserveExisting: boolean): string {
          "updated_at = now()"
        ].join(",\n       ") : [
          "title = EXCLUDED.title",
+         "normalized_title = EXCLUDED.normalized_title",
          "title_pinyin = EXCLUDED.title_pinyin",
          "title_initials = EXCLUDED.title_initials",
          "primary_artist_name = EXCLUDED.primary_artist_name",

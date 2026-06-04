@@ -74,6 +74,58 @@ describe("KTV full index importer", () => {
     });
   });
 
+  it("cleans display-only markers from imported song titles", () => {
+    const cases = [
+      {
+        relativePath: "国语-知名歌星专辑 11000首850G/知名歌星个人专辑（65人6600首）/李克勤（国语21）/李克勤-酒干倘卖无(蒙面歌王)流行-国语-流行.mpg",
+        title: "酒干倘卖无",
+        normalizedTitle: "酒干倘卖无"
+      },
+      {
+        relativePath: "综合专辑 9300首1.4T/K歌排行/70后/张靓颖-如果这就是爱情[720高清]-国语-流行.mpg",
+        title: "这就是爱情",
+        normalizedTitle: "这就是爱情"
+      },
+      {
+        relativePath: "1080P全高清MPG2026年更新（更新中）/02月MPG1080/全幺九-别回头 (错过的人不必挽留)[1080P]-国语-流行.mpg",
+        title: "别回头",
+        normalizedTitle: "别回头"
+      },
+      {
+        relativePath: "1080P全高清MPG2026年更新（更新中）/02月MPG1080/刘德华 十五运会和残特奥会-共赴山海 (粤语版)[1080P]-粤语-流行.mpg",
+        title: "共赴山海",
+        normalizedTitle: "共赴山海"
+      },
+      {
+        relativePath: "1080P全高清MPG2026年更新（更新中）/04月mpg1080/KKSTR-三年之约 (今日我再重复一次)(DJ)[1080P]-舞曲-DJ.mpg",
+        title: "三年之约",
+        normalizedTitle: "三年之约"
+      },
+      {
+        relativePath: "2024/2024-11/曹龙-同喜同乐同发财(演唱会)[现场]-国语-流行.mkv",
+        title: "同喜同乐同发财",
+        normalizedTitle: "同喜同乐同发财"
+      },
+      {
+        relativePath: "1080P全高清MPG2026年更新（更新中）/01月MPG1080/周杰伦-以父之名 (2004无与伦比演唱会)(ai修复版)[1080P]-国语-流行.mpg",
+        title: "以父之名",
+        normalizedTitle: "以父之名"
+      }
+    ] as const;
+
+    for (const testCase of cases) {
+      const draft = buildKtvIndexAssetDraft({
+        sourcePath: `/mnt/nas/KTV歌曲/${testCase.relativePath}`,
+        relativePath: testCase.relativePath,
+        sizeBytes: 123,
+        mtimeMs: 456
+      });
+
+      expect(draft.title).toBe(testCase.title);
+      expect(draft.normalizedTitle).toBe(testCase.normalizedTitle);
+    }
+  });
+
   it("does not treat variety show names as artists when splitting filename artist text", () => {
     const cases = [
       {
@@ -167,6 +219,20 @@ describe("KTV full index importer", () => {
     expect(upsertQuery?.text).not.toContain("parse_strategy = EXCLUDED.parse_strategy");
     expect(upsertQuery?.text).not.toContain("technical_status = EXCLUDED.technical_status");
     expect(upsertQuery?.text).not.toContain("technical_metadata = EXCLUDED.technical_metadata");
+  });
+
+  it("updates normalized title when overwriting existing song metadata", async () => {
+    const db = createRecordingDb();
+
+    await indexKtvAssetDrafts(db, {
+      sourceRoot: "/media",
+      drafts: [createDraft({ filePath: "/media/existing.mkv" })],
+      preserveExisting: false
+    });
+
+    const upsertQuery = db.queries.find((query) => query.text.includes("ON CONFLICT (file_path)"));
+    expect(upsertQuery?.text).toContain("title = EXCLUDED.title");
+    expect(upsertQuery?.text).toContain("normalized_title = EXCLUDED.normalized_title");
   });
 });
 

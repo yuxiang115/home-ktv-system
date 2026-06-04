@@ -157,6 +157,11 @@ async function main(currentCommand, currentArg, currentArgs) {
       ensureDirs();
       await runForeground("pnpm", ["-F", "@home-ktv/api", "import:songs", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
       return;
+    case "clean-song-titles":
+      requireEnvFile();
+      ensureDirs();
+      await runForeground("pnpm", ["-F", "@home-ktv/api", "clean:song-title-metadata", "--", ...stripArgumentSeparator(currentArgs)], buildRuntimeConfig().env);
+      return;
     case "fetch-covers":
       requireEnvFile();
       ensureDirs();

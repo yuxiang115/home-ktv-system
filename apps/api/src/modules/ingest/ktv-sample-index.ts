@@ -396,6 +396,7 @@ const KTV_LANGUAGE_MARKERS = new Set([
   "英语",
   "日语",
   "韩语",
+  "舞曲",
   "外语",
   "其他",
   "其它"
