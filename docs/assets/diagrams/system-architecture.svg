@@ -1,0 +1,129 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">HomeKTV system architecture</title>
+  <desc id="desc">Architecture diagram for HomeKTV showing mobile controller, admin console, Android TV, API, PostgreSQL, NAS media and deployment scripts.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="720" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="0.55" stop-color="#172033"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="cardBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="cardGreen" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#34D399"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="cardAmber" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FBBF24"/>
+      <stop offset="1" stop-color="#F97316"/>
+    </linearGradient>
+    <linearGradient id="cardRose" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FB7185"/>
+      <stop offset="1" stop-color="#E11D48"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#020617" flood-opacity="0.30"/>
+    </filter>
+    <marker id="arrow" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto" markerUnits="strokeWidth">
+      <path d="M2 2L12 7L2 12" stroke="#93C5FD" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <style>
+      .title { font: 700 40px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #F8FAFC; }
+      .subtitle { font: 500 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #CBD5E1; }
+      .label { font: 700 20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #F8FAFC; }
+      .small { font: 500 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #DCE7F5; }
+      .tiny { font: 500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #AFC2D8; }
+      .section { font: 700 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #BFE3FF; letter-spacing: 1px; }
+      .box { fill: rgba(15, 23, 42, 0.78); stroke: rgba(148, 163, 184, 0.28); stroke-width: 1; }
+      .line { stroke: #93C5FD; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrow); }
+      .softline { stroke: #64748B; stroke-width: 1.5; stroke-dasharray: 6 7; stroke-linecap: round; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="720" rx="32" fill="url(#bg)"/>
+  <circle cx="980" cy="115" r="170" fill="#2563EB" opacity="0.12"/>
+  <circle cx="185" cy="645" r="190" fill="#10B981" opacity="0.10"/>
+  <circle cx="670" cy="360" r="260" fill="#F59E0B" opacity="0.06"/>
+
+  <text x="70" y="78" class="title">HomeKTV System Architecture</text>
+  <text x="72" y="112" class="subtitle">Self-hosted KTV: NAS media, Android TV playback, mobile song request, admin console and one-command deployment.</text>
+
+  <rect x="54" y="148" width="1092" height="520" rx="28" fill="rgba(15,23,42,0.42)" stroke="rgba(148,163,184,0.18)"/>
+  <text x="86" y="190" class="section">CLIENTS</text>
+  <text x="493" y="190" class="section">BACKEND</text>
+  <text x="830" y="190" class="section">DATA &amp; MEDIA</text>
+
+  <g filter="url(#shadow)">
+    <rect x="86" y="226" width="250" height="96" rx="18" class="box"/>
+    <rect x="108" y="249" width="50" height="50" rx="14" fill="url(#cardBlue)"/>
+    <path d="M131 263C141 263 149 271 149 281C149 291 141 299 131 299C121 299 113 291 113 281C113 271 121 263 131 263Z" fill="white" opacity="0.94"/>
+    <path d="M122 281H140M131 272V290" stroke="#2563EB" stroke-width="4" stroke-linecap="round"/>
+    <text x="176" y="266" class="label">Mobile Controller</text>
+    <text x="176" y="292" class="small">扫码点歌 / 队列 / 音量</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="86" y="358" width="250" height="96" rx="18" class="box"/>
+    <rect x="108" y="381" width="50" height="50" rx="14" fill="url(#cardAmber)"/>
+    <rect x="119" y="393" width="28" height="24" rx="4" fill="white" opacity="0.94"/>
+    <path d="M124 423H142" stroke="white" stroke-width="4" stroke-linecap="round"/>
+    <text x="176" y="398" class="label">Admin Console</text>
+    <text x="176" y="424" class="small">曲库管理 / 诊断 / 任务</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="86" y="490" width="250" height="96" rx="18" class="box"/>
+    <rect x="108" y="513" width="50" height="50" rx="14" fill="url(#cardGreen)"/>
+    <rect x="118" y="526" width="30" height="20" rx="3" fill="white" opacity="0.94"/>
+    <path d="M126 557H140M133 546V557" stroke="white" stroke-width="4" stroke-linecap="round"/>
+    <text x="176" y="530" class="label">Android TV</text>
+    <text x="176" y="556" class="small">libVLC 播放真实 MV</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="430" y="292" width="300" height="214" rx="26" fill="rgba(21,31,51,0.92)" stroke="rgba(147,197,253,0.55)" stroke-width="1.5"/>
+    <rect x="466" y="332" width="70" height="70" rx="20" fill="url(#cardBlue)"/>
+    <path d="M490 353H512M490 371H522M490 389H506" stroke="white" stroke-width="5" stroke-linecap="round"/>
+    <text x="558" y="356" class="label">HomeKTV API</text>
+    <text x="558" y="384" class="small">房间状态 / 播放队列</text>
+    <text x="558" y="410" class="small">媒体网关 / TV 心跳</text>
+    <path d="M466 444H694" stroke="rgba(148,163,184,0.25)"/>
+    <text x="466" y="474" class="tiny">Fastify + PostgreSQL + HTTP Range media streaming</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="832" y="226" width="250" height="96" rx="18" class="box"/>
+    <rect x="854" y="249" width="50" height="50" rx="14" fill="url(#cardRose)"/>
+    <ellipse cx="879" cy="264" rx="18" ry="8" fill="white" opacity="0.94"/>
+    <path d="M861 264V286C861 291 869 295 879 295C889 295 897 291 897 286V264" stroke="white" stroke-width="4"/>
+    <text x="922" y="266" class="label">PostgreSQL</text>
+    <text x="922" y="292" class="small">歌曲 / 队列 / 状态</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="832" y="358" width="250" height="96" rx="18" class="box"/>
+    <rect x="854" y="381" width="50" height="50" rx="14" fill="url(#cardGreen)"/>
+    <path d="M867 397H891M867 411H891M867 425H881" stroke="white" stroke-width="5" stroke-linecap="round"/>
+    <text x="922" y="398" class="label">NAS Library</text>
+    <text x="922" y="424" class="small">MKV / MPG / MPEG</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="832" y="490" width="250" height="96" rx="18" class="box"/>
+    <rect x="854" y="513" width="50" height="50" rx="14" fill="url(#cardAmber)"/>
+    <path d="M864 539H894M879 524V554" stroke="white" stroke-width="5" stroke-linecap="round"/>
+    <text x="922" y="530" class="label">Deploy Scripts</text>
+    <text x="922" y="556" class="small">source / docker / doctor</text>
+  </g>
+
+  <path class="line" d="M336 274C374 274 385 320 430 340"/>
+  <path class="line" d="M336 406C375 406 390 400 430 399"/>
+  <path class="line" d="M336 538C381 538 392 467 430 446"/>
+  <path class="line" d="M730 344C773 318 789 288 832 274"/>
+  <path class="line" d="M730 399H832"/>
+  <path class="line" d="M730 454C772 478 789 524 832 538"/>
+  <path class="softline" d="M955 454C918 604 458 628 211 586"/>
+  <text x="476" y="630" class="tiny">Android TV receives playback targets, then streams media through API with HTTP Range support.</text>
+</svg>
