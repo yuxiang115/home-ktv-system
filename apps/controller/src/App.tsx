@@ -1075,7 +1075,7 @@ function SearchResults({
           {nas.results.length > 0 ? (
             <div className="indexed-result-list compact-result-list">
               {nas.results.map((result) => (
-                <SearchNasSongRow controller={controller} key={result.songId} result={result} t={t} />
+                <SearchNasSongRows controller={controller} key={result.songId} result={result} t={t} />
               ))}
             </div>
           ) : (
@@ -1141,7 +1141,7 @@ function SearchResults({
   );
 }
 
-function SearchNasSongRow({
+function SearchNasSongRows({
   controller,
   result,
   t
@@ -1151,46 +1151,36 @@ function SearchNasSongRow({
   t: TFunction;
 }) {
   return (
-    <article className="song-row indexed-result-row compact-song-row" aria-label={`${result.title} ${result.artistName}`}>
-      <div className="compact-song-header">
-        <div className="result-main compact-song-main">
-          <strong>{result.title}</strong>
-          <span>{result.artistName}</span>
-        </div>
-        <span className="compact-song-count">{t("search.indexedVersionCount", { count: result.versions.length })}</span>
-      </div>
+    <>
+      {result.versions.map((version) => {
+        const isPending = controller.pendingNasAssetId === version.assetId;
+        const buttonLabel = indexedVersionButtonLabel(version, isPending, t);
+        const canClick = version.canQueue && !isPending;
 
-      <div className="version-list indexed-version-list compact-version-list">
-        {result.versions.map((version) => {
-          const isPending = controller.pendingNasAssetId === version.assetId;
-          const buttonLabel = indexedVersionButtonLabel(version, isPending, t);
-          const canClick = version.canQueue && !isPending;
-
-          return (
-            <div className="indexed-version-row compact-version-row" key={version.assetId}>
-              <div className="compact-version-main">
-                <strong>{version.displayName}</strong>
-                <div className="compact-version-meta">
-                  <span>{version.extension}</span>
-                  <span>{version.sizeBytes == null ? t("search.unknownSize") : formatFileSize(version.sizeBytes)}</span>
-                  {version.audioTrackCount === 1 ? (
-                    <span className="single-track-badge">{t("search.singleAudioTrackSource")}</span>
-                  ) : null}
-                </div>
+        return (
+          <article className="song-row indexed-version-row compact-version-row" aria-label={version.displayName} key={version.assetId}>
+            <div className="compact-version-main">
+              <strong>{version.displayName}</strong>
+              <div className="compact-version-meta">
+                <span>{version.extension}</span>
+                <span>{version.sizeBytes == null ? t("search.unknownSize") : formatFileSize(version.sizeBytes)}</span>
+                {version.audioTrackCount === 1 ? (
+                  <span className="single-track-badge">{t("search.singleAudioTrackSource")}</span>
+                ) : null}
               </div>
-              <button
-                className="primary-button compact-queue-button"
-                type="button"
-                disabled={!canClick}
-                onClick={() => (canClick ? controller.requestAddNasAsset(version.assetId, result.title, version.queueState) : undefined)}
-              >
-                {buttonLabel}
-              </button>
             </div>
-          );
-        })}
-      </div>
-    </article>
+            <button
+              className="primary-button compact-queue-button"
+              type="button"
+              disabled={!canClick}
+              onClick={() => (canClick ? controller.requestAddNasAsset(version.assetId, result.title, version.queueState) : undefined)}
+            >
+              {buttonLabel}
+            </button>
+          </article>
+        );
+      })}
+    </>
   );
 }
 

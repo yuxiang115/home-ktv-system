@@ -545,7 +545,7 @@ describe("mobile controller runtime", () => {
     expect(screen.getByRole("dialog", { name: "搜索歌曲" })).toBeTruthy();
     expect(screen.getByText("最近搜索")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "七里香" }));
-    expect(await screen.findByText("七里香", { selector: "strong" })).toBeTruthy();
+    expect(await screen.findByText("现场版", { selector: "strong" })).toBeTruthy();
 
     const dialog = screen.getByRole("dialog", { name: "搜索歌曲" });
     await user.clear(within(dialog).getByLabelText("搜索关键词"));
@@ -1052,7 +1052,7 @@ describe("mobile controller runtime", () => {
     expect(requests.some((request) => request.url === "/rooms/living-room/songs/search?q=%E6%99%B4%E5%A4%A9&limit=30")).toBe(true);
   });
 
-  it("renders NAS search results, statuses, version hints, and selected asset add buttons", async () => {
+  it("renders NAS search results as one-layer compact file rows with selected asset add buttons", async () => {
     const user = userEvent.setup();
     const { requests } = installControllerFetchMock({
       restoreResponses: [json(sessionResponse(roomSnapshot()))]
@@ -1063,14 +1063,14 @@ describe("mobile controller runtime", () => {
 
     const dialog = await typeSearchQuery(user, "晴天");
     const search = within(dialog);
-    expect(await search.findByText("晴天", { selector: "strong" })).toBeTruthy();
-    const compactSongRow = search.getAllByRole("article", { name: /晴天/u })[0];
-    expect(compactSongRow?.classList.contains("compact-song-row")).toBe(true);
-    expect(compactSongRow?.closest(".compact-result-list")).toBeTruthy();
-    expect(within(compactSongRow!).getByText("高清版").closest(".compact-version-row")).toBeTruthy();
+    const fileRows = await search.findAllByRole("article", { name: /高清版/u });
+    expect(fileRows[0]?.classList.contains("compact-version-row")).toBe(true);
+    expect(fileRows[0]?.closest(".compact-result-list")).toBeTruthy();
+    expect(fileRows[0]?.closest(".compact-song-row")).toBeNull();
     expect(search.getByText("NAS 曲库")).toBeTruthy();
-    expect(search.getByText("1 个版本")).toBeTruthy();
-    expect(search.getByText("2 个版本")).toBeTruthy();
+    expect(search.queryByText("周杰伦")).toBeNull();
+    expect(search.queryByText("1 个版本")).toBeNull();
+    expect(search.queryByText("2 个版本")).toBeNull();
     expect(search.getByText("现场版")).toBeTruthy();
 
     await user.click(search.getByRole("button", { name: "点歌" }));
@@ -1128,7 +1128,7 @@ describe("mobile controller runtime", () => {
 
     const dialog = await typeSearchQuery(user, "真实 MV 样本");
     const search = within(dialog);
-    await search.findByText("真实 MV 样本", { selector: "strong" });
+    await search.findByText("MKV 双声轨", { selector: "strong" });
     expect(search.getAllByText("需预处理").length).toBeGreaterThanOrEqual(1);
     const disabledButton = search.getByRole("button", { name: "需预处理" }) as HTMLButtonElement;
     expect(disabledButton.disabled).toBe(true);
@@ -1201,9 +1201,9 @@ describe("mobile controller runtime", () => {
     const dialog = await typeSearchQuery(user, "NAS 晴天");
     const search = within(dialog);
     expect(await search.findByText("NAS 曲库")).toBeTruthy();
-    expect(search.getByText("NAS 晴天")).toBeTruthy();
+    expect(search.queryByText("NAS 晴天")).toBeNull();
     expect(search.getByText("NAS 晴天.mkv").closest(".compact-version-row")).toBeTruthy();
-    expect(search.getByText("2 个版本")).toBeTruthy();
+    expect(search.queryByText("2 个版本")).toBeNull();
     expect(search.getByText("单音轨歌曲源")).toBeTruthy();
     expect(search.getByText("未知大小")).toBeTruthy();
     const addButton = search.getByRole("button", { name: "点歌" }) as HTMLButtonElement;
@@ -1280,7 +1280,7 @@ describe("mobile controller runtime", () => {
 
     const dialog = await typeSearchQuery(user, "NAS 晴天");
     const search = within(dialog);
-    await search.findByText("NAS 晴天");
+    await search.findByText("NAS 晴天.mpg");
     await user.click(search.getByRole("button", { name: "已点" }));
 
     expect(screen.getByRole("dialog", { name: "重复点歌" })).toBeTruthy();
@@ -1394,7 +1394,7 @@ describe("mobile controller runtime", () => {
 
     const dialog = await typeSearchQuery(userEvent.setup(), "暂不可播 MV");
     const search = within(dialog);
-    await search.findByText("暂不可播 MV", { selector: "strong" });
+    await search.findByText("MPG 双声轨", { selector: "strong" });
     expect(search.getByRole("button", { name: "文件不可读" })).toBeTruthy();
   });
 
@@ -1606,10 +1606,10 @@ describe("mobile controller runtime", () => {
 
     const dialog = await typeSearchQuery(userEvent.setup(), "晴天");
     const search = within(dialog);
-    await search.findByText("晴天", { selector: "strong" });
+    await search.findByText("高清版", { selector: "strong" });
     await search.findByText("远端七里香");
     const searchPanelText = dialog.textContent ?? "";
-    const localIndex = searchPanelText.indexOf("晴天");
+    const localIndex = searchPanelText.indexOf("高清版");
     const onlineIndex = searchPanelText.indexOf("远端七里香");
 
     expect(localIndex).toBeGreaterThanOrEqual(0);
