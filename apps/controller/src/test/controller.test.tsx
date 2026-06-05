@@ -1282,6 +1282,7 @@ describe("mobile controller runtime", () => {
     const addButton = search.getByRole("button", { name: "点歌" }) as HTMLButtonElement;
     expect(addButton.disabled).toBe(false);
     expect(search.getByRole("button", { name: "已点" })).toBeTruthy();
+    const historyRequestsBeforeAdd = requests.filter((request) => request.url === "/controller/me/song-history").length;
 
     await user.click(addButton);
 
@@ -1309,6 +1310,11 @@ describe("mobile controller runtime", () => {
       })
     );
     await flush();
+    await waitFor(() => {
+      expect(requests.filter((request) => request.url === "/controller/me/song-history").length).toBeGreaterThan(
+        historyRequestsBeforeAdd
+      );
+    });
   });
 
   it("opens duplicate confirmation from a queued NAS search version before sending source asset identity", async () => {

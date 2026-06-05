@@ -242,7 +242,7 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
          playback_options, requested_at, started_at, ended_at, removed_at,
          removed_by_control_session_id, undo_expires_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13, $14, $15)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13, $14, $15)
        RETURNING ${queueEntrySelectColumns}`,
       [
         input.roomId,

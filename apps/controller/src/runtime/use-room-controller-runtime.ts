@@ -517,6 +517,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
         const restored = await restoreControlSession({ roomSlug: initial.roomSlug, deviceId });
         setSnapshot(restored.snapshot);
         await runSongSearch(songSearchQueryRef.current);
+        await runSongHistory();
         setErrorMessage(null);
       } catch (error) {
         setErrorMessage(errorMessageFrom(error, "点歌失败"));
@@ -524,7 +525,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
         setPendingNasAssetId((current) => (current === assetId ? null : current));
       }
     },
-    [deviceId, initial.roomSlug, runCommand, runSongSearch]
+    [deviceId, initial.roomSlug, runCommand, runSongHistory, runSongSearch]
   );
 
   const sendInteraction = useCallback(
