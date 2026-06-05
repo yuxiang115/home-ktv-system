@@ -557,7 +557,7 @@ python3 scripts/tools/run_style_tagging_llm_batch_test.py
 
 ```bash
 pnpm ui:visual-check
-MOBILE_VISUAL_URL="https://ktv-controller.shaolongfei.com/controller?room=living-room&token=..." pnpm ui:visual-check
+MOBILE_VISUAL_URL="https://ktv-controller.shaolongfei.com/controller?token=..." pnpm ui:visual-check
 ```
 
 输出目录：

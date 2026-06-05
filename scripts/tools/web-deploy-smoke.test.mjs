@@ -25,7 +25,7 @@ test("runWebDeploySmokeCheck verifies CORS, TV presence, page reachability, and 
         if (String(url) === "http://127.0.0.1:4273/assets/tv.js") {
           return textResponse('const apiBaseUrl = "http://127.0.0.1:4002";');
         }
-        if (String(url) === "http://127.0.0.1:4276/controller?room=living-room") {
+        if (String(url) === "http://127.0.0.1:4276/controller") {
           return textResponse('<html><script type="module" src="/assets/controller.js"></script></html>');
         }
         if (String(url) === "http://127.0.0.1:4276/") {

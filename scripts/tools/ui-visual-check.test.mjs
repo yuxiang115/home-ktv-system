@@ -4,7 +4,7 @@ import { buildVisualConfig, resolveMobileVisualUrl } from "./ui-visual-check.mjs
 
 test("resolveMobileVisualUrl uses MOBILE_VISUAL_URL override without fetch", async () => {
   const config = buildVisualConfig({
-    MOBILE_VISUAL_URL: "http://phone.local/controller?room=test-room"
+    MOBILE_VISUAL_URL: "http://phone.local/controller?token=test-token"
   });
 
   const url = await resolveMobileVisualUrl({
@@ -14,7 +14,7 @@ test("resolveMobileVisualUrl uses MOBILE_VISUAL_URL override without fetch", asy
     }
   });
 
-  assert.equal(url, "http://phone.local/controller?room=test-room");
+  assert.equal(url, "http://phone.local/controller?token=test-token");
 });
 
 test("resolveMobileVisualUrl refreshes a pairing token when no override exists", async () => {
@@ -33,7 +33,7 @@ test("resolveMobileVisualUrl refreshes a pairing token when no override exists",
         status: 200,
         json: async () => ({
           pairing: {
-            controllerUrl: "http://127.0.0.1:5176/controller?room=living-room&token=token-visual"
+            controllerUrl: "http://127.0.0.1:5176/controller?token=token-visual"
           }
         })
       };

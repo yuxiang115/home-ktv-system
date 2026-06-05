@@ -14,7 +14,7 @@ test("status prints pairing-token mobile controller URL when API snapshot is ava
       response.end(
         JSON.stringify({
           pairing: {
-            controllerUrl: "http://phone.local:5176/controller?room=living-room&token=pair-token"
+            controllerUrl: "http://phone.local:5176/controller?token=pair-token"
           }
         })
       );
@@ -38,8 +38,8 @@ test("status prints pairing-token mobile controller URL when API snapshot is ava
     });
 
     assert.equal(result.code, 0, result.stderr);
-    assert.match(result.stdout, /Mobile controller: http:\/\/phone\.local:5176\/controller\?room=living-room&token=pair-token/);
-    assert.doesNotMatch(result.stdout, /Mobile controller: http:\/\/phone\.local:5176\/controller\?room=living-room\n/);
+    assert.match(result.stdout, /Mobile controller: http:\/\/phone\.local:5176\/controller\?token=pair-token/);
+    assert.doesNotMatch(result.stdout, /Mobile controller: http:\/\/phone\.local:5176\/controller\n/);
   } finally {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));

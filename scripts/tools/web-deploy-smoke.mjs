@@ -285,7 +285,7 @@ function tvUrl(config) {
 }
 
 function controllerUrl(config) {
-  return `${config.controllerBaseUrl}/controller?room=${encodeURIComponent(config.roomSlug)}`;
+  return `${config.controllerBaseUrl}/controller`;
 }
 
 function originFor(url) {

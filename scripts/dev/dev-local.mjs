@@ -296,7 +296,7 @@ async function printUrls() {
 }
 
 async function resolveMobileControllerUrl() {
-  const fallbackUrl = `${CONTROLLER_BASE_URL}/controller?room=${encodeURIComponent(ROOM_SLUG)}`;
+  const fallbackUrl = `${CONTROLLER_BASE_URL}/controller`;
   const snapshotUrl = `${API_BASE_URL}/rooms/${encodeURIComponent(ROOM_SLUG)}/snapshot`;
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
