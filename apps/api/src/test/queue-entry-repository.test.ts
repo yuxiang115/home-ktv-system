@@ -5,16 +5,12 @@ import { PgQueueEntryRepository } from "../modules/playback/repositories/queue-e
 const now = new Date("2026-05-01T10:00:00.000Z");
 
 describe("PgQueueEntryRepository", () => {
-  it("appends NAS queue entries by source-native identity", async () => {
+  it("appends queue entries as direct NAS song references", async () => {
     const db = new RecordingDb([
       {
         id: "queue-1",
         room_id: "living-room",
-        source_type: "nas",
-        nas_song_id: "ktv-song-1",
-        nas_asset_id: "ktv-asset-1",
-        online_song_id: null,
-        online_asset_id: null,
+        song_id: "ktv-song-1",
         requested_by: "phone-a",
         queue_position: 1,
         status: "queued",
@@ -32,18 +28,20 @@ describe("PgQueueEntryRepository", () => {
     const repository = new PgQueueEntryRepository(db);
     const entry = await repository.append({
       roomId: "living-room",
-      source: { sourceType: "nas", songId: "ktv-song-1", assetId: "ktv-asset-1" },
+      songId: "ktv-song-1",
       requestedBy: "phone-a",
       queuePosition: 1,
       requestedAt: now
     });
 
-    expect(db.queries[0]).toContain("source_type, nas_song_id, nas_asset_id");
-    expect(db.values[0]?.slice(1, 4)).toEqual(["nas", "ktv-song-1", "ktv-asset-1"]);
+    expect(db.queries[0]).toContain("room_id, song_id");
+    expect(db.queries[0]).not.toContain("source_type");
+    expect(db.queries[0]).not.toContain("nas_asset_id");
+    expect(db.values[0]?.slice(0, 2)).toEqual(["living-room", "ktv-song-1"]);
     expect(entry).toMatchObject({
-      source: { sourceType: "nas", songId: "ktv-song-1", assetId: "ktv-asset-1" },
+      source: { sourceType: "nas", songId: "ktv-song-1", assetId: "ktv-song-1" },
       songId: "ktv-song-1",
-      assetId: "ktv-asset-1"
+      assetId: "ktv-song-1"
     });
   });
 
@@ -64,11 +62,7 @@ describe("PgQueueEntryRepository", () => {
       {
         id: "queue-1",
         room_id: "living-room",
-        source_type: "nas",
-        nas_song_id: "ktv-song-1",
-        nas_asset_id: "ktv-asset-1",
-        online_song_id: null,
-        online_asset_id: null,
+        song_id: "ktv-song-1",
         requested_by: "phone-a",
         queue_position: 1,
         status: "queued",
@@ -86,7 +80,7 @@ describe("PgQueueEntryRepository", () => {
 
     await repository.append({
       roomId: "living-room",
-      source: { sourceType: "nas", songId: "ktv-song-1", assetId: "ktv-asset-1" },
+      songId: "ktv-song-1",
       requestedBy: "phone-a",
       queuePosition: 1,
       requestedAt: now

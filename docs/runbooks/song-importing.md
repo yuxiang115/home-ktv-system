@@ -166,8 +166,8 @@ python3 scripts/tools/delete_uncovered_songs.py apply \
 psql "$DATABASE_URL" -c "
 select count(*) as queue_invalid_refs
 from queue_entries q
-left join ktv_songs s on s.id = q.nas_song_id
-where q.nas_song_id is not null
+left join ktv_songs s on s.id = q.song_id
+where q.song_id is not null
   and s.id is null;
 "
 ```

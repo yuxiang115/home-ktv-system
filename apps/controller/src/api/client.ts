@@ -1,4 +1,4 @@
-import type { OnlineCandidateTask, SongDiscoveryResponse, SongDiscoverySongsResponse, SongSearchResponse } from "@home-ktv/domain";
+import type { SongDiscoveryResponse, SongDiscoverySongsResponse, SongSearchResponse } from "@home-ktv/domain";
 import type { ControlSessionInfo, RoomControlSnapshot, RoomInteractionEvent, RoomInteractionKind } from "@home-ktv/player-contracts";
 
 const deviceIdStorageKey = "home_ktv_device_id";
@@ -20,13 +20,6 @@ export interface CommandConflictResponse {
   code: "SESSION_VERSION_CONFLICT";
   latestSessionVersion: number;
   snapshot: RoomControlSnapshot;
-}
-
-export interface SupplementCommandAcceptedResponse {
-  status: "accepted";
-  commandId: string;
-  sessionVersion: number;
-  task: OnlineCandidateTask;
 }
 
 export interface RoomInteractionAcceptedResponse {
@@ -193,25 +186,6 @@ export async function setVolume(input: CommandBaseInput & { volumePercent: numbe
   return sendCommand(input, "set-volume", {
     volumePercent: input.volumePercent
   });
-}
-
-export async function requestSupplement(input: CommandBaseInput & {
-  provider: string;
-  providerCandidateId: string;
-}): Promise<SupplementCommandAcceptedResponse> {
-  return fetchController<SupplementCommandAcceptedResponse>(
-    `/rooms/${encodeURIComponent(input.roomSlug)}/commands/request-supplement`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        commandId: createCommandId(),
-        sessionVersion: input.sessionVersion,
-        deviceId: input.deviceId,
-        provider: input.provider,
-        providerCandidateId: input.providerCandidateId
-      })
-    }
-  );
 }
 
 export async function sendRoomInteraction(input: {

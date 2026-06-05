@@ -8,7 +8,6 @@ export const tableNames = {
   rooms: "rooms",
   roomClients: "room_clients",
   queueEntries: "queue_entries",
-  candidateTasks: "candidate_tasks",
   ktvSongs: "ktv_songs"
 } as const;
 
@@ -19,22 +18,7 @@ export const enumValues = {
   roomStatus: ["active", "inactive", "maintenance"],
   queueEntryStatus: ["queued", "preparing", "loading", "playing", "played", "skipped", "failed", "removed"],
   clientType: ["tv", "controller"],
-  playerState: ["idle", "preparing", "loading", "playing", "paused", "recovering", "error"],
-  onlineCandidateTaskStatus: [
-    "discovered",
-    "selected",
-    "review_required",
-    "fetching",
-    "fetched",
-    "ready",
-    "failed",
-    "stale",
-    "promoted",
-    "purged"
-  ],
-  onlineCandidateType: ["mv", "karaoke", "audio", "unknown"],
-  onlineCandidateRiskLabel: ["normal", "risky", "blocked"],
-  onlineCandidateReliabilityLabel: ["high", "medium", "low", "unknown"]
+  playerState: ["idle", "preparing", "loading", "playing", "paused", "recovering", "error"]
 } as const;
 
 export interface RoomRow {
@@ -63,11 +47,7 @@ export interface RoomRow {
 export interface QueueEntryRow {
   id: string;
   room_id: string;
-  source_type: string;
-  nas_song_id: string | null;
-  nas_asset_id: string | null;
-  online_song_id: string | null;
-  online_asset_id: string | null;
+  song_id: string;
   requested_by: string;
   queue_position: number;
   status: string;
@@ -94,39 +74,6 @@ export interface RoomClientRow {
   pairing_token: string | null;
   created_at: Date;
   updated_at: Date;
-}
-
-export interface CandidateTaskRow {
-  id: string;
-  room_id: string;
-  provider: string;
-  provider_candidate_id: string;
-  title: string;
-  artist_name: string;
-  source_label: string;
-  duration_ms: number | null;
-  candidate_type: string;
-  reliability_label: string;
-  risk_label: string;
-  status: string;
-  failure_reason: string | null;
-  recent_event: Record<string, unknown>;
-  provider_payload: Record<string, unknown>;
-  ready_asset_id: string | null;
-  ready_media_url: string | null;
-  ready_cache_path: string | null;
-  ready_metadata: Record<string, unknown>;
-  created_at: Date;
-  updated_at: Date;
-  selected_at: Date | null;
-  review_required_at: Date | null;
-  fetching_at: Date | null;
-  fetched_at: Date | null;
-  ready_at: Date | null;
-  failed_at: Date | null;
-  stale_at: Date | null;
-  promoted_at: Date | null;
-  purged_at: Date | null;
 }
 
 export interface RoomPairingTokenRow {
@@ -172,11 +119,7 @@ CREATE TABLE IF NOT EXISTS rooms (
 CREATE TABLE IF NOT EXISTS queue_entries (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
   room_id text NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-  source_type text NOT NULL CHECK (source_type IN ('nas', 'online')),
-  nas_song_id text,
-  nas_asset_id text,
-  online_song_id text,
-  online_asset_id text,
+  song_id text NOT NULL,
   requested_by text NOT NULL,
   queue_position integer NOT NULL,
   status text NOT NULL CHECK (status IN ('queued', 'preparing', 'loading', 'playing', 'played', 'skipped', 'failed', 'removed')),
@@ -234,58 +177,6 @@ CREATE INDEX IF NOT EXISTS room_clients_room_type_seen_idx
 CREATE INDEX IF NOT EXISTS room_clients_controller_active_idx
   ON room_clients(room_id, expires_at, last_seen_at DESC)
   WHERE client_type = 'controller' AND revoked_at IS NULL;
-
-CREATE TABLE IF NOT EXISTS candidate_tasks (
-  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  room_id text NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
-  provider text NOT NULL,
-  provider_candidate_id text NOT NULL,
-  title text NOT NULL,
-  artist_name text NOT NULL,
-  source_label text NOT NULL,
-  duration_ms integer CHECK (duration_ms IS NULL OR duration_ms >= 0),
-  candidate_type text NOT NULL CHECK (candidate_type IN ('mv', 'karaoke', 'audio', 'unknown')),
-  reliability_label text NOT NULL CHECK (reliability_label IN ('high', 'medium', 'low', 'unknown')),
-  risk_label text NOT NULL CHECK (risk_label IN ('normal', 'risky', 'blocked')),
-  status text NOT NULL DEFAULT 'discovered' CHECK (status IN (
-    'discovered',
-    'selected',
-    'review_required',
-    'fetching',
-    'fetched',
-    'ready',
-    'failed',
-    'stale',
-    'promoted',
-    'purged'
-  )),
-  failure_reason text,
-  recent_event jsonb NOT NULL DEFAULT '{}'::jsonb,
-  provider_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
-  ready_asset_id text,
-  ready_media_url text,
-  ready_cache_path text,
-  ready_metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
-  selected_at timestamptz,
-  review_required_at timestamptz,
-  fetching_at timestamptz,
-  fetched_at timestamptz,
-  ready_at timestamptz,
-  failed_at timestamptz,
-  stale_at timestamptz,
-  promoted_at timestamptz,
-  purged_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE(room_id, provider, provider_candidate_id)
-);
-
-CREATE INDEX IF NOT EXISTS candidate_tasks_room_status_updated_idx
-  ON candidate_tasks(room_id, status, updated_at DESC);
-CREATE INDEX IF NOT EXISTS candidate_tasks_provider_candidate_idx
-  ON candidate_tasks(provider, provider_candidate_id);
-CREATE INDEX IF NOT EXISTS candidate_tasks_room_recent_idx
-  ON candidate_tasks(room_id, updated_at DESC);
 
 INSERT INTO rooms (id, slug, name, status)
 VALUES ('living-room', 'living-room', 'Living Room', 'active')
@@ -348,31 +239,7 @@ CREATE INDEX IF NOT EXISTS ktv_songs_active_idx
   WHERE missing_at IS NULL;
 
 ALTER TABLE queue_entries
-  ADD CONSTRAINT queue_entries_source_identity_ck
-  CHECK (
-    (
-      source_type = 'nas'
-      AND nas_song_id IS NOT NULL
-      AND nas_asset_id IS NOT NULL
-      AND online_song_id IS NULL
-      AND online_asset_id IS NULL
-    )
-    OR
-    (
-      source_type = 'online'
-      AND online_song_id IS NOT NULL
-      AND online_asset_id IS NOT NULL
-      AND nas_song_id IS NULL
-      AND nas_asset_id IS NULL
-    )
-  );
-
-ALTER TABLE queue_entries
-  ADD CONSTRAINT queue_entries_nas_identity_ck
-  CHECK (source_type <> 'nas' OR nas_song_id = nas_asset_id);
-
-ALTER TABLE queue_entries
-  ADD CONSTRAINT queue_entries_nas_song_fk
-  FOREIGN KEY (nas_song_id) REFERENCES ktv_songs(id)
+  ADD CONSTRAINT queue_entries_song_fk
+  FOREIGN KEY (song_id) REFERENCES ktv_songs(id)
   ON DELETE RESTRICT;
 `;

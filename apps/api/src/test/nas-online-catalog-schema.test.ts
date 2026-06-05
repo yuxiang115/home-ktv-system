@@ -26,20 +26,22 @@ describe("NAS / online catalog final schema", () => {
     ]));
   });
 
-  it("stores queue entries by source-native identities", () => {
-    expect(schemaSql).toContain("source_type text NOT NULL CHECK (source_type IN ('nas', 'online'))");
-    expect(schemaSql).toContain("nas_song_id text");
-    expect(schemaSql).toContain("nas_asset_id text");
-    expect(schemaSql).toContain("online_song_id text");
-    expect(schemaSql).toContain("online_asset_id text");
-    expect(schemaSql).toContain("queue_entries_source_identity_ck");
-    expect(schemaSql).toContain("queue_entries_nas_song_fk");
-    expect(schemaSql).toContain("queue_entries_nas_identity_ck");
-    expect(schemaSql).not.toContain("queue_entries_nas_asset_song_fk");
+  it("stores queue entries as direct NAS song references", () => {
+    expect(schemaSql).toContain("song_id text NOT NULL");
+    expect(schemaSql).toContain("queue_entries_song_fk");
+    expect(schemaSql).not.toContain("source_type text NOT NULL CHECK (source_type IN ('nas', 'online'))");
+    expect(schemaSql).not.toContain("nas_song_id text");
+    expect(schemaSql).not.toContain("nas_asset_id text");
+    expect(schemaSql).not.toContain("online_song_id text");
+    expect(schemaSql).not.toContain("online_asset_id text");
+    expect(schemaSql).not.toContain("queue_entries_source_identity_ck");
+    expect(schemaSql).not.toContain("queue_entries_nas_identity_ck");
   });
 
-  it("keeps only ktv_songs for NAS and removes online placeholder tables", () => {
+  it("keeps only ktv_songs for NAS and removes online placeholder tables and tasks", () => {
     expect(schemaSql).toContain("CREATE TABLE IF NOT EXISTS ktv_songs");
+    expect(schemaSql).not.toContain("CREATE TABLE IF NOT EXISTS candidate_tasks");
+    expect(Object.values(tableNames)).not.toContain("candidate_tasks");
     for (const removedTable of [
       "CREATE TABLE IF NOT EXISTS ktv_song_assets",
       "CREATE TABLE IF NOT EXISTS ktv_artists",
@@ -54,7 +56,7 @@ describe("NAS / online catalog final schema", () => {
     expect(schemaSql).toContain("artist_names text[] NOT NULL DEFAULT '{}'");
     expect(schemaSql).toContain("style_tags text[] NOT NULL DEFAULT '{}'");
     expect(schemaSql).not.toContain("active_asset_id text REFERENCES assets");
-    expect(schemaSql).toContain("ready_asset_id text");
+    expect(schemaSql).not.toContain("ready_asset_id text");
     expect(schemaSql).not.toContain("ready_source_type text CHECK (ready_source_type IN ('online'))");
     expect(schemaSql).not.toContain("ready_online_asset_id");
   });

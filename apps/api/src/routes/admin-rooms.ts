@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance } from "fastify";
 import type { MediaSourceRef } from "@home-ktv/domain";
 import type { ApiConfig } from "../config.js";
 import { buildEmptyOnlineTaskSummary, buildRoomControlSnapshot } from "../modules/rooms/build-control-snapshot.js";
@@ -12,7 +12,6 @@ import type { QueueEntryStatus } from "@home-ktv/domain";
 import type { RoomPairingTokenRepository } from "../modules/rooms/repositories/pairing-token-repository.js";
 import type { RoomRepository } from "../modules/rooms/repositories/room-repository.js";
 import type { PlayerDeviceSessionRepository } from "../modules/player/register-player.js";
-import type { CandidateTaskService } from "../modules/online/candidate-task-service.js";
 import type { PlaybackEventRepository } from "../modules/playback/repositories/playback-event-repository.js";
 import type { RoomSnapshotBroadcaster } from "../modules/realtime/room-snapshot-broadcaster.js";
 
@@ -27,8 +26,6 @@ export interface AdminRoomsRouteDependencies {
   mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   deviceSessions: PlayerDeviceSessionRepository;
   playbackEvents?: Pick<PlaybackEventRepository, "listRecentByRoom"> | undefined;
-  online?: Pick<CandidateTaskService, "listActiveForRoom" | "retryTask" | "purgeTask" | "promoteTask"> | undefined;
-  onlineTasks?: Pick<CandidateTaskService, "listActiveForRoom" | "retryTask" | "purgeTask" | "promoteTask"> | undefined;
   broadcaster?: RoomSnapshotBroadcaster | undefined;
 }
 
@@ -36,8 +33,6 @@ export async function registerAdminRoomsRoutes(
   server: FastifyInstance,
   dependencies: AdminRoomsRouteDependencies
 ): Promise<void> {
-  const onlineTasks = dependencies.online ?? dependencies.onlineTasks;
-
   server.get<{ Params: { roomSlug: string } }>("/admin/rooms/:roomSlug", async (request, reply) => {
     const room = await dependencies.rooms.findBySlug(request.params.roomSlug);
     if (!room) {
@@ -55,8 +50,7 @@ export async function registerAdminRoomsRoutes(
         pairingTokens: dependencies.pairingTokens,
         controlSessions: dependencies.controlSessions,
         deviceSessions: dependencies.deviceSessions,
-        playbackEvents: dependencies.playbackEvents,
-        onlineTasks
+        playbackEvents: dependencies.playbackEvents
       },
       ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
     });
@@ -84,75 +78,6 @@ export async function registerAdminRoomsRoutes(
     return { pairing };
   });
 
-  server.post<{ Params: { roomSlug: string; taskId: string } }>(
-    "/admin/rooms/:roomSlug/online-tasks/:taskId/retry",
-    async (request, reply) =>
-      handleOnlineTaskAction(request.params, reply, dependencies, (onlineTasks, input) => onlineTasks.retryTask(input))
-  );
-
-  server.post<{ Params: { roomSlug: string; taskId: string } }>(
-    "/admin/rooms/:roomSlug/online-tasks/:taskId/clean",
-    async (request, reply) =>
-      handleOnlineTaskAction(request.params, reply, dependencies, (onlineTasks, input) => onlineTasks.purgeTask(input))
-  );
-
-  server.post<{ Params: { roomSlug: string; taskId: string } }>(
-    "/admin/rooms/:roomSlug/online-tasks/:taskId/promote",
-    async (request, reply) =>
-      handleOnlineTaskAction(request.params, reply, dependencies, (onlineTasks, input) => onlineTasks.promoteTask(input))
-  );
-}
-
-async function handleOnlineTaskAction(
-  params: { roomSlug: string; taskId: string },
-  reply: FastifyReply,
-  dependencies: AdminRoomsRouteDependencies,
-  action: (
-    onlineTasks: NonNullable<AdminRoomsRouteDependencies["onlineTasks"]>,
-    input: { roomId: string; taskId: string }
-  ) => ReturnType<NonNullable<AdminRoomsRouteDependencies["onlineTasks"]>["retryTask"]>
-): Promise<void> {
-  const room = await dependencies.rooms.findBySlug(params.roomSlug);
-  if (!room) {
-    await reply.code(404).send({ error: "ROOM_NOT_FOUND" });
-    return;
-  }
-
-  const onlineTasks = dependencies.online ?? dependencies.onlineTasks;
-  if (!onlineTasks) {
-    await reply.code(404).send({ error: "ONLINE_TASK_NOT_FOUND" });
-    return;
-  }
-
-  const task = await action(onlineTasks, { roomId: room.id, taskId: params.taskId });
-  if (!task) {
-    await reply.code(404).send({ error: "ONLINE_TASK_NOT_FOUND" });
-    return;
-  }
-
-  if (dependencies.broadcaster) {
-    const snapshot = await buildRoomControlSnapshot({
-      roomSlug: room.slug,
-      config: dependencies.config,
-      repositories: {
-        rooms: dependencies.rooms,
-        playbackSessions: dependencies.playbackSessions,
-        queueEntries: dependencies.queueEntries,
-        ...(dependencies.playableMedia ? { playableMedia: dependencies.playableMedia } : {}),
-        pairingTokens: dependencies.pairingTokens,
-        controlSessions: dependencies.controlSessions,
-        deviceSessions: dependencies.deviceSessions,
-        playbackEvents: dependencies.playbackEvents,
-        onlineTasks
-      },
-      ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
-    });
-    if (snapshot) {
-      dependencies.broadcaster.broadcastRoomSnapshot(room.slug, snapshot);
-    }
-  }
-
-  await reply.send({ task });
 }
 
 async function buildFallbackRoomStatus(
@@ -161,7 +86,7 @@ async function buildFallbackRoomStatus(
   dependencies: AdminRoomsRouteDependencies
 ): Promise<any> {
   const now = new Date();
-  const [pairing, session, effectiveQueue, removedQueue, onlineCount, recentEvents, onlineTasks, activeTvPlayers] = await Promise.all([
+  const [pairing, session, effectiveQueue, removedQueue, onlineCount, recentEvents, activeTvPlayers] = await Promise.all([
     getOrCreatePairingInfo({
       room,
       publicBaseUrl: dependencies.config.publicBaseUrl,
@@ -175,9 +100,6 @@ async function buildFallbackRoomStatus(
     dependencies.controlSessions.countActiveByRoom(room.id, new Date(now.getTime() - 60 * 1000)),
     typeof dependencies.playbackEvents?.listRecentByRoom === "function"
       ? dependencies.playbackEvents.listRecentByRoom(room.id, 20)
-      : Promise.resolve([]),
-    typeof (dependencies.online ?? dependencies.onlineTasks)?.listActiveForRoom === "function"
-      ? (dependencies.online ?? dependencies.onlineTasks)!.listActiveForRoom(room.id)
       : Promise.resolve([]),
     dependencies.deviceSessions.listActiveTvPlayers(room.id, new Date(now.getTime() - 30_000))
   ]);
@@ -241,36 +163,7 @@ async function buildFallbackRoomStatus(
     switchTarget: null,
     queue,
     recentEvents,
-    onlineTasks: {
-      counts: onlineTasks.reduce<Record<string, number>>(
-        (counts, task) => {
-          counts.total = (counts.total ?? 0) + 1;
-          counts[task.status] = (counts[task.status] ?? 0) + 1;
-          return counts;
-        },
-        { total: 0 }
-      ),
-      tasks: onlineTasks.map((task) => ({
-        taskId: task.id,
-        roomId: task.roomId,
-        provider: task.provider,
-        providerCandidateId: task.providerCandidateId,
-        title: task.title,
-        artistName: task.artistName,
-        sourceLabel: task.sourceLabel,
-        durationMs: task.durationMs,
-        candidateType: task.candidateType,
-        reliabilityLabel: task.reliabilityLabel,
-        riskLabel: task.riskLabel,
-        status: task.status,
-        failureReason: task.failureReason,
-        recentEvent: task.recentEvent,
-        recentEventAt: typeof task.recentEvent.at === "string" ? task.recentEvent.at : task.updatedAt,
-        readyAssetId: task.readyAssetId,
-        createdAt: task.createdAt,
-        updatedAt: task.updatedAt
-      }))
-    },
+    onlineTasks: buildEmptyOnlineTaskSummary(),
     notice: null,
     generatedAt: now.toISOString()
   };

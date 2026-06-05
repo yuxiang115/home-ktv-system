@@ -8,14 +8,13 @@ import type { RoomPairingTokenRepository } from "./repositories/pairing-token-re
 import type { ControlSessionRepository } from "../controller/repositories/control-session-repository.js";
 import type { PlayerDeviceSessionRepository } from "../player/register-player.js";
 import { buildRoomSnapshot } from "../../routes/room-snapshots.js";
-import type { OnlineCandidateTask, OnlineCandidateTaskState, PlaybackEvent, QueueEntry, RoomId } from "@home-ktv/domain";
+import type { PlaybackEvent, QueueEntry, RoomId } from "@home-ktv/domain";
 import {
   DEFAULT_ROOM_VOLUME_PERCENT,
   type PlaybackNotice,
   type RoomControlSnapshot,
   type RoomQueueEntryPreview
 } from "@home-ktv/player-contracts";
-import type { CandidateTaskService } from "../online/candidate-task-service.js";
 
 const ACTIVE_TV_PLAYER_WINDOW_MS = 30_000;
 
@@ -45,7 +44,7 @@ export interface RoomOnlineTaskSummaryRow {
   candidateType: string;
   reliabilityLabel: string;
   riskLabel: string;
-  status: OnlineCandidateTaskState;
+  status: string;
   failureReason: string | null;
   recentEvent: Record<string, unknown>;
   recentEventAt: string | null;
@@ -73,7 +72,6 @@ export interface ControlSnapshotRepositories {
   controlSessions: ControlSessionRepository;
   deviceSessions: PlayerDeviceSessionRepository;
   playbackEvents?: RecentPlaybackEventRepository | undefined;
-  onlineTasks?: Pick<CandidateTaskService, "listActiveForRoom"> | undefined;
 }
 
 export interface BuildRoomControlSnapshotInput {
@@ -107,12 +105,11 @@ export async function buildRoomControlSnapshot(input: BuildRoomControlSnapshotIn
     return null;
   }
 
-  const [session, queue, removedQueue, recentEvents, onlineTasks] = await Promise.all([
+  const [session, queue, removedQueue, recentEvents] = await Promise.all([
     input.repositories.playbackSessions.findByRoomId(room.id),
     input.repositories.queueEntries.listEffectiveQueue(room.id),
     input.repositories.queueEntries.listUndoableRemoved(room.id, now),
-    listRecentPlaybackEvents(input.repositories, room.id),
-    listOnlineTasks(input.repositories, room.id)
+    listRecentPlaybackEvents(input.repositories, room.id)
   ]);
   const activeTvPlayers = await input.repositories.deviceSessions.listActiveTvPlayers(
     room.id,
@@ -160,7 +157,7 @@ export async function buildRoomControlSnapshot(input: BuildRoomControlSnapshotIn
     targetVocalMode: baseSnapshot.targetVocalMode ?? null,
     queue: queuePreview,
     recentEvents: recentEvents.map(playbackEventPreview),
-    onlineTasks: buildOnlineTaskSummary(onlineTasks),
+    onlineTasks: buildEmptyOnlineTaskSummary(),
     notice: baseSnapshot.notice,
     generatedAt: baseSnapshot.generatedAt
   };
@@ -245,67 +242,4 @@ function listRecentPlaybackEvents(
     return Promise.resolve([]);
   }
   return repositories.playbackEvents.listRecentByRoom(roomId, 20);
-}
-
-function listOnlineTasks(
-  repositories: ControlSnapshotRepositories,
-  roomId: string
-): Promise<OnlineCandidateTask[]> {
-  if (typeof repositories.onlineTasks?.listActiveForRoom !== "function") {
-    return Promise.resolve([]);
-  }
-  return repositories.onlineTasks.listActiveForRoom(roomId);
-}
-
-function buildOnlineTaskSummary(tasks: OnlineCandidateTask[]): RoomOnlineTaskSummary {
-  const counts: Record<string, number> = { total: tasks.length };
-  const rows = tasks.map((task) => {
-    counts[task.status] = (counts[task.status] ?? 0) + 1;
-    return onlineTaskSummaryRow(task);
-  });
-
-  return { counts, tasks: rows };
-}
-
-function onlineTaskSummaryRow(task: OnlineCandidateTask): RoomOnlineTaskSummaryRow {
-  return {
-    taskId: task.id,
-    roomId: task.roomId,
-    provider: task.provider,
-    providerCandidateId: task.providerCandidateId,
-    title: task.title,
-    artistName: task.artistName,
-    sourceLabel: task.sourceLabel,
-    durationMs: task.durationMs,
-    candidateType: task.candidateType,
-    reliabilityLabel: task.reliabilityLabel,
-    riskLabel: task.riskLabel,
-    status: task.status,
-    failureReason: task.failureReason,
-    recentEvent: task.recentEvent,
-    recentEventAt: readRecentEventAt(task),
-    readyAssetId: task.readyAssetId,
-    createdAt: task.createdAt,
-    updatedAt: task.updatedAt
-  };
-}
-
-function readRecentEventAt(task: OnlineCandidateTask): string | null {
-  const explicitAt = task.recentEvent.at;
-  if (typeof explicitAt === "string") {
-    return explicitAt;
-  }
-  const statusAt = {
-    discovered: task.createdAt,
-    selected: task.selectedAt,
-    review_required: task.reviewRequiredAt,
-    fetching: task.fetchingAt,
-    fetched: task.fetchedAt,
-    ready: task.readyAt,
-    failed: task.failedAt,
-    stale: task.staleAt,
-    promoted: task.promotedAt,
-    purged: task.purgedAt
-  } satisfies Record<OnlineCandidateTaskState, string | null>;
-  return statusAt[task.status] ?? task.updatedAt;
 }

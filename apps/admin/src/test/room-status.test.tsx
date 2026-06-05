@@ -92,19 +92,12 @@ describe("room status view", () => {
     expect(screen.getByText("七里香")).toBeTruthy();
     expect(screen.getByText(/伴唱/u)).toBeTruthy();
     expect(screen.getByText("晴天")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "在线补歌任务" })).toBeTruthy();
-    expect(screen.getByText("任务统计")).toBeTruthy();
-    expect(screen.getByText(/总计 2/u)).toBeTruthy();
-    expect(screen.getByText(/已准备 1/u)).toBeTruthy();
-    expect(screen.getByText(/失败 1/u)).toBeTruthy();
-    expect(screen.getByText("稻香")).toBeTruthy();
-    expect(screen.getByText("provider-timeout")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "在线补歌任务" })).toBeNull();
     expect(screen.getByRole("heading", { name: "最近事件" })).toBeTruthy();
     expect(screen.getByText("播放失败")).toBeTruthy();
     expect(screen.getByText("恢复时从头播放")).toBeTruthy();
     expect(screen.getByText("failed", { selector: "code" })).toBeTruthy();
     expect(screen.getByText("recovery_fallback_start_over", { selector: "code" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "入库任务 task-ready" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "刷新配对 token" }));
 
@@ -112,72 +105,10 @@ describe("room status view", () => {
     expect(await screen.findByText("2026-05-04 18:30:45")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "刷新房间状态" }));
-    await user.click(screen.getByRole("button", { name: "重试任务 task-failed" }));
-    await user.click(screen.getByRole("button", { name: "清理任务 task-failed" }));
-    await user.click(screen.getByRole("button", { name: "入库任务 task-ready" }));
 
     await waitFor(() =>
-      expect(requests.filter((request) => request.method === "GET" && request.url === "/admin/rooms/living-room")).toHaveLength(5)
+      expect(requests.filter((request) => request.method === "GET" && request.url === "/admin/rooms/living-room")).toHaveLength(2)
     );
-    expect(requests.some((request) => request.method === "POST" && request.url === "/admin/rooms/living-room/online-tasks/task-failed/retry")).toBe(true);
-    expect(requests.some((request) => request.method === "POST" && request.url === "/admin/rooms/living-room/online-tasks/task-failed/clean")).toBe(true);
-    expect(requests.some((request) => request.method === "POST" && request.url === "/admin/rooms/living-room/online-tasks/task-ready/promote")).toBe(true);
-    await waitFor(() => expect(screen.queryByText("稻香")).toBeNull());
-  });
-
-  it("shows promote busy feedback and updates online tasks without browser reload", async () => {
-    const user = userEvent.setup();
-    const promoteResponse = deferred<Response>();
-    const { requests } = installFetchMock({ taskActionResponse: promoteResponse.promise });
-    render(<App />);
-
-    await user.click(screen.getByRole("button", { name: "房间" }));
-    await screen.findByRole("button", { name: "入库任务 task-ready" });
-
-    await user.click(screen.getByRole("button", { name: "入库任务 task-ready" }));
-
-    const promoteButton = await screen.findByRole("button", { name: "入库任务 task-ready" });
-    expect((promoteButton as HTMLButtonElement).disabled).toBe(true);
-    expect(promoteButton.textContent).toBe("入库中...");
-
-    promoteResponse.resolve(
-      json({
-        task: {
-          id: "task-ready",
-          roomId: "living-room",
-          status: "promoted",
-          provider: "fixture-provider",
-          providerCandidateId: "fixture",
-          title: "稻香",
-          artistName: "周杰伦",
-          sourceLabel: "Fixture Provider",
-          durationMs: 210000,
-          candidateType: "karaoke",
-          reliabilityLabel: "high",
-          riskLabel: "normal",
-          failureReason: null,
-          recentEvent: {},
-          providerPayload: {},
-          readyAssetId: "asset-online-ready",
-          createdAt: "2026-05-04T10:00:00.000Z",
-          updatedAt: "2026-05-04T10:02:00.000Z",
-          selectedAt: null,
-          reviewRequiredAt: null,
-          fetchingAt: null,
-          fetchedAt: null,
-          readyAt: null,
-          failedAt: null,
-          staleAt: null,
-          promotedAt: "2026-05-04T10:02:30.000Z",
-          purgedAt: null
-        }
-      })
-    );
-
-    await waitFor(() => expect(screen.queryByText("稻香")).toBeNull());
-    expect(requests.some((request) => request.method === "POST" && request.url === "/admin/rooms/living-room/online-tasks/task-ready/promote")).toBe(true);
-    // Verifies the promoted task result becomes visible without browser reload.
-    expect(requests.filter((request) => request.method === "GET" && request.url === "/admin/rooms/living-room").length).toBeGreaterThanOrEqual(2);
   });
 
   it("updates room status from realtime snapshot messages", async () => {
@@ -207,10 +138,9 @@ describe("room status view", () => {
   });
 });
 
-function installFetchMock(options: { taskActionResponse?: Response | Promise<Response> } = {}) {
+function installFetchMock() {
   const requests: RequestRecord[] = [];
   let refreshed = false;
-  let promoted = false;
 
   vi.stubGlobal(
     "fetch",
@@ -252,7 +182,7 @@ function installFetchMock(options: { taskActionResponse?: Response | Promise<Res
       }
 
       if (method === "GET" && requestUrl.pathname === "/admin/rooms/living-room") {
-        return json(roomStatus(refreshed ? "2026-05-04T10:30:00.000Z" : "2026-05-04T10:15:00.000Z", promoted));
+        return json(roomStatus(refreshed ? "2026-05-04T10:30:00.000Z" : "2026-05-04T10:15:00.000Z"));
       }
 
       if (method === "POST" && requestUrl.pathname === "/admin/rooms/living-room/pairing-token/refresh") {
@@ -267,48 +197,6 @@ function installFetchMock(options: { taskActionResponse?: Response | Promise<Res
         });
       }
 
-      if (method === "POST" && requestUrl.pathname.includes("/online-tasks/")) {
-        if (requestUrl.pathname.endsWith("/promote")) {
-          promoted = true;
-        }
-
-        if (options.taskActionResponse) {
-          return options.taskActionResponse;
-        }
-
-        return json({
-          task: {
-            id: requestUrl.pathname.includes("task-ready") ? "task-ready" : "task-failed",
-            roomId: "living-room",
-            status: requestUrl.pathname.endsWith("/promote") ? "promoted" : "selected",
-            provider: "fixture-provider",
-            providerCandidateId: "fixture",
-            title: "稻香",
-            artistName: "周杰伦",
-            sourceLabel: "Fixture Provider",
-            durationMs: 210000,
-            candidateType: "karaoke",
-            reliabilityLabel: "high",
-            riskLabel: "normal",
-            failureReason: null,
-            recentEvent: {},
-            providerPayload: {},
-            readyAssetId: "asset-online-ready",
-            createdAt: "2026-05-04T10:00:00.000Z",
-            updatedAt: "2026-05-04T10:02:00.000Z",
-            selectedAt: null,
-            reviewRequiredAt: null,
-            fetchingAt: null,
-            fetchedAt: null,
-            readyAt: null,
-            failedAt: null,
-            staleAt: null,
-            promotedAt: null,
-            purgedAt: null
-          }
-        });
-      }
-
       return json({ error: "NOT_FOUND" }, 404);
     })
   );
@@ -316,89 +204,7 @@ function installFetchMock(options: { taskActionResponse?: Response | Promise<Res
   return { requests };
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((promiseResolve, promiseReject) => {
-    resolve = promiseResolve;
-    reject = promiseReject;
-  });
-  return { promise, resolve, reject };
-}
-
-function roomStatus(tokenExpiresAt: string, promoted = false) {
-  const onlineTasks = promoted
-    ? {
-        counts: { total: 1, failed: 1 },
-        tasks: [
-          {
-            taskId: "task-failed",
-            roomId: "living-room",
-            provider: "fixture-provider",
-            providerCandidateId: "fixture-failed",
-            title: "倒带",
-            artistName: "蔡依林",
-            sourceLabel: "Fixture Provider",
-            durationMs: 198000,
-            candidateType: "mv",
-            reliabilityLabel: "medium",
-            riskLabel: "normal",
-            status: "failed",
-            failureReason: "provider-timeout",
-            recentEvent: { type: "failed" },
-            recentEventAt: "2026-05-04T10:01:00.000Z",
-            readyAssetId: null,
-            createdAt: "2026-05-04T09:59:00.000Z",
-            updatedAt: "2026-05-04T10:01:00.000Z"
-          }
-        ]
-      }
-    : {
-        counts: { total: 2, ready: 1, failed: 1 },
-        tasks: [
-          {
-            taskId: "task-ready",
-            roomId: "living-room",
-            provider: "fixture-provider",
-            providerCandidateId: "fixture-ready",
-            title: "稻香",
-            artistName: "周杰伦",
-            sourceLabel: "Fixture Provider",
-            durationMs: 210000,
-            candidateType: "karaoke",
-            reliabilityLabel: "high",
-            riskLabel: "normal",
-            status: "ready",
-            failureReason: null,
-            recentEvent: { type: "ready" },
-            recentEventAt: "2026-05-04T10:02:00.000Z",
-            readyAssetId: "asset-online-ready",
-            createdAt: "2026-05-04T10:00:00.000Z",
-            updatedAt: "2026-05-04T10:02:00.000Z"
-          },
-          {
-            taskId: "task-failed",
-            roomId: "living-room",
-            provider: "fixture-provider",
-            providerCandidateId: "fixture-failed",
-            title: "倒带",
-            artistName: "蔡依林",
-            sourceLabel: "Fixture Provider",
-            durationMs: 198000,
-            candidateType: "mv",
-            reliabilityLabel: "medium",
-            riskLabel: "normal",
-            status: "failed",
-            failureReason: "provider-timeout",
-            recentEvent: { type: "failed" },
-            recentEventAt: "2026-05-04T10:01:00.000Z",
-            readyAssetId: null,
-            createdAt: "2026-05-04T09:59:00.000Z",
-            updatedAt: "2026-05-04T10:01:00.000Z"
-          }
-        ]
-      };
-
+function roomStatus(tokenExpiresAt: string) {
   return {
     room: {
       roomId: "living-room",
@@ -455,8 +261,7 @@ function roomStatus(tokenExpiresAt: string, promoted = false) {
         eventPayload: { previousPositionMs: 12000, resumedPositionMs: 0 },
         createdAt: "2026-05-04T10:02:30.000Z"
       }
-    ],
-    onlineTasks
+    ]
   };
 }
 

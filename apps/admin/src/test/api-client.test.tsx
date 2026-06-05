@@ -1,11 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  cleanFailedOnlineTask,
-  promoteOnlineTaskResource,
-  refreshPairingToken,
-  refreshRoomStatus,
-  retryFailedOnlineTask
-} from "../api/client.js";
+import { refreshPairingToken, refreshRoomStatus } from "../api/client.js";
 
 type RequestRecord = {
   url: string;
@@ -17,7 +11,7 @@ afterEach(() => {
 });
 
 describe("admin api client", () => {
-  it("exposes room recovery helpers with room- and task-scoped routes", async () => {
+  it("exposes room status and pairing token helpers", async () => {
     const requests: RequestRecord[] = [];
     vi.stubGlobal(
       "fetch",
@@ -31,36 +25,23 @@ describe("admin api client", () => {
         if (requestUrl.pathname === "/admin/rooms/living-room/pairing-token/refresh") {
           return json({ pairing: { tokenExpiresAt: "2026-05-04T10:30:45.000Z", controllerUrl: "url", qrPayload: "url" } });
         }
-        return json({
-          task: {
-            id: "task-1",
-            roomId: "living-room",
-            status: "selected"
-          }
-        });
+        return json({ error: "NOT_FOUND" }, 404);
       })
     );
 
     await refreshRoomStatus("living-room");
     await refreshPairingToken("living-room");
-    const retry = await retryFailedOnlineTask("living-room", "task-1");
-    await cleanFailedOnlineTask("living-room", "task-1");
-    await promoteOnlineTaskResource("living-room", "task-1");
 
-    expect(retry.task.status).toBe("selected");
     expect(requests).toEqual([
       { url: "/admin/rooms/living-room", method: "GET" },
-      { url: "/admin/rooms/living-room/pairing-token/refresh", method: "POST" },
-      { url: "/admin/rooms/living-room/online-tasks/task-1/retry", method: "POST" },
-      { url: "/admin/rooms/living-room/online-tasks/task-1/clean", method: "POST" },
-      { url: "/admin/rooms/living-room/online-tasks/task-1/promote", method: "POST" }
+      { url: "/admin/rooms/living-room/pairing-token/refresh", method: "POST" }
     ]);
   });
 });
 
-function json(body: unknown): Response {
+function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { "content-type": "application/json" }
   });
 }

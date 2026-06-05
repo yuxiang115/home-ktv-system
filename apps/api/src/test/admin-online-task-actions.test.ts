@@ -1,16 +1,13 @@
 import Fastify from "fastify";
-import type { OnlineCandidateTask, Room } from "@home-ktv/domain";
+import type { Room } from "@home-ktv/domain";
 import { registerAdminRoomsRoutes } from "../routes/admin-rooms.js";
 import { describe, expect, it, vi } from "vitest";
 
 describe("admin online task actions", () => {
-  it("retries, cleans, and promotes online candidate tasks through room-scoped endpoints", async () => {
+  it("retires online candidate task action endpoints", async () => {
     const harness = createHarness();
     const server = Fastify({ logger: false });
-    await registerAdminRoomsRoutes(server, {
-      ...harness.routeDependencies,
-      onlineTasks: harness.onlineTasks as never
-    });
+    await registerAdminRoomsRoutes(server, harness.routeDependencies);
 
     const retry = await server.inject({
       method: "POST",
@@ -25,64 +22,14 @@ describe("admin online task actions", () => {
       url: "/admin/rooms/living-room/online-tasks/task-ready/promote"
     });
 
-    expect(retry.statusCode).toBe(200);
-    expect(retry.json()).toMatchObject({
-      task: {
-        id: "task-failed",
-        roomId: "living-room",
-        status: "selected"
-      }
-    });
-    expect(clean.statusCode).toBe(200);
-    expect(clean.json()).toMatchObject({
-      task: {
-        id: "task-stale",
-        roomId: "living-room",
-        status: "purged"
-      }
-    });
-    expect(promote.statusCode).toBe(200);
-    expect(promote.json()).toMatchObject({
-      task: {
-        id: "task-ready",
-        roomId: "living-room",
-        status: "promoted"
-      }
-    });
-    expect(harness.onlineTasks.retryTask).toHaveBeenCalledWith({ roomId: "living-room", taskId: "task-failed" });
-    expect(harness.onlineTasks.purgeTask).toHaveBeenCalledWith({ roomId: "living-room", taskId: "task-stale" });
-    expect(harness.onlineTasks.promoteTask).toHaveBeenCalledWith({ roomId: "living-room", taskId: "task-ready" });
+    expect(retry.statusCode).toBe(404);
+    expect(clean.statusCode).toBe(404);
+    expect(promote.statusCode).toBe(404);
     expect(harness.queueEntries.append).toHaveBeenCalledTimes(0);
-    expect(harness.queueEntries.append).not.toHaveBeenCalled();
-  });
-
-  it("returns 404 when task actions target another room or missing task", async () => {
-    const harness = createHarness({
-      retryTask: vi.fn(async () => null)
-    });
-    const server = Fastify({ logger: false });
-    await registerAdminRoomsRoutes(server, {
-      ...harness.routeDependencies,
-      onlineTasks: harness.onlineTasks as never
-    });
-
-    const response = await server.inject({
-      method: "POST",
-      url: "/admin/rooms/living-room/online-tasks/task-other-room/retry"
-    });
-
-    expect(response.statusCode).toBe(404);
-    expect(response.json()).toMatchObject({ error: "ONLINE_TASK_NOT_FOUND" });
   });
 });
 
-function createHarness(
-  overrides: Partial<{
-    retryTask: ReturnType<typeof vi.fn>;
-    purgeTask: ReturnType<typeof vi.fn>;
-    promoteTask: ReturnType<typeof vi.fn>;
-  }> = {}
-) {
+function createHarness() {
   const room: Room = {
     id: "living-room",
     slug: "living-room",
@@ -103,26 +50,7 @@ function createHarness(
     renumberQueue: vi.fn(async () => []),
     markCompleted: vi.fn(async () => null)
   };
-  const onlineTasks = {
-    retryTask:
-      overrides.retryTask ??
-      vi.fn(async ({ roomId, taskId }: { roomId: string; taskId: string }) =>
-        createTask({ id: taskId, roomId, status: "selected" })
-      ),
-    purgeTask:
-      overrides.purgeTask ??
-      vi.fn(async ({ roomId, taskId }: { roomId: string; taskId: string }) =>
-        createTask({ id: taskId, roomId, status: "purged" })
-      ),
-    promoteTask:
-      overrides.promoteTask ??
-      vi.fn(async ({ roomId, taskId }: { roomId: string; taskId: string }) =>
-        createTask({ id: taskId, roomId, status: "promoted", readyAssetId: "asset-online-ready" })
-      )
-  };
-
   return {
-    onlineTasks,
     queueEntries,
     routeDependencies: {
       config: { publicBaseUrl: "http://ktv.local" } as never,
@@ -138,38 +66,5 @@ function createHarness(
       controlSessions: {} as never,
       deviceSessions: {} as never
     }
-  };
-}
-
-function createTask(input: Partial<OnlineCandidateTask>): OnlineCandidateTask {
-  return {
-    id: "task-1",
-    roomId: "living-room",
-    provider: "demo-provider",
-    providerCandidateId: "remote-qilixiang",
-    title: "七里香",
-    artistName: "周杰伦",
-    sourceLabel: "Demo Provider",
-    durationMs: 180000,
-    candidateType: "mv",
-    reliabilityLabel: "high",
-    riskLabel: "normal",
-    status: "failed",
-    failureReason: null,
-    recentEvent: {},
-    providerPayload: {},
-    readyAssetId: null,
-    createdAt: "2026-05-07T00:00:00.000Z",
-    updatedAt: "2026-05-07T00:00:00.000Z",
-    selectedAt: null,
-    reviewRequiredAt: null,
-    fetchingAt: null,
-    fetchedAt: null,
-    readyAt: null,
-    failedAt: null,
-    staleAt: null,
-    promotedAt: null,
-    purgedAt: null,
-    ...input
   };
 }

@@ -2,7 +2,6 @@ import Fastify from "fastify";
 import type { QueueEntry, Room, SongSearchIndexedResult } from "@home-ktv/domain";
 import { describe, expect, it } from "vitest";
 import type { KtvIndexReadRepository, SearchKtvIndexedSongsInput } from "../modules/ktv-index/ktv-index-read-repository.js";
-import type { CandidateTaskService } from "../modules/online/candidate-task-service.js";
 import type { QueueEntryRepository } from "../modules/playback/repositories/queue-entry-repository.js";
 import type { RoomRepository } from "../modules/rooms/repositories/room-repository.js";
 import { registerSongSearchRoutes } from "../routes/song-search.js";
@@ -97,9 +96,8 @@ describe("song search routes", () => {
     expect(JSON.stringify(body)).not.toContain(["file", "path"].join("_"));
   });
 
-  it("exposes online supplement candidates when NAS search is empty", async () => {
-    const online = new FakeCandidateTaskService();
-    const { server } = await createHarness({ ktvIndex: new FakeKtvIndexReadRepository([]), online });
+  it("keeps online supplement disabled when NAS search is empty", async () => {
+    const { server } = await createHarness({ ktvIndex: new FakeKtvIndexReadRepository([]) });
 
     const response = await server.inject({
       method: "GET",
@@ -110,9 +108,10 @@ describe("song search routes", () => {
     expect(response.json()).toMatchObject({
       nas: { status: "unavailable", message: "未找到 NAS 曲库结果", results: [] },
       online: {
-        status: "available",
-        requestSupplement: { visible: true, label: "请求补歌" },
-        candidates: [{ title: "没有的歌", artistName: "未知歌手" }]
+        status: "disabled",
+        message: "暂不启用线上补歌",
+        requestSupplement: { visible: false, label: "请求补歌" },
+        candidates: []
       }
     });
   });
@@ -122,14 +121,12 @@ async function createHarness(input: {
   room?: Room | null;
   ktvIndex?: KtvIndexReadRepository;
   queueEntries?: readonly QueueEntry[];
-  online?: Pick<CandidateTaskService, "discoverCandidates">;
 } = {}) {
   const server = Fastify();
   await registerSongSearchRoutes(server, {
     rooms: new FakeRoomRepository(input.room === undefined ? createRoom() : input.room),
     queueEntries: new FakeQueueEntryRepository(input.queueEntries ?? []),
-    ...(input.ktvIndex ? { ktvIndex: input.ktvIndex } : {}),
-    ...(input.online ? { online: input.online } : {})
+    ...(input.ktvIndex ? { ktvIndex: input.ktvIndex } : {})
   });
   await server.ready();
   return { server };
@@ -166,26 +163,6 @@ class FakeKtvIndexReadRepository implements KtvIndexReadRepository {
 
   async getDiagnostics(): Promise<never> {
     throw new Error("Not implemented");
-  }
-}
-
-class FakeCandidateTaskService implements Pick<CandidateTaskService, "discoverCandidates"> {
-  async discoverCandidates() {
-    return [
-      {
-        provider: "demo",
-        providerCandidateId: "candidate-1",
-        title: "没有的歌",
-        artistName: "未知歌手",
-        sourceLabel: "Demo",
-        durationMs: 180000,
-        candidateType: "mv" as const,
-        reliabilityLabel: "medium" as const,
-        riskLabel: "normal" as const,
-        taskState: "discovered" as const,
-        taskId: "task-1"
-      }
-    ];
   }
 }
 

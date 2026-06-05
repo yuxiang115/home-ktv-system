@@ -1,5 +1,5 @@
 import type { KtvIndexDiagnosticsResponse } from "@home-ktv/domain";
-import type { RoomOnlineTaskActionResponse, RoomStatusResponse, RoomStatusRefreshResponse } from "../rooms/types.js";
+import type { RoomStatusResponse, RoomStatusRefreshResponse } from "../rooms/types.js";
 
 const adminDeviceIdStorageKey = "home_ktv_admin_device_id";
 
@@ -56,18 +56,6 @@ export async function refreshPairingToken(roomSlug: string): Promise<RoomStatusR
   });
 }
 
-export async function retryFailedOnlineTask(roomSlug: string, taskId: string): Promise<RoomOnlineTaskActionResponse> {
-  return postRoomOnlineTaskAction(roomSlug, taskId, "retry");
-}
-
-export async function cleanFailedOnlineTask(roomSlug: string, taskId: string): Promise<RoomOnlineTaskActionResponse> {
-  return postRoomOnlineTaskAction(roomSlug, taskId, "clean");
-}
-
-export async function promoteOnlineTaskResource(roomSlug: string, taskId: string): Promise<RoomOnlineTaskActionResponse> {
-  return postRoomOnlineTaskAction(roomSlug, taskId, "promote");
-}
-
 export function getOrCreateAdminDeviceId(): string {
   try {
     const existing = localStorage.getItem(adminDeviceIdStorageKey);
@@ -99,17 +87,6 @@ function adminUrl(path: string): string {
 
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${apiBaseUrl()}${normalizedPath}`;
-}
-
-function postRoomOnlineTaskAction(
-  roomSlug: string,
-  taskId: string,
-  action: "retry" | "clean" | "promote"
-): Promise<RoomOnlineTaskActionResponse> {
-  return fetchAdmin<RoomOnlineTaskActionResponse>(
-    `/admin/rooms/${encodeURIComponent(roomSlug)}/online-tasks/${encodeURIComponent(taskId)}/${action}`,
-    { method: "POST" }
-  );
 }
 
 function apiBaseUrl(): string {

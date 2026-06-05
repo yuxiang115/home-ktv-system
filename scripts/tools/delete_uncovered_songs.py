@@ -301,7 +301,7 @@ COPY delete_song_ids (id) FROM STDIN;
 WITH existing_queue AS (
   SELECT id
   FROM queue_entries
-  WHERE nas_song_id IN (SELECT id FROM delete_song_ids)
+  WHERE song_id IN (SELECT id FROM delete_song_ids)
 ),
 existing_songs AS (
   SELECT id
@@ -311,7 +311,7 @@ existing_songs AS (
 deleted_queue AS (
   DELETE FROM queue_entries AS queue
   USING delete_song_ids AS doomed
-  WHERE queue.nas_song_id = doomed.id
+  WHERE queue.song_id = doomed.id
   RETURNING queue.id
 ),
 deleted_songs AS (

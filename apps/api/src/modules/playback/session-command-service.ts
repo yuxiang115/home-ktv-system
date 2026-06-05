@@ -572,10 +572,6 @@ async function addSourceQueueEntry(
   context: QueueMutationContext,
   sourceType: string
 ): Promise<CommandExecutionResult> {
-  if (sourceType === "online") {
-    return rejected(input.commandId, input.sessionVersion, "ONLINE_PLAYBACK_NOT_IMPLEMENTED");
-  }
-
   if (sourceType !== "nas") {
     return rejected(input.commandId, input.sessionVersion, "INVALID_QUEUE_SOURCE");
   }
@@ -597,17 +593,9 @@ async function addSourceQueueEntry(
 
   const effectiveQueue = await input.repositories.queueEntries.listEffectiveQueue(context.room.id);
   const queuePosition = effectiveQueue.at(-1)?.queuePosition ?? 0;
-  const source: MediaSourceRef = {
-    sourceType: "nas",
-    songId: playableMedia.songId,
-    assetId: playableMedia.assetId
-  };
-
   await input.repositories.queueEntries.append({
     roomId: context.room.id,
-    source,
     songId: playableMedia.songId,
-    assetId: playableMedia.assetId,
     requestedBy: input.controlSession.deviceId,
     queuePosition: queuePosition + 1,
     playbackOptions: { preferredVocalMode }

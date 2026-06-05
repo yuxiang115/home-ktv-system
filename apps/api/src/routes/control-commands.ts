@@ -2,8 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { ApiConfig } from "../config.js";
 import type { MediaGateway } from "../modules/media/media-gateway.js";
 import type { ControlSessionRepository } from "../modules/controller/repositories/control-session-repository.js";
-import { restoreControlSession, serializeControlSessionCookie } from "../modules/controller/control-session-service.js";
-import type { CandidateTaskService } from "../modules/online/candidate-task-service.js";
+import { restoreControlSession } from "../modules/controller/control-session-service.js";
 import { buildRoomControlSnapshot, type ControlSnapshotRepositories } from "../modules/rooms/build-control-snapshot.js";
 import { executeRoomCommand } from "../modules/playback/session-command-service.js";
 import type { CommandExecutionResult } from "../modules/playback/session-command-service.js";
@@ -20,7 +19,6 @@ export interface ControlCommandsRouteDependencies {
   repositories: ControlCommandsRouteRepositories;
   mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   broadcaster?: RoomSnapshotBroadcaster;
-  online?: Pick<CandidateTaskService, "listActiveForRoom" | "requestSupplement">;
 }
 
 interface BaseCommandBody {
@@ -49,11 +47,6 @@ interface SwitchVocalModeBody extends BaseCommandBody {
 
 interface SetVolumeBody extends BaseCommandBody {
   volumePercent?: number;
-}
-
-interface RequestSupplementBody extends BaseCommandBody {
-  provider?: string;
-  providerCandidateId?: string;
 }
 
 type CommandType = Parameters<typeof executeRoomCommand>[0]["type"];
@@ -132,69 +125,6 @@ export async function registerControlCommandRoutes(
       });
     }
   );
-
-  server.post<{ Params: { roomSlug: string }; Body: RequestSupplementBody }>(
-    "/rooms/:roomSlug/commands/request-supplement",
-    async (request, reply) => {
-      await handleRequestSupplement(request, reply, dependencies);
-    }
-  );
-}
-
-async function handleRequestSupplement(
-  request: FastifyRequest<{ Params: { roomSlug: string }; Body: RequestSupplementBody }>,
-  reply: FastifyReply,
-  dependencies: ControlCommandsRouteDependencies
-): Promise<void> {
-  const room = await dependencies.repositories.rooms.findBySlug(request.params.roomSlug);
-  if (!room) {
-    await reply.code(404).send({ code: "ROOM_NOT_FOUND" });
-    return;
-  }
-
-  const controlSession = await restoreControlSession({
-    room,
-    cookieHeader: request.headers.cookie,
-    deviceId: requiredString(request.body.deviceId, "deviceId"),
-    controlSessions: dependencies.repositories.controlSessions
-  });
-  if (!controlSession) {
-    await reply.code(401).send({ code: "CONTROL_SESSION_REQUIRED" });
-    return;
-  }
-
-  const task = await dependencies.online?.requestSupplement({
-    roomId: room.id,
-    provider: requiredString(request.body.provider, "provider"),
-    providerCandidateId: requiredString(request.body.providerCandidateId, "providerCandidateId")
-  });
-  if (!task) {
-    await reply.code(404).send({ code: "ONLINE_CANDIDATE_NOT_FOUND" });
-    return;
-  }
-
-  if (dependencies.broadcaster) {
-    const snapshot = await buildRoomControlSnapshot({
-      roomSlug: room.slug,
-      config: dependencies.config,
-      repositories: {
-        ...dependencies.repositories,
-        ...(dependencies.online ? { onlineTasks: dependencies.online } : {})
-      },
-      ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
-    });
-    if (snapshot) {
-      dependencies.broadcaster.broadcastRoomSnapshot(room.slug, snapshot);
-    }
-  }
-
-  reply.header("Set-Cookie", serializeControlSessionCookie({ session: { id: controlSession.id } }));
-  await reply.send({
-    status: "accepted",
-    commandId: requiredString(request.body.commandId, "commandId"),
-    sessionVersion: requiredNumber(request.body.sessionVersion, "sessionVersion"),
-    task
-  });
 }
 
 async function handleCommand(

@@ -9,7 +9,6 @@ import {
   deleteQueueEntry,
   getOrCreateDeviceId,
   promoteQueueEntry,
-  requestSupplement,
   setVolume,
   skipCurrent,
   switchVocalMode,
@@ -87,11 +86,6 @@ describe("mobile controller API client", () => {
     await skipCurrent({ ...base, confirmSkip: true });
     await switchVocalMode({ ...base, playbackPositionMs: 1234 });
     await setVolume({ ...base, volumePercent: 65 });
-    await requestSupplement({
-      ...base,
-      provider: "demo-provider",
-      providerCandidateId: "remote-qilixiang"
-    });
 
     expect(requests.map((request) => request.url)).toEqual([
       "/rooms/living-room/commands/add-queue-entry",
@@ -100,8 +94,7 @@ describe("mobile controller API client", () => {
       "/rooms/living-room/commands/promote-queue-entry",
       "/rooms/living-room/commands/skip-current",
       "/rooms/living-room/commands/switch-vocal-mode",
-      "/rooms/living-room/commands/set-volume",
-      "/rooms/living-room/commands/request-supplement"
+      "/rooms/living-room/commands/set-volume"
     ]);
     for (const request of requests) {
       expect(request.method).toBe("POST");
@@ -198,7 +191,7 @@ describe("mobile controller runtime", () => {
     expect(screen.getByText("2 台电视在线")).toBeTruthy();
   });
 
-  it("shows an empty online supplement state when a search has no local result and no candidates", async () => {
+  it("shows a NAS-only empty state when a search has no local result", async () => {
     const user = userEvent.setup();
     installControllerFetchMock({
       restoreResponses: [json(sessionResponse(roomSnapshot()))],
@@ -212,8 +205,8 @@ describe("mobile controller runtime", () => {
     const dialog = await typeSearchQuery(user, "不存在的歌曲");
     expect(dialog).toBeTruthy();
 
-    expect(await screen.findByText("暂未找到在线补歌候选")).toBeTruthy();
-    expect(screen.getByText("当前没有可请求的在线候选，可以换关键词或稍后重试。")).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "打开搜索" }).textContent).toContain("不存在的歌曲"));
+    expect(screen.queryByText("暂未找到在线补歌候选")).toBeNull();
     expect(screen.queryByRole("button", { name: "请求补歌" })).toBeNull();
   });
 
@@ -1492,281 +1485,6 @@ describe("mobile controller runtime", () => {
     expect(await screen.findByText("原唱/伴唱切换失败，已保持当前播放。")).toBeTruthy();
   });
 
-  it("shows local empty state before actionable online supplement candidates without disabled duplicate controls", async () => {
-    installControllerFetchMock({
-      restoreResponses: [json(sessionResponse(roomSnapshot()))],
-      songSearchResponse: (query) => ({
-        query,
-        nas: {
-          status: "available",
-          message: "找到 NAS 曲库结果",
-          results: []
-        },
-        online: {
-          status: "available",
-          message: "找到在线补歌候选",
-          requestSupplement: { visible: true, label: "请求补歌" },
-          candidates: [
-            {
-              provider: "demo-provider",
-              providerCandidateId: "remote-qilixiang",
-              title: "七里香",
-              artistName: "周杰伦",
-              sourceLabel: "Demo Provider",
-              durationMs: 180000,
-              candidateType: "mv",
-              reliabilityLabel: "high",
-              riskLabel: "normal",
-              taskState: "discovered",
-              taskId: "task-1"
-            }
-          ]
-        }
-      })
-    });
-    installWebSocketMock();
-
-    render(<App />);
-
-    await screen.findByRole("button", { name: "打开搜索" });
-    const dialog = await typeSearchQuery(userEvent.setup(), "不存在的在线候选");
-    const search = within(dialog);
-    expect(search.getByText("NAS 曲库未找到")).toBeTruthy();
-    expect(search.getByText("找到在线补歌候选")).toBeTruthy();
-    const requestButtons = search.getAllByRole("button", { name: "请求补歌" }) as HTMLButtonElement[];
-    expect(requestButtons).toHaveLength(1);
-    expect(requestButtons[0]?.disabled).toBe(false);
-    expect(search.getByText("七里香", { selector: "strong" })).toBeTruthy();
-    expect(search.getByText("MV")).toBeTruthy();
-    expect(search.getByText("高可靠")).toBeTruthy();
-    expect(search.getByText("普通风险")).toBeTruthy();
-    expect(search.getByText("已发现")).toBeTruthy();
-    expect(search.queryByRole("button", { name: "加点" })).toBeNull();
-    expect(search.queryByRole("button", { name: "点歌" })).toBeNull();
-  });
-
-  it("renders online supplement candidates below NAS results when both exist", async () => {
-    installControllerFetchMock({
-      restoreResponses: [json(sessionResponse(roomSnapshot()))],
-      songSearchResponse: (query) => ({
-        query,
-        nas: {
-          status: "available",
-          message: "找到 NAS 曲库结果",
-          results: [
-            {
-              songId: "song-sunny",
-              title: "晴天",
-              artistName: "周杰伦",
-              category: "流行",
-              sourceLabel: "NAS曲库",
-              matchReason: "title",
-              versions: [
-                {
-                  assetId: "asset-sunny-main",
-                  displayName: "高清版",
-                  sourceLabel: "NAS曲库",
-                  extension: ".mp4",
-                  sizeBytes: 734003200,
-                  audioTrackCount: 2,
-                  category: "流行",
-                  queueState: "not_queued",
-                  canQueue: true,
-                  disabledLabel: null
-                }
-              ]
-            }
-          ]
-        },
-        online: {
-          status: "available",
-          message: "找到在线补歌候选",
-          requestSupplement: { visible: true, label: "请求补歌" },
-          candidates: [
-            {
-              provider: "demo-provider",
-              providerCandidateId: "remote-qilixiang",
-              title: "远端七里香",
-              artistName: "周杰伦",
-              sourceLabel: "Demo Provider",
-              durationMs: 180000,
-              candidateType: "mv",
-              reliabilityLabel: "high",
-              riskLabel: "normal",
-              taskState: "discovered",
-              taskId: "task-1"
-            }
-          ]
-        }
-      })
-    });
-    installWebSocketMock();
-
-    render(<App />);
-
-    const dialog = await typeSearchQuery(userEvent.setup(), "晴天");
-    const search = within(dialog);
-    await search.findByText("高清版", { selector: "strong" });
-    await search.findByText("远端七里香");
-    const searchPanelText = dialog.textContent ?? "";
-    const localIndex = searchPanelText.indexOf("高清版");
-    const onlineIndex = searchPanelText.indexOf("远端七里香");
-
-    expect(localIndex).toBeGreaterThanOrEqual(0);
-    expect(onlineIndex).toBeGreaterThanOrEqual(0);
-    expect(localIndex).toBeLessThan(onlineIndex);
-  });
-
-  it("keeps request supplement disabled while submission is pending and then shows ready state", async () => {
-    const user = userEvent.setup();
-    const supplement = deferred<Response>();
-    installControllerFetchMock({
-      restoreResponses: [json(sessionResponse(roomSnapshot()))],
-      commandResponses: {
-        "/rooms/living-room/commands/request-supplement": supplement.promise
-      },
-      songSearchResponse: (query) => ({
-        query,
-        nas: {
-          status: "available",
-          message: "找到 NAS 曲库结果",
-          results: []
-        },
-        online: {
-          status: "available",
-          message: "找到在线补歌候选",
-          requestSupplement: { visible: true, label: "请求补歌" },
-          candidates: [
-            {
-              provider: "demo-provider",
-              providerCandidateId: "remote-qilixiang",
-              title: "七里香",
-              artistName: "周杰伦",
-              sourceLabel: "Demo Provider",
-              durationMs: 180000,
-              candidateType: "mv",
-              reliabilityLabel: "high",
-              riskLabel: "normal",
-              taskState: "discovered",
-              taskId: "task-1"
-            }
-          ]
-        }
-      })
-    });
-    installWebSocketMock();
-
-    render(<App />);
-
-    await typeSearchQuery(user, "七里香");
-    await screen.findByText("七里香", { selector: "strong" });
-    const requestButton = screen.getByRole("button", { name: "请求补歌" }) as HTMLButtonElement;
-    expect(requestButton.disabled).toBe(false);
-    await user.click(requestButton);
-
-    const pendingButton = await screen.findByRole("button", { name: "提交中" });
-    expect((pendingButton as HTMLButtonElement).disabled).toBe(true);
-
-    supplement.resolve(
-      json({
-        status: "accepted",
-        commandId: "mobile-command-test",
-        sessionVersion: 2,
-        task: readySupplementTask()
-      })
-    );
-    await flush();
-
-    expect(screen.getAllByText("已准备").length).toBeGreaterThan(0);
-    expect((screen.getByRole("button", { name: "已准备" }) as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it("requests supplement explicitly from an online candidate without auto-enqueueing", async () => {
-    const user = userEvent.setup();
-    const { requests } = installControllerFetchMock({
-      restoreResponses: [json(sessionResponse(roomSnapshot()))],
-      commandResponses: {
-        "/rooms/living-room/commands/request-supplement": json({
-          status: "accepted",
-          commandId: "mobile-command-test",
-          sessionVersion: 2,
-          task: {
-            id: "task-1",
-            roomId: "living-room",
-            provider: "demo-provider",
-            providerCandidateId: "remote-qilixiang",
-            title: "七里香",
-            artistName: "周杰伦",
-            sourceLabel: "Demo Provider",
-            durationMs: 180000,
-            candidateType: "mv",
-            reliabilityLabel: "high",
-            riskLabel: "normal",
-            status: "ready",
-            failureReason: null,
-            recentEvent: { type: "ready" },
-            providerPayload: {},
-            readyAssetId: "asset-ready-online",
-            createdAt: "2026-05-04T10:00:00.000Z",
-            updatedAt: "2026-05-04T10:00:01.000Z",
-            selectedAt: "2026-05-04T10:00:00.500Z",
-            reviewRequiredAt: null,
-            fetchingAt: "2026-05-04T10:00:00.600Z",
-            fetchedAt: "2026-05-04T10:00:00.700Z",
-            readyAt: "2026-05-04T10:00:01.000Z",
-            failedAt: null,
-            staleAt: null,
-            promotedAt: null,
-            purgedAt: null
-          }
-        })
-      },
-      songSearchResponse: (query) => ({
-        query,
-        nas: {
-          status: "available",
-          message: "找到 NAS 曲库结果",
-          results: []
-        },
-        online: {
-          status: "available",
-          message: "找到在线补歌候选",
-          requestSupplement: { visible: true, label: "请求补歌" },
-          candidates: [
-            {
-              provider: "demo-provider",
-              providerCandidateId: "remote-qilixiang",
-              title: "七里香",
-              artistName: "周杰伦",
-              sourceLabel: "Demo Provider",
-              durationMs: 180000,
-              candidateType: "mv",
-              reliabilityLabel: "high",
-              riskLabel: "normal",
-              taskState: "discovered",
-              taskId: "task-1"
-            }
-          ]
-        }
-      })
-    });
-    installWebSocketMock();
-
-    render(<App />);
-
-    await typeSearchQuery(user, "七里香");
-    await screen.findByText("七里香", { selector: "strong" });
-    await user.click(screen.getByRole("button", { name: "请求补歌" }));
-    await flush();
-
-    expect(requests.find((request) => request.url === "/rooms/living-room/commands/request-supplement")?.body).toMatchObject({
-      provider: "demo-provider",
-      providerCandidateId: "remote-qilixiang"
-    });
-    expect(screen.getAllByText("已准备").length).toBeGreaterThan(0);
-    expect((screen.getByRole("button", { name: "已准备" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(requests.some((request) => request.url === "/rooms/living-room/commands/add-queue-entry")).toBe(false);
-  });
 });
 
 function installFetchMock() {
@@ -2249,42 +1967,10 @@ function emptySongSearchResponse(query: string) {
     },
     online: {
       status: "disabled",
-      message: "本地未入库，补歌功能后续可用",
-      requestSupplement: { visible: true, label: "请求补歌" },
+      message: "暂不启用线上补歌",
+      requestSupplement: { visible: false, label: "请求补歌" },
       candidates: []
     }
-  };
-}
-
-function readySupplementTask() {
-  return {
-    id: "task-1",
-    roomId: "living-room",
-    provider: "demo-provider",
-    providerCandidateId: "remote-qilixiang",
-    title: "七里香",
-    artistName: "周杰伦",
-    sourceLabel: "Demo Provider",
-    durationMs: 180000,
-    candidateType: "mv",
-    reliabilityLabel: "high",
-    riskLabel: "normal",
-    status: "ready",
-    failureReason: null,
-    recentEvent: { type: "ready" },
-    providerPayload: {},
-    readyAssetId: "asset-ready-online",
-    createdAt: "2026-05-04T10:00:00.000Z",
-    updatedAt: "2026-05-04T10:00:01.000Z",
-    selectedAt: "2026-05-04T10:00:00.500Z",
-    reviewRequiredAt: null,
-    fetchingAt: "2026-05-04T10:00:00.600Z",
-    fetchedAt: "2026-05-04T10:00:00.700Z",
-    readyAt: "2026-05-04T10:00:01.000Z",
-    failedAt: null,
-    staleAt: null,
-    promotedAt: null,
-    purgedAt: null
   };
 }
 

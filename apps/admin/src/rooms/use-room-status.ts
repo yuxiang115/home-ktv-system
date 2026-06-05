@@ -1,33 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  cleanFailedOnlineTask,
   getOrCreateAdminDeviceId,
-  promoteOnlineTaskResource,
   refreshPairingToken as fetchPairingTokenRefresh,
   refreshRoomStatus as fetchRoomStatus,
-  retryFailedOnlineTask,
   roomRealtimeUrl
 } from "../api/client.js";
-import type {
-  RoomControlSnapshotMessage,
-  RoomControlSnapshotPayload,
-  RoomOnlineTaskSummaryRow,
-  RoomStatusResponse
-} from "./types.js";
+import type { RoomControlSnapshotMessage, RoomControlSnapshotPayload, RoomStatusResponse } from "./types.js";
 
 type Translate = (key: string, replacements?: Record<string, string | number>) => string;
 
 const realtimeFallbackPollingMs = 5000;
 
 export interface UseRoomStatusResult {
-  busyTaskAction: string | null;
   errorMessage: string | null;
   isRefreshingPairing: boolean;
   isRefreshingRoom: boolean;
   roomStatus: RoomStatusResponse | null;
   refreshPairingToken(): Promise<void>;
   refreshRoomStatus(): Promise<void>;
-  runTaskAction(task: RoomOnlineTaskSummaryRow, action: "retry" | "clean" | "promote"): Promise<void>;
 }
 
 export function useRoomStatus(roomSlug: string, t: Translate): UseRoomStatusResult {
@@ -35,7 +25,6 @@ export function useRoomStatus(roomSlug: string, t: Translate): UseRoomStatusResu
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isRefreshingRoom, setIsRefreshingRoom] = useState(false);
   const [isRefreshingPairing, setIsRefreshingPairing] = useState(false);
-  const [busyTaskAction, setBusyTaskAction] = useState<string | null>(null);
   const [deviceId] = useState(() => getOrCreateAdminDeviceId());
 
   useEffect(() => {
@@ -145,41 +134,13 @@ export function useRoomStatus(roomSlug: string, t: Translate): UseRoomStatusResu
     }
   }, [roomSlug, t]);
 
-  const runTaskAction = useCallback(
-    async (task: RoomOnlineTaskSummaryRow, action: "retry" | "clean" | "promote") => {
-      const busyKey = `${action}:${task.taskId}`;
-      setBusyTaskAction(busyKey);
-      try {
-        if (action === "retry") {
-          await retryFailedOnlineTask(roomSlug, task.taskId);
-        } else if (action === "clean") {
-          await cleanFailedOnlineTask(roomSlug, task.taskId);
-        } else {
-          await promoteOnlineTaskResource(roomSlug, task.taskId);
-        }
-
-        const refreshed = await fetchRoomStatus(roomSlug);
-        setRoomStatus(refreshed);
-        setErrorMessage(null);
-      } catch (error) {
-        const actionLabel = action === "retry" ? t("rooms.retry") : action === "clean" ? t("rooms.clean") : t("rooms.promote");
-        setErrorMessage(error instanceof Error ? error.message : t("rooms.taskActionFailed", { action: actionLabel }));
-      } finally {
-        setBusyTaskAction(null);
-      }
-    },
-    [roomSlug, t]
-  );
-
   return {
-    busyTaskAction,
     errorMessage,
     isRefreshingPairing,
     isRefreshingRoom,
     roomStatus,
     refreshPairingToken,
-    refreshRoomStatus,
-    runTaskAction
+    refreshRoomStatus
   };
 }
 
@@ -226,7 +187,6 @@ function roomStatusFromSnapshot(snapshot: RoomControlSnapshotPayload, current: R
         }
       : null,
     queue: snapshot.queue.map((entry) => ({ ...entry })),
-    recentEvents: snapshot.recentEvents ?? current?.recentEvents ?? [],
-    onlineTasks: snapshot.onlineTasks ?? current?.onlineTasks ?? { counts: { total: 0 }, tasks: [] }
+    recentEvents: snapshot.recentEvents ?? current?.recentEvents ?? []
   };
 }

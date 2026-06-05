@@ -1,5 +1,4 @@
 import type {
-  AssetId,
   ControlSessionId,
   MediaSourceRef,
   PlaybackOptions,
@@ -17,7 +16,7 @@ export interface AppendQueueEntryInput {
   roomId: RoomId;
   source?: MediaSourceRef;
   songId?: SongId;
-  assetId?: AssetId;
+  assetId?: SongId;
   requestedBy: string;
   queuePosition: number;
   status?: QueueEntryStatus;
@@ -85,6 +84,11 @@ export interface QueueEntryRepository {
   markCompleted(input: MarkCompletedQueueEntryInput): Promise<QueueEntry | null>;
 }
 
+const queueEntrySelectColumns = `id, room_id, song_id,
+              requested_by, queue_position, status,
+              priority, playback_options, requested_at, started_at, ended_at,
+              removed_at, removed_by_control_session_id, undo_expires_at`;
+
 export function mapQueueEntryRow(row: QueueEntryRow): QueueEntry {
   const source = sourceRefFromQueueRow(row);
   return {
@@ -112,10 +116,7 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
 
   async findById(queueEntryId: QueueEntryId): Promise<QueueEntry | null> {
     const result = await this.db.query<QueueEntryRow>(
-      `SELECT id, room_id, source_type, nas_song_id, nas_asset_id, online_song_id, online_asset_id,
-              requested_by, queue_position, status,
-              priority, playback_options, requested_at, started_at, ended_at,
-              removed_at, removed_by_control_session_id, undo_expires_at
+      `SELECT ${queueEntrySelectColumns}
        FROM queue_entries
        WHERE id = $1
        LIMIT 1`,
@@ -128,10 +129,7 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
 
   async listEffectiveQueue(roomId: RoomId): Promise<QueueEntry[]> {
     const result = await this.db.query<QueueEntryRow>(
-      `SELECT id, room_id, source_type, nas_song_id, nas_asset_id, online_song_id, online_asset_id,
-              requested_by, queue_position, status,
-              priority, playback_options, requested_at, started_at, ended_at,
-              removed_at, removed_by_control_session_id, undo_expires_at
+      `SELECT ${queueEntrySelectColumns}
        FROM queue_entries
        WHERE room_id = $1
          AND status IN ('queued', 'preparing', 'loading', 'playing')
@@ -164,10 +162,7 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
 
   async listUndoableRemoved(roomId: RoomId, now: Date): Promise<QueueEntry[]> {
     const result = await this.db.query<QueueEntryRow>(
-      `SELECT id, room_id, source_type, nas_song_id, nas_asset_id, online_song_id, online_asset_id,
-              requested_by, queue_position, status,
-              priority, playback_options, requested_at, started_at, ended_at,
-              removed_at, removed_by_control_session_id, undo_expires_at
+      `SELECT ${queueEntrySelectColumns}
        FROM queue_entries
        WHERE room_id = $1
          AND status = 'removed'
@@ -181,10 +176,7 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
 
   async findCurrentForRoom(roomId: RoomId): Promise<QueueEntry | null> {
     const result = await this.db.query<QueueEntryRow>(
-      `SELECT id, room_id, source_type, nas_song_id, nas_asset_id, online_song_id, online_asset_id,
-              requested_by, queue_position, status,
-              priority, playback_options, requested_at, started_at, ended_at,
-              removed_at, removed_by_control_session_id, undo_expires_at
+      `SELECT ${queueEntrySelectColumns}
        FROM queue_entries
        WHERE room_id = $1
          AND status IN ('playing', 'loading', 'preparing', 'queued')
@@ -204,29 +196,18 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
 
   async append(input: AppendQueueEntryInput): Promise<QueueEntry> {
     const source = normalizeAppendSource(input);
-    const nasSongId = source.sourceType === "nas" ? source.songId : null;
-    const nasAssetId = source.sourceType === "nas" ? source.assetId : null;
-    const onlineSongId = source.sourceType === "online" ? source.songId : null;
-    const onlineAssetId = source.sourceType === "online" ? source.assetId : null;
     const result = await this.db.query<QueueEntryRow>(
       `INSERT INTO queue_entries (
-         room_id, source_type, nas_song_id, nas_asset_id, online_song_id, online_asset_id,
+         room_id, song_id,
          requested_by, queue_position, status, priority,
          playback_options, requested_at, started_at, ended_at, removed_at,
          removed_by_control_session_id, undo_expires_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17)
-       RETURNING id, room_id, source_type, nas_song_id, nas_asset_id, online_song_id, online_asset_id,
-                 requested_by, queue_position, status,
-                 priority, playback_options, requested_at, started_at, ended_at,
-                 removed_at, removed_by_control_session_id, undo_expires_at`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13)
+       RETURNING ${queueEntrySelectColumns}`,
       [
         input.roomId,
-        source.sourceType,
-        nasSongId,
-        nasAssetId,
-        onlineSongId,
-        onlineAssetId,
+        source.songId,
         input.requestedBy,
         input.queuePosition,
         input.status ?? "queued",
@@ -246,9 +227,7 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
       throw new Error("Queue entry insert did not return a row");
     }
 
-    if (source.sourceType === "nas") {
-      await this.incrementNasRequestCount(source.songId, input.requestedAt ?? null);
-    }
+    await this.incrementNasRequestCount(source.songId, input.requestedAt ?? null);
 
     return mapQueueEntryRow(row);
   }
@@ -273,10 +252,7 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
            undo_expires_at = $5
        WHERE room_id = $1
          AND id = $2
-       RETURNING id, room_id, source_type, nas_song_id, nas_asset_id, online_song_id, online_asset_id,
-                 requested_by, queue_position, status,
-                 priority, playback_options, requested_at, started_at, ended_at,
-                 removed_at, removed_by_control_session_id, undo_expires_at`,
+       RETURNING ${queueEntrySelectColumns}`,
       [input.roomId, input.queueEntryId, input.removedAt, input.removedByControlSessionId, input.undoExpiresAt]
     );
 
@@ -295,10 +271,7 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
          AND id = $2
          AND status = 'removed'
          AND undo_expires_at > $3
-       RETURNING id, room_id, source_type, nas_song_id, nas_asset_id, online_song_id, online_asset_id,
-                 requested_by, queue_position, status,
-                 priority, playback_options, requested_at, started_at, ended_at,
-                 removed_at, removed_by_control_session_id, undo_expires_at`,
+       RETURNING ${queueEntrySelectColumns}`,
       [input.roomId, input.queueEntryId, input.now]
     );
 
@@ -321,10 +294,10 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
        FROM ordered
        WHERE qe.room_id = $1
          AND qe.id = ordered.id
-       RETURNING qe.id, qe.room_id, qe.source_type, qe.nas_song_id, qe.nas_asset_id,
-                 qe.online_song_id, qe.online_asset_id, qe.requested_by, qe.queue_position,
-                 qe.status, qe.priority, qe.playback_options, qe.requested_at, qe.started_at,
-                 qe.ended_at, qe.removed_at, qe.removed_by_control_session_id, qe.undo_expires_at`,
+       RETURNING qe.id, qe.room_id, qe.song_id,
+                 qe.requested_by, qe.queue_position, qe.status, qe.priority, qe.playback_options,
+                 qe.requested_at, qe.started_at, qe.ended_at, qe.removed_at,
+                 qe.removed_by_control_session_id, qe.undo_expires_at`,
       [roomId, orderedQueueEntryIds]
     );
 
@@ -344,10 +317,7 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
            undo_expires_at = NULL
        WHERE room_id = $1
          AND id = $2
-       RETURNING id, room_id, source_type, nas_song_id, nas_asset_id, online_song_id, online_asset_id,
-                 requested_by, queue_position, status,
-                 priority, playback_options, requested_at, started_at, ended_at,
-                 removed_at, removed_by_control_session_id, undo_expires_at`,
+       RETURNING ${queueEntrySelectColumns}`,
       [input.roomId, input.queueEntryId, input.status, input.endedAt]
     );
 
@@ -367,10 +337,7 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
        WHERE room_id = $1
          AND id = $2
          AND status IN ('queued', 'preparing', 'loading', 'playing')
-       RETURNING id, room_id, source_type, nas_song_id, nas_asset_id, online_song_id, online_asset_id,
-                 requested_by, queue_position, status,
-                 priority, playback_options, requested_at, started_at, ended_at,
-                 removed_at, removed_by_control_session_id, undo_expires_at`,
+       RETURNING ${queueEntrySelectColumns}`,
       [input.roomId, input.queueEntryId, input.status, input.startedAt]
     );
 
@@ -384,10 +351,7 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
        SET playback_options = jsonb_set(COALESCE(playback_options, '{}'::jsonb), '{preferredVocalMode}', to_jsonb($3::text), true)
        WHERE room_id = $1
          AND id = $2
-       RETURNING id, room_id, source_type, nas_song_id, nas_asset_id, online_song_id, online_asset_id,
-                 requested_by, queue_position, status,
-                 priority, playback_options, requested_at, started_at, ended_at,
-                 removed_at, removed_by_control_session_id, undo_expires_at`,
+       RETURNING ${queueEntrySelectColumns}`,
       [input.roomId, input.queueEntryId, input.preferredVocalMode]
     );
 
@@ -603,23 +567,11 @@ function mapPlaybackOptions(value: Record<string, unknown>): PlaybackOptions {
 }
 
 function sourceRefFromQueueRow(row: QueueEntryRow): MediaSourceRef {
-  if (row.source_type === "nas" && row.nas_song_id && row.nas_asset_id) {
-    return {
-      sourceType: "nas",
-      songId: row.nas_song_id as SongId,
-      assetId: row.nas_asset_id as AssetId
-    };
-  }
-
-  if (row.source_type === "online" && row.online_song_id && row.online_asset_id) {
-    return {
-      sourceType: "online",
-      songId: row.online_song_id as SongId,
-      assetId: row.online_asset_id as AssetId
-    };
-  }
-
-  throw new Error(`Invalid queue entry source identity for ${row.id}`);
+  return {
+    sourceType: "nas",
+    songId: row.song_id as SongId,
+    assetId: row.song_id as SongId
+  };
 }
 
 function sourceRefFromQueueEntry(entry: QueueEntry): MediaSourceRef {
@@ -632,13 +584,20 @@ function sourceRefFromQueueEntry(entry: QueueEntry): MediaSourceRef {
 
 function normalizeAppendSource(input: AppendQueueEntryInput): MediaSourceRef {
   if (input.source) {
-    return input.source;
+    if (input.source.sourceType !== "nas") {
+      throw new Error("Only NAS queue entries are supported");
+    }
+    return {
+      sourceType: "nas",
+      songId: input.source.songId,
+      assetId: input.source.songId
+    };
   }
-  if (input.songId && input.assetId) {
+  if (input.songId) {
     return {
       sourceType: "nas",
       songId: input.songId,
-      assetId: input.assetId
+      assetId: input.songId
     };
   }
   throw new Error("Queue entry source is required");

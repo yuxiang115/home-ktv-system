@@ -1,17 +1,16 @@
 # 数据库结构
 
-最后更新：2026-06-01。
+最后更新：2026-06-05。
 
 本文只描述当前运行中的目标结构。历史迁移过程和已删除旧表不再作为维护文档记录；需要追溯时看 Git 和数据库迁移文件。
 
-当前业务表是 5 张：
+当前业务表是 4 张：
 
 ```text
 rooms
 room_clients
 queue_entries
 ktv_songs
-candidate_tasks
 ```
 
 `schema_migrations` 是迁移工具表，不算业务表。
@@ -22,13 +21,12 @@ candidate_tasks
 rooms
   -> room_clients
   -> queue_entries
-  -> candidate_tasks
 
 ktv_songs
-  -> queue_entries.nas_song_id
+  -> queue_entries.song_id
 ```
 
-当前系统支持一个房间内多台 TV 和多个控制端在线。播放状态仍是房间级状态：同一个房间只有一个当前播放目标、一条队列和一个音量。
+当前系统按单房间、单 TV、多控制端运行。播放状态是房间级状态：只有一个当前播放目标、一条队列和一个音量；多个手机控制端共享这套状态。
 
 ## 表总览
 
@@ -38,7 +36,6 @@ ktv_songs
 | `room_clients` | TV 和控制端 session。TV 用心跳表达在线状态，控制端用过期时间表达会话有效期。 |
 | `queue_entries` | 当前点歌队列和短期可撤销记录。长期点歌次数不在这里统计。 |
 | `ktv_songs` | NAS 曲库表。一行就是一个可播放文件，同时保存歌名、歌手、风格、路径、技术探测、封面和点歌计数。 |
-| `candidate_tasks` | 线上候选歌曲工作流。当前不维护独立线上曲库表，ready 结果直接保存在任务表字段中。 |
 
 ## `rooms`
 
@@ -99,11 +96,7 @@ ktv_songs
 | --- | --- |
 | `id text` | 主键。 |
 | `room_id text` | 外键到 `rooms.id`。 |
-| `source_type text` | 来源：`nas` 或 `online`。当前真实可播来源是 `nas`。 |
-| `nas_song_id text` | NAS 歌曲 ID，外键到 `ktv_songs.id`。 |
-| `nas_asset_id text` | NAS 资源 ID。当前 NAS 下必须等于 `nas_song_id`。 |
-| `online_song_id text` | 线上歌曲 ID。当前没有线上曲库外键。 |
-| `online_asset_id text` | 线上资源 ID。当前没有线上曲库外键。 |
+| `song_id text` | NAS 歌曲 ID，外键到 `ktv_songs.id`。 |
 | `requested_by text` | 点歌来源或控制端标识。 |
 | `queue_position integer` | 队列位置。 |
 | `status text` | 状态：`queued`、`preparing`、`loading`、`playing`、`played`、`skipped`、`failed`、`removed`。 |
@@ -118,9 +111,7 @@ ktv_songs
 
 关键约束：
 
-- NAS 队列项要求 `nas_song_id` 和 `nas_asset_id` 都存在且相等。
-- online 队列项要求 `online_song_id` 和 `online_asset_id` 都存在。当前 online 只是未来扩展入口。
-- `queue_entries.nas_song_id -> ktv_songs.id`，`ON DELETE RESTRICT`。
+- `queue_entries.song_id -> ktv_songs.id`，`ON DELETE RESTRICT`。
 
 ## `ktv_songs`
 
@@ -167,50 +158,11 @@ NAS 曲库表。一条记录就是一个可播放 NAS 文件。如果同一首�
 - `request_count` 推荐排序索引。
 - `missing_at IS NULL` 的 active 索引。
 
-## `candidate_tasks`
-
-线上候选歌曲工作流表。它保存候选发现、审核、拉取状态和 ready 结果，但不生成独立线上歌曲表。
-
-| 字段 | 含义 |
-| --- | --- |
-| `id text` | 主键。 |
-| `room_id text` | 外键到 `rooms.id`。 |
-| `provider text` | 候选来源。 |
-| `provider_candidate_id text` | 来源侧候选 ID。 |
-| `title text` | 候选歌名。 |
-| `artist_name text` | 候选歌手。 |
-| `source_label text` | 来源展示名。 |
-| `duration_ms integer` | 时长，毫秒。 |
-| `candidate_type text` | 候选类型：`mv`、`karaoke`、`audio`、`unknown`。 |
-| `reliability_label text` | 可靠性：`high`、`medium`、`low`、`unknown`。 |
-| `risk_label text` | 风险：`normal`、`risky`、`blocked`。 |
-| `status text` | 状态：`discovered`、`selected`、`review_required`、`fetching`、`fetched`、`ready`、`failed`、`stale`、`promoted`、`purged`。 |
-| `failure_reason text` | 失败原因。 |
-| `recent_event jsonb` | 最近事件摘要。 |
-| `provider_payload jsonb` | 来源原始数据。 |
-| `ready_asset_id text` | ready 结果的资源 ID。 |
-| `ready_media_url text` | ready 结果的媒体 URL。 |
-| `ready_cache_path text` | ready 结果的本地缓存路径。 |
-| `ready_metadata jsonb` | ready 结果的补充元数据。 |
-| `selected_at timestamptz` | 选中时间。 |
-| `review_required_at timestamptz` | 需要审核时间。 |
-| `fetching_at timestamptz` | 开始拉取时间。 |
-| `fetched_at timestamptz` | 拉取完成时间。 |
-| `ready_at timestamptz` | ready 时间。 |
-| `failed_at timestamptz` | 失败时间。 |
-| `stale_at timestamptz` | 过期时间。 |
-| `promoted_at timestamptz` | 晋升时间。 |
-| `purged_at timestamptz` | 清理时间。 |
-| `created_at timestamptz` | 创建时间。 |
-| `updated_at timestamptz` | 更新时间。 |
-
-关键约束：`UNIQUE(room_id, provider, provider_candidate_id)`。
-
 ## 当前查询约定
 
 - 所有面向用户的曲库查询都必须过滤 `ktv_songs.missing_at is null`。
 - 歌手分类读取 `ktv_songs.artist_names`。
 - 风格分类读取 `ktv_songs.style_tags`。
 - 首页推荐权重读取 `ktv_songs.request_count` 和 `last_requested_at`。
-- 播放链路通过 `queue_entries.nas_song_id` 指向 `ktv_songs.id`，再由媒体仓库读取文件路径。
+- 播放链路通过 `queue_entries.song_id` 指向 `ktv_songs.id`，再由媒体仓库读取文件路径。
 - 封面只使用 `ktv_songs.cover_image_url`，封面 provider、置信度和错误详情只在脚本 JSONL 里保留。

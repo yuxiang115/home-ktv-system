@@ -3,17 +3,13 @@ import type { RoomInteractionKind } from "@home-ktv/player-contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchDiscoveryArtistSongs, fetchDiscoveryGenreSongs } from "./api/client.js";
 import {
-  candidateTypeName,
   I18nProvider,
   LanguageSwitch,
-  onlineTaskStateName,
   playbackStateName,
-  reliabilityName,
-  riskName,
   useI18n,
   vocalModeName
 } from "./i18n.js";
-import { supplementKey, useRoomController, type RoomControllerState } from "./runtime/use-room-controller.js";
+import { useRoomController, type RoomControllerState } from "./runtime/use-room-controller.js";
 
 export function App() {
   return (
@@ -1055,7 +1051,6 @@ function SearchResults({
   controller: RoomControllerState;
   t: TFunction;
 }) {
-  const online = controller.songSearch?.online;
   const nas = controller.songSearch?.nas ?? null;
 
   return (
@@ -1081,56 +1076,6 @@ function SearchResults({
 
       {controller.songSearch && controller.songSearch.nas.results.length === 0 ? (
         <p className="empty-state local-empty">{t("search.localEmpty")}</p>
-      ) : null}
-
-      {online ? (
-        <section className="online-panel" aria-label={t("online.aria")}>
-          <div className="panel-heading">
-            <h3>{t("online.title")}</h3>
-            <span className={`search-status ${online.status}`}>{online.message}</span>
-          </div>
-
-          {online.candidates.length > 0 ? (
-            <div className="online-candidate-list">
-              {online.candidates.map((candidate) => {
-                const isPending = controller.pendingSupplementKeys.includes(
-                  supplementKey(candidate.provider, candidate.providerCandidateId)
-                );
-                const isReady = candidate.taskState === "ready";
-
-                return (
-                  <article className="song-row online-candidate-row" key={`${candidate.provider}:${candidate.providerCandidateId}`}>
-                    <div className="result-main">
-                      <strong>{candidate.title}</strong>
-                      <p>{candidate.artistName}</p>
-                      <div className="result-meta">
-                        <span className="online-source">{candidate.sourceLabel}</span>
-                        <span className="metadata-chip">{formatDuration(candidate.durationMs ?? 0)}</span>
-                        <span className="metadata-chip">{candidateTypeName(candidate.candidateType, t)}</span>
-                        <span className="metadata-chip">{reliabilityName(candidate.reliabilityLabel, t)}</span>
-                        <span className="metadata-chip">{riskName(candidate.riskLabel, t)}</span>
-                        <span className="metadata-chip">{onlineTaskStateName(candidate.taskState, t)}</span>
-                      </div>
-                    </div>
-                    <button
-                      className="primary-button"
-                      type="button"
-                      disabled={isPending || isReady}
-                      onClick={() => void controller.requestSupplement(candidate.provider, candidate.providerCandidateId)}
-                    >
-                      {isPending ? t("button.submitting") : isReady ? t("button.ready") : t("button.requestSupplement")}
-                    </button>
-                  </article>
-                );
-              })}
-            </div>
-          ) : online.requestSupplement?.visible ? (
-            <div className="online-placeholder">
-              <strong>{t("online.emptyTitle")}</strong>
-              <p>{t("online.emptyBody")}</p>
-            </div>
-          ) : null}
-        </section>
       ) : null}
     </div>
   );
@@ -1447,13 +1392,6 @@ function formatTime(value: string): string {
     minute: "2-digit",
     second: "2-digit"
   });
-}
-
-function formatDuration(durationMs: number): string {
-  const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 function formatFileSize(sizeBytes: number | null): string {

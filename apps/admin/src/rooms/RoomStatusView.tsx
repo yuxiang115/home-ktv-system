@@ -1,19 +1,16 @@
-import { eventTypeText, roomStateText, taskStateText, useI18n, vocalModeName } from "../i18n.js";
-import type { RoomOnlineTaskSummaryRow } from "./types.js";
+import { eventTypeText, roomStateText, useI18n, vocalModeName } from "../i18n.js";
 import { useRoomStatus } from "./use-room-status.js";
 
 export function RoomStatusView() {
   const { t } = useI18n();
   const roomSlug = "living-room";
   const {
-    busyTaskAction,
     errorMessage,
     isRefreshingPairing,
     isRefreshingRoom,
     refreshPairingToken,
     refreshRoomStatus,
-    roomStatus,
-    runTaskAction
+    roomStatus
   } = useRoomStatus(roomSlug, t);
 
   return (
@@ -85,67 +82,6 @@ export function RoomStatusView() {
           </ol>
         </section>
 
-        <section className="room-status-panel room-status-wide" aria-label={t("rooms.onlineTasks")}>
-          <div className="room-section-header">
-            <h2>{t("rooms.onlineTasks")}</h2>
-            <span>
-              <strong>{t("rooms.taskCounts")}</strong> {formatTaskCounts(roomStatus?.onlineTasks.counts, t)}
-            </span>
-          </div>
-          <div className="room-task-list">
-            {(roomStatus?.onlineTasks.tasks ?? []).map((task) => (
-              <article className={`room-task-row room-task-row--${task.status}`} key={task.taskId}>
-                <div className="room-task-main">
-                  <strong>{task.title}</strong>
-                  <span>{task.artistName} / {task.sourceLabel}</span>
-                  <small>
-                    {task.provider}:{task.providerCandidateId} / {t("rooms.event")} {task.recentEventAt ? formatTime(task.recentEventAt) : t("common.unknown")}
-                  </small>
-                  {task.failureReason ? <small className="room-status-error">{task.failureReason}</small> : null}
-                </div>
-                <div className="room-task-state">
-                  <span className={`state-chip ${task.status}`}>{taskStateText(task.status, t)}</span>
-                  <div className="task-action-group">
-                    {canRetryTask(task) ? (
-                      <button
-                        aria-label={t("rooms.retryTaskAria", { taskId: task.taskId })}
-                        className="secondary-button compact-button"
-                        disabled={busyTaskAction !== null}
-                        type="button"
-                        onClick={() => void runTaskAction(task, "retry")}
-                      >
-                        {busyTaskAction === `retry:${task.taskId}` ? "重试中..." : t("rooms.retry")}
-                      </button>
-                    ) : null}
-                    {canCleanTask(task) ? (
-                      <button
-                        aria-label={t("rooms.cleanTaskAria", { taskId: task.taskId })}
-                        className="danger-button compact-button"
-                        disabled={busyTaskAction !== null}
-                        type="button"
-                        onClick={() => void runTaskAction(task, "clean")}
-                      >
-                        {busyTaskAction === `clean:${task.taskId}` ? "清理中..." : t("rooms.clean")}
-                      </button>
-                    ) : null}
-                    {task.status === "ready" ? (
-                      <button
-                        aria-label={t("rooms.promoteTaskAria", { taskId: task.taskId })}
-                        className="secondary-button compact-button"
-                        disabled={busyTaskAction !== null}
-                        type="button"
-                        onClick={() => void runTaskAction(task, "promote")}
-                      >
-                        {busyTaskAction === `promote:${task.taskId}` ? "入库中..." : t("rooms.promote")}
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
         <section className="room-status-panel room-status-wide" aria-label={t("rooms.recentEvents")}>
           <h2>{t("rooms.recentEvents")}</h2>
           <ol className="room-event-list">
@@ -173,23 +109,6 @@ function formatTime(iso: string): string {
   const minutes = `${date.getMinutes()}`.padStart(2, "0");
   const seconds = `${date.getSeconds()}`.padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-}
-
-function formatTaskCounts(counts: Record<string, number> | undefined, t: ReturnType<typeof useI18n>["t"]): string {
-  if (!counts) {
-    return `${taskStateText("total", t)} 0`;
-  }
-  return Object.entries(counts)
-    .map(([status, count]) => `${taskStateText(status, t)} ${count}`)
-    .join(" / ");
-}
-
-function canRetryTask(task: RoomOnlineTaskSummaryRow): boolean {
-  return task.status === "failed" || task.status === "stale" || task.status === "review_required";
-}
-
-function canCleanTask(task: RoomOnlineTaskSummaryRow): boolean {
-  return task.status === "failed" || task.status === "stale";
 }
 
 function formatPayload(payload: Record<string, unknown>, t: ReturnType<typeof useI18n>["t"]): string {

@@ -9,8 +9,6 @@ import { loadConfig, normalizeApiConfig, type ApiConfig, type ApiConfigInput } f
 import { MediaPathResolver } from "./modules/assets/media-path-resolver.js";
 import { MediaGateway } from "./modules/media/media-gateway.js";
 import { NasPlayableMediaRepository } from "./modules/media/nas-playable-media-repository.js";
-import { createOnlineRuntime } from "./modules/online/runtime.js";
-import type { OnlineCandidateProvider } from "./modules/online/provider-registry.js";
 import type { PlayerDeviceSessionRepository } from "./modules/player/register-player.js";
 import {
   InMemoryControlSessionRepository,
@@ -48,7 +46,6 @@ import { registerSongDiscoveryRoutes } from "./routes/song-discovery.js";
 import { registerSongSearchRoutes } from "./routes/song-search.js";
 
 export interface CreateServerOptions {
-  onlineProviders?: OnlineCandidateProvider[];
   poolFactory?: (databaseUrl: string) => Pool;
 }
 
@@ -90,11 +87,6 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
   const repositories = pool
     ? createPgRuntimeRepositories(pool, { mediaPathMappings: resolvedConfig.mediaPathMappings })
     : await createInMemoryRepositories(room, session, resolvedConfig);
-  const onlineRuntime = createOnlineRuntime({
-    config: resolvedConfig,
-    pool,
-    providers: options.onlineProviders ?? []
-  });
   const mediaPathResolver = new MediaPathResolver({
     mediaRoot: resolvedConfig.mediaRoot,
     pathMappings: resolvedConfig.mediaPathMappings
@@ -144,7 +136,6 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     deviceSessions: repositories.deviceSessions,
     playbackEvents: repositories.playbackEvents,
     ...(mediaGateway ? { mediaGateway } : {}),
-    online: onlineRuntime.tasks,
     broadcaster
   });
   await registerRoomSnapshotRoutes(server, {
@@ -159,10 +150,7 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
   });
   await registerRealtimeRoutes(server, {
     config: resolvedConfig,
-    repositories: {
-      ...repositories,
-      onlineTasks: onlineRuntime.tasks
-    },
+    repositories,
     ...(mediaGateway ? { mediaGateway } : {}),
     broadcaster
   });
@@ -175,7 +163,6 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
   await registerSongSearchRoutes(server, {
     rooms: repositories.rooms,
     queueEntries: repositories.queueEntries,
-    online: onlineRuntime.tasks,
     ...(repositories.ktvIndex ? { ktvIndex: repositories.ktvIndex } : {})
   });
   await registerSongDiscoveryRoutes(server, {
@@ -193,8 +180,7 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     config: resolvedConfig,
     repositories,
     ...(mediaGateway ? { mediaGateway } : {}),
-    broadcaster,
-    online: onlineRuntime.tasks
+    broadcaster
   });
 
   return server;

@@ -1,5 +1,4 @@
 import type {
-  OnlineCandidateTask,
   SongDiscoveryResponse,
   SongSearchNasQueueState,
   SongSearchQueueState,
@@ -16,7 +15,6 @@ import {
   promoteQueueEntry,
   realtimeUrl,
   restoreControlSession,
-  requestSupplement,
   searchSongs,
   sendRoomInteraction,
   setVolume,
@@ -38,7 +36,6 @@ interface ControllerCommandInput {
 interface ControllerCommandResponse {
   status?: string;
   snapshot?: RoomControlSnapshot | null;
-  task?: OnlineCandidateTask;
   undo?: { queueEntryId: string; undoExpiresAt: string };
 }
 
@@ -53,7 +50,6 @@ export interface RoomControllerState {
   pendingNasAssetId: string | null;
   pendingInteractionKind: RoomInteractionKind | null;
   pendingUndo: { queueEntryId: string; undoExpiresAt: string } | null;
-  pendingSupplementKeys: readonly string[];
   roomSlug: string;
   skipConfirmOpen: boolean;
   songDiscovery: SongDiscoveryResponse | null;
@@ -73,7 +69,6 @@ export interface RoomControllerState {
   requestAddSongVersion(songId: string, assetId: string, title: string, queueState: SongSearchQueueState): boolean;
   requestAddNasAsset(assetId: string, title: string, queueState: SongSearchNasQueueState): boolean;
   sendInteraction(kind: RoomInteractionKind, message: string): Promise<void>;
-  requestSupplement(provider: string, providerCandidateId: string): Promise<void>;
   requestSkip(): void;
   refreshSongDiscovery(): void;
   setSongSearchQuery(query: string): void;
@@ -100,7 +95,6 @@ export function useRoomControllerRuntime(): RoomControllerState {
   const [pendingNasAssetId, setPendingNasAssetId] = useState<string | null>(null);
   const [pendingInteractionKind, setPendingInteractionKind] = useState<RoomInteractionKind | null>(null);
   const [pendingUndo, setPendingUndo] = useState<{ queueEntryId: string; undoExpiresAt: string } | null>(null);
-  const [pendingSupplementKeys, setPendingSupplementKeys] = useState<readonly string[]>([]);
   const [pendingVolumePercent, setPendingVolumePercent] = useState<number | null>(null);
   const snapshotRef = useRef<RoomControlSnapshot | null>(null);
   const songSearchQueryRef = useRef("");
@@ -452,30 +446,6 @@ export function useRoomControllerRuntime(): RoomControllerState {
     [deviceId, initial.roomSlug, runCommand, runSongSearch]
   );
 
-  const requestOnlineSupplement = useCallback(
-    async (provider: string, providerCandidateId: string) => {
-      const key = supplementKey(provider, providerCandidateId);
-      setPendingSupplementKeys((keys) => (keys.includes(key) ? keys : [...keys, key]));
-      try {
-        const response = await runCommand((input) =>
-          requestSupplement({
-            ...input,
-            provider,
-            providerCandidateId
-          })
-        );
-        if (response?.task) {
-          setSongSearch((current) => applySupplementTask(current, response.task));
-        }
-      } catch (error) {
-        setErrorMessage(errorMessageFrom(error, "请求补歌失败"));
-      } finally {
-        setPendingSupplementKeys((keys) => keys.filter((item) => item !== key));
-      }
-    },
-    [runCommand]
-  );
-
   const sendInteraction = useCallback(
     async (kind: RoomInteractionKind, message: string) => {
       const normalizedMessage = message.trim();
@@ -529,7 +499,6 @@ export function useRoomControllerRuntime(): RoomControllerState {
     pendingNasAssetId,
     pendingInteractionKind,
     pendingUndo,
-    pendingSupplementKeys,
     roomSlug: initial.roomSlug,
     skipConfirmOpen,
     songDiscovery,
@@ -584,7 +553,6 @@ export function useRoomControllerRuntime(): RoomControllerState {
       return true;
     },
     sendInteraction,
-    requestSupplement: requestOnlineSupplement,
     requestSkip: () => setSkipConfirmOpen(true),
     refreshSongDiscovery: () => {
       void runSongDiscovery(createDiscoverySeed());
@@ -684,33 +652,4 @@ function errorMessageFrom(error: unknown, fallback: string): string {
   }
 
   return error instanceof Error ? error.message : fallback;
-}
-
-export function supplementKey(provider: string, providerCandidateId: string): string {
-  return `${provider}:${providerCandidateId}`;
-}
-
-function applySupplementTask(
-  current: SongSearchResponse | null,
-  task: Awaited<ReturnType<typeof requestSupplement>>["task"]
-): SongSearchResponse | null {
-  if (!current) {
-    return current;
-  }
-
-  return {
-    ...current,
-    online: {
-      ...current.online,
-      candidates: current.online.candidates.map((candidate) =>
-        candidate.provider === task.provider && candidate.providerCandidateId === task.providerCandidateId
-          ? {
-              ...candidate,
-              taskId: task.id,
-              taskState: task.status
-            }
-          : candidate
-      )
-    }
-  };
 }

@@ -82,7 +82,7 @@ describe("source-aware queue command route", () => {
     await server.close();
   });
 
-  it("rejects online queue payloads until online playback is implemented", async () => {
+  it("rejects online queue payloads because online supplement is retired", async () => {
     const server = await createControlCommandServer({ playableMedia: [createPlayableMediaAsset()] });
 
     const response = await server.inject({
@@ -99,7 +99,7 @@ describe("source-aware queue command route", () => {
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json()).toEqual({ code: "ONLINE_PLAYBACK_NOT_IMPLEMENTED", message: null });
+    expect(response.json()).toEqual({ code: "INVALID_QUEUE_SOURCE", message: null });
     await server.close();
   });
 });
@@ -310,7 +310,7 @@ function createPlayableMediaAsset(overrides: Partial<PlayableMediaAsset> = {}): 
   return {
     sourceType: "nas",
     songId: "ktv-song-1",
-    assetId: "ktv-asset-1",
+    assetId: "ktv-song-1",
     title: "晴天",
     artistName: "周杰伦",
     displayName: "晴天.mkv",
