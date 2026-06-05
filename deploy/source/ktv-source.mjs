@@ -502,7 +502,7 @@ function printUrls() {
   console.log("URLs:");
   console.log(`  API health:  ${config.apiBaseUrl}/health`);
   console.log(`  Admin:       ${config.adminBaseUrl}/`);
-  console.log(`  Controller:  ${config.controllerBaseUrl}/controller?room=${encodeURIComponent(config.roomSlug)}`);
+  console.log(`  Controller:  ${config.controllerBaseUrl}/controller`);
   console.log(`  Web TV:      ${config.tvWebBaseUrl}/`);
   console.log("");
   console.log("Logs:");
