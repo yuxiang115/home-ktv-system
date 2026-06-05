@@ -110,6 +110,26 @@ describe("KTV full index importer", () => {
         relativePath: "1080P全高清MPG2026年更新（更新中）/01月MPG1080/周杰伦-以父之名 (2004无与伦比演唱会)(ai修复版)[1080P]-国语-流行.mpg",
         title: "以父之名",
         normalizedTitle: "以父之名"
+      },
+      {
+        relativePath: "综合专辑 9300首1.4T/K歌排行/90后/汪苏泷-不够成熟[2]-国语-流行.mpg",
+        title: "不够成熟",
+        normalizedTitle: "不够成熟"
+      },
+      {
+        relativePath: "国语-知名歌星专辑 11000首850G/刀郎（国语50）/刀郎-手心里的温柔[R]-国语-流行.mpg",
+        title: "手心里的温柔",
+        normalizedTitle: "手心里的温柔"
+      },
+      {
+        relativePath: "2024/2024-01/韩磊_谭维维-不忘初心 (2017春晚版)-国语-流行.mkv",
+        title: "不忘初心",
+        normalizedTitle: "不忘初心"
+      },
+      {
+        relativePath: "经典老歌(1.2万首450G)/经典老歌1/辛晓琪-领悟〖演唱会〗-国语-流行.mkv",
+        title: "领悟",
+        normalizedTitle: "领悟"
       }
     ] as const;
 

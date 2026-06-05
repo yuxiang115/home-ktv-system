@@ -11,6 +11,7 @@ export interface SongTitleCleanupResult {
 const DISPLAY_MARKER_PATTERN = /\s*(?:[\[【][^\]【】]*(?:720|1080|高清|HD|P|现场)[^\]【】]*[\]】]|[\(（][^()（）]*(?:720|1080|高清|HD|P|演唱会|综艺|现场|Live|MTV|蒙面歌王|我是歌手|音乐缘计划)[^()（）]*[\)）])\s*$/iu;
 const VERSION_MARKER_PATTERN = /\s*[\(（][^()（）]*(?:粤语版|国语版|DJ[^()（）]*版|现场版|烟嗓版|ai修复版|DJ)[^()（）]*[\)）]\s*$/iu;
 const CHINESE_SUBTITLE_PATTERN = /\s*[\(（][\p{Script=Han}\s，、。！？!?]+[\)）]\s*$/u;
+const TRAILING_BRACKET_DETAIL_PATTERN = /^(.{2,}?)\s*[\(（\[【〖].*$/u;
 const TRAILING_CATEGORY_PATTERN = /(流行|怀旧|合唱|戏曲|歌曲|dj)$/iu;
 const EXACT_TITLE_FIXES = new Map<string, string>([
   ["如果这就是爱情", "这就是爱情"]
@@ -48,6 +49,13 @@ export function cleanSongTitle(input: SongTitleCleanupInput): SongTitleCleanupRe
       continue;
     }
 
+    const bracketStripped = stripTrailingBracketDetail(title);
+    if (bracketStripped !== title) {
+      title = bracketStripped;
+      reasons.add("bracket-detail");
+      continue;
+    }
+
     const categoryStripped = stripTrailingCategory(title);
     if (categoryStripped !== title) {
       title = categoryStripped;
@@ -63,6 +71,16 @@ export function cleanSongTitle(input: SongTitleCleanupInput): SongTitleCleanupRe
     changed: title !== original && Boolean(title),
     reasons: Array.from(reasons)
   };
+}
+
+function stripTrailingBracketDetail(value: string): string {
+  const match = value.match(TRAILING_BRACKET_DETAIL_PATTERN);
+  const prefix = match?.[1]?.trim();
+  if (!prefix || prefix.length < 2) {
+    return value;
+  }
+
+  return prefix;
 }
 
 function stripTrailingCategory(value: string): string {

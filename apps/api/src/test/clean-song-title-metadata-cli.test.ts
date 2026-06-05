@@ -41,10 +41,42 @@ describe("clean song title metadata CLI", () => {
         primary_artist_name: "张靓颖",
         artist_names: ["张靓颖"],
         relative_path: "综合专辑 9300首1.4T/K歌排行/70后/张靓颖-如果这就是爱情[720高清]-国语-流行.mpg"
+      },
+      {
+        id: "song-4",
+        title: "不够成熟[2]",
+        normalized_title: "不够成熟2",
+        primary_artist_name: "汪苏泷",
+        artist_names: ["汪苏泷"],
+        relative_path: "综合专辑 9300首1.4T/K歌排行/90后/汪苏泷-不够成熟[2]-国语-流行.mpg"
+      },
+      {
+        id: "song-5",
+        title: "手心里的温柔[R]",
+        normalized_title: "手心里的温柔r",
+        primary_artist_name: "刀郎",
+        artist_names: ["刀郎"],
+        relative_path: "国语-知名歌星专辑 11000首850G/刀郎（国语50）/刀郎-手心里的温柔[R]-国语-流行.mpg"
+      },
+      {
+        id: "song-6",
+        title: "不忘初心 (2017春晚版)",
+        normalized_title: "不忘初心2017春晚版",
+        primary_artist_name: "韩磊",
+        artist_names: ["韩磊"],
+        relative_path: "2024/2024-01/韩磊_谭维维-不忘初心 (2017春晚版)-国语-流行.mkv"
+      },
+      {
+        id: "song-7",
+        title: "领悟〖演唱会〗",
+        normalized_title: "领悟演唱会",
+        primary_artist_name: "辛晓琪",
+        artist_names: ["辛晓琪"],
+        relative_path: "经典老歌(1.2万首450G)/经典老歌1/辛晓琪-领悟〖演唱会〗-国语-流行.mkv"
       }
     ]);
 
-    expect(plan).toHaveLength(3);
+    expect(plan).toHaveLength(7);
     expect(plan[0]).toMatchObject({
       id: "song-1",
       title: "酒干倘卖无",
@@ -62,6 +94,30 @@ describe("clean song title metadata CLI", () => {
       title: "这就是爱情",
       previousTitle: "如果这就是爱情[720高清]",
       normalizedTitle: "这就是爱情"
+    });
+    expect(plan[3]).toMatchObject({
+      id: "song-4",
+      title: "不够成熟",
+      previousTitle: "不够成熟[2]",
+      normalizedTitle: "不够成熟"
+    });
+    expect(plan[4]).toMatchObject({
+      id: "song-5",
+      title: "手心里的温柔",
+      previousTitle: "手心里的温柔[R]",
+      normalizedTitle: "手心里的温柔"
+    });
+    expect(plan[5]).toMatchObject({
+      id: "song-6",
+      title: "不忘初心",
+      previousTitle: "不忘初心 (2017春晚版)",
+      normalizedTitle: "不忘初心"
+    });
+    expect(plan[6]).toMatchObject({
+      id: "song-7",
+      title: "领悟",
+      previousTitle: "领悟〖演唱会〗",
+      normalizedTitle: "领悟"
     });
   });
 
