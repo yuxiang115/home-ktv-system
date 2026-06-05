@@ -1,4 +1,10 @@
-import type { SongDiscoveryArtist, SongDiscoveryGenre, SongDiscoverySong, SongSearchNasResult } from "@home-ktv/domain";
+import type {
+  ControllerSongHistoryEntry,
+  SongDiscoveryArtist,
+  SongDiscoveryGenre,
+  SongDiscoverySong,
+  SongSearchNasResult
+} from "@home-ktv/domain";
 import type { RoomInteractionKind } from "@home-ktv/player-contracts";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { fetchDiscoveryArtistSongs, fetchDiscoveryGenreSongs } from "./api/client.js";
@@ -125,23 +131,22 @@ function ControllerApp() {
       <AppNotices controller={controller} noticeMessage={noticeMessage} t={t} />
 
       {activeTab === "home" ? (
-        <>
-          <AccountPanel controller={controller} />
-          <HomeScreen
-            controller={controller}
-            discovery={discovery}
-            browseView={browseView}
-            onQueueAddFeedback={triggerQueueAddFeedback}
-            goBackBrowseView={goBackBrowseView}
-            openBrowseView={openBrowseView}
-            setInteractionComposer={setInteractionComposer}
-            setSearchOpen={setSearchOpen}
-            t={t}
-            visibleArtists={visibleArtists}
-            visibleGenres={visibleGenres}
-          />
-        </>
-      ) : (
+        <HomeScreen
+          controller={controller}
+          discovery={discovery}
+          browseView={browseView}
+          onQueueAddFeedback={triggerQueueAddFeedback}
+          goBackBrowseView={goBackBrowseView}
+          openBrowseView={openBrowseView}
+          setInteractionComposer={setInteractionComposer}
+          setSearchOpen={setSearchOpen}
+          t={t}
+          visibleArtists={visibleArtists}
+          visibleGenres={visibleGenres}
+        />
+      ) : null}
+
+      {activeTab === "control" ? (
         <ControlScreen
           controller={controller}
           current={current}
@@ -153,7 +158,9 @@ function ControllerApp() {
           t={t}
           volumePercent={volumePercent}
         />
-      )}
+      ) : null}
+
+      {activeTab === "my" ? <MyScreen controller={controller} onQueueAddFeedback={triggerQueueAddFeedback} /> : null}
 
       {searchOpen ? (
         <SearchOverlay
@@ -330,8 +337,6 @@ function AccountPanel({ controller }: { controller: RoomControllerState }) {
     return null;
   }
 
-  const myQueue = controller.snapshot?.queue.filter((entry) => entry.requestedByUserPhone === user.phone) ?? [];
-
   const save = async () => {
     if (!displayName.trim() || pending) {
       return;
@@ -384,14 +389,83 @@ function AccountPanel({ controller }: { controller: RoomControllerState }) {
           </>
         )}
       </div>
-      <div className="account-history" aria-label="我的点歌">
-        <span>我的点歌</span>
-        <strong>{myQueue.length}</strong>
-        {myQueue.slice(0, 2).map((entry) => (
-          <small key={entry.queueEntryId}>{entry.songTitle}</small>
-        ))}
-      </div>
     </section>
+  );
+}
+
+function MyScreen({
+  controller,
+  onQueueAddFeedback
+}: {
+  controller: RoomControllerState;
+  onQueueAddFeedback(song: Pick<SongDiscoverySong, "artistName" | "title">): void;
+}) {
+  const history = controller.songHistory;
+  return (
+    <>
+      <AccountPanel controller={controller} />
+      <section className="panel my-history-panel" aria-label="点歌历史">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">我的点歌</p>
+            <h2>点歌历史</h2>
+          </div>
+          <button className="secondary-button compact-button" type="button" onClick={() => void controller.refreshSongHistory()}>
+            刷新
+          </button>
+        </div>
+        <div className="my-history-summary">
+          <span>点过歌曲</span>
+          <strong>{history.length}</strong>
+        </div>
+        <div className="my-history-list">
+          {history.map((song) => (
+            <HistorySongRow
+              controller={controller}
+              key={song.songId}
+              onQueueAddFeedback={onQueueAddFeedback}
+              song={song}
+            />
+          ))}
+          {controller.songHistoryStatus === "loading" && history.length === 0 ? (
+            <p className="empty-state local-empty">正在加载历史</p>
+          ) : null}
+          {controller.songHistoryStatus !== "loading" && history.length === 0 ? (
+            <p className="empty-state local-empty">还没有点过歌</p>
+          ) : null}
+        </div>
+      </section>
+    </>
+  );
+}
+
+function HistorySongRow({
+  controller,
+  onQueueAddFeedback,
+  song
+}: {
+  controller: RoomControllerState;
+  onQueueAddFeedback(song: Pick<SongDiscoverySong, "artistName" | "title">): void;
+  song: ControllerSongHistoryEntry;
+}) {
+  const addAgain = () => {
+    const queued = controller.requestAddSongVersion(song.songId, song.assetId, song.title, "not_queued");
+    if (queued) {
+      onQueueAddFeedback(song);
+    }
+  };
+
+  return (
+    <article className="my-history-row" aria-label={`${song.title} ${song.requestCount} 次`}>
+      <div className="my-history-row__main">
+        <strong>{song.title}</strong>
+        <p>{song.artistName || "未知歌手"}</p>
+      </div>
+      <span className="my-history-count">点过 {song.requestCount} 次</span>
+      <button className="primary-button compact-button" type="button" onClick={addAgain} aria-label={`再点 ${song.title}`}>
+        再点
+      </button>
+    </article>
   );
 }
 
@@ -1078,13 +1152,22 @@ function BottomTabs({
         ) : null}
         <span>{t("nav.control")}</span>
       </button>
+      <button
+        className={`bottom-tab ${activeTab === "my" ? "active" : ""}`}
+        type="button"
+        aria-current={activeTab === "my" ? "page" : undefined}
+        onClick={() => setActiveTab("my")}
+      >
+        <span className="bottom-tab__icon bottom-tab__icon--my" aria-hidden="true" />
+        <span>{t("nav.my")}</span>
+      </button>
     </nav>
   );
 }
 
 type TFunction = ReturnType<typeof useI18n>["t"];
 
-type ControllerTab = "home" | "control";
+type ControllerTab = "home" | "control" | "my";
 
 type QueueAddFeedback = {
   id: number;

@@ -1,5 +1,14 @@
 package com.liuyue.homektv
 
+fun requesterDisplayName(value: String?): String? {
+    val normalized = value?.trim().orEmpty()
+    return normalized.ifBlank { null }
+}
+
+fun requesterAvatarInitial(displayName: String): String {
+    return displayName.trim().take(1).uppercase().ifBlank { "?" }
+}
+
 fun playbackStateLabelForStatus(value: String, roomModeActive: Boolean, currentLabel: String? = null): String? {
     return when {
         value.startsWith("正在播放") -> "播放中"

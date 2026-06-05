@@ -27,6 +27,7 @@ export function PlayingScreen({
   const modeLabel = modeLabelFor(target?.vocalMode ?? "unknown");
   const clock = formatPlaybackClock(playbackPositionMs, durationMs);
   const audioTrackLabel = audioTrackLabelFor(target?.selectedTrackRef ?? null);
+  const requester = requesterDisplay(target?.currentQueueEntryPreview.requestedByName ?? null);
   const pointerActivatedPromptRef = useRef(false);
 
   const activateFirstPlayPrompt = () => {
@@ -42,6 +43,13 @@ export function PlayingScreen({
         <PairingQr pairing={snapshot.pairing} variant="corner" />
       </div>
       <footer aria-label="播放状态" style={styles.footer}>
+        {requester ? (
+          <span aria-label={`点歌人 ${requester.name}`} style={styles.requesterLine}>
+            <span style={styles.requesterAvatar} aria-hidden="true">{requester.initial}</span>
+            <span style={styles.requesterLabel}>点歌人</span>
+            <span style={styles.requesterName}>{requester.name}</span>
+          </span>
+        ) : null}
         <span style={styles.timeValue}>{clock}</span>
         <span style={styles.metaLine}>
           <span style={{ ...styles.modePill, ...modeAccent(target?.vocalMode ?? "unknown") }}>{modeLabel}</span>
@@ -104,6 +112,17 @@ function audioTrackLabelFor(trackRef: NonNullable<RoomSnapshot["currentTarget"]>
   }
 
   return "音轨待确认";
+}
+
+function requesterDisplay(name: string | null): { name: string; initial: string } | null {
+  const normalized = name?.trim();
+  if (!normalized) {
+    return null;
+  }
+  return {
+    name: normalized,
+    initial: normalized.slice(0, 1).toUpperCase()
+  };
 }
 
 function modeAccent(vocalMode: string): CSSProperties {
@@ -184,6 +203,44 @@ const styles = {
     padding: "14px 20px 15px",
     position: "absolute",
     zIndex: 3
+  },
+  requesterLine: {
+    alignItems: "center",
+    display: "flex",
+    gap: 8,
+    maxWidth: "min(42vw, 420px)",
+    minWidth: 0
+  },
+  requesterAvatar: {
+    alignItems: "center",
+    background: "linear-gradient(135deg, rgba(34, 211, 238, 0.95), rgba(37, 245, 139, 0.9))",
+    border: "1px solid rgba(255, 255, 255, 0.36)",
+    borderRadius: 999,
+    color: "#03120B",
+    display: "inline-flex",
+    flex: "0 0 auto",
+    fontSize: 17,
+    fontWeight: 900,
+    height: 30,
+    justifyContent: "center",
+    lineHeight: 1,
+    width: 30
+  },
+  requesterLabel: {
+    color: tvTheme.colors.textMuted,
+    flex: "0 0 auto",
+    fontSize: 16,
+    fontWeight: 800
+  },
+  requesterName: {
+    color: tvTheme.colors.text,
+    display: "block",
+    fontSize: 18,
+    fontWeight: 900,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap"
   },
   timeValue: {
     color: tvTheme.colors.text,

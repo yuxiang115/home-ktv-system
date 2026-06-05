@@ -5,6 +5,14 @@ import org.junit.Test
 
 class PlaybackHudStateTest {
     @Test
+    fun derivesRequesterDisplayNameAndAvatarInitial() {
+        assertEquals("阿飞", requesterDisplayName(" 阿飞 "))
+        assertEquals("阿", requesterAvatarInitial("阿飞"))
+        assertEquals("A", requesterAvatarInitial("alex"))
+        assertEquals(null, requesterDisplayName(" "))
+    }
+
+    @Test
     fun mapsPlayingStatusToPlayingLabel() {
         assertEquals("播放中", playbackStateLabelForStatus("正在播放 · 原唱", roomModeActive = true))
     }

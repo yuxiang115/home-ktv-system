@@ -1,4 +1,9 @@
-import type { SongDiscoveryResponse, SongDiscoverySongsResponse, SongSearchResponse } from "@home-ktv/domain";
+import type {
+  ControllerSongHistoryResponse,
+  SongDiscoveryResponse,
+  SongDiscoverySongsResponse,
+  SongSearchResponse
+} from "@home-ktv/domain";
 import type { ControlSessionInfo, RoomControlSnapshot, RoomInteractionEvent, RoomInteractionKind } from "@home-ktv/player-contracts";
 
 const deviceIdStorageKey = "home_ktv_device_id";
@@ -126,6 +131,10 @@ export async function updateControllerUserProfile(input: { displayName: string }
     method: "PATCH",
     body: JSON.stringify(input)
   });
+}
+
+export async function fetchControllerSongHistory(): Promise<ControllerSongHistoryResponse> {
+  return fetchController<ControllerSongHistoryResponse>("/controller/me/song-history");
 }
 
 export async function searchSongs(input: {

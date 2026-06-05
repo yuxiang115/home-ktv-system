@@ -27,6 +27,8 @@ class PlayerContractsJsonTest {
         assertEquals(12_345L, target.resumePositionMs)
         assertEquals("稻香", target.currentQueueEntryPreview.songTitle)
         assertEquals("周杰伦", target.currentQueueEntryPreview.artistName)
+        assertEquals("阿飞", target.currentQueueEntryPreview.requestedByName)
+        assertEquals("13800138000", target.currentQueueEntryPreview.requestedByUserPhone)
         assertEquals("instrumental", target.vocalMode)
         assertEquals("single_file_audio_tracks", target.playbackProfile?.kind)
         assertEquals(true, target.playbackProfile?.requiresAudioTrackSelection)
@@ -179,7 +181,9 @@ class PlayerContractsJsonTest {
                 "currentQueueEntryPreview": {
                   "queueEntryId": "queue-1",
                   "songTitle": "稻香",
-                  "artistName": "周杰伦"
+                  "artistName": "周杰伦",
+                  "requestedByName": "阿飞",
+                  "requestedByUserPhone": "13800138000"
                 },
                 "playbackUrl": "http://192.168.5.64:4000/media/nas/asset-1",
                 "resumePositionMs": 12345,

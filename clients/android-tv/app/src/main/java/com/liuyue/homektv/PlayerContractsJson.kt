@@ -109,6 +109,8 @@ object PlayerContractsJson {
             queueEntryId = json?.optString("queueEntryId", fallbackQueueEntryId) ?: fallbackQueueEntryId,
             songTitle = json?.optString("songTitle", "当前歌曲") ?: "当前歌曲",
             artistName = json?.optString("artistName", "") ?: "",
+            requestedByUserPhone = json?.optNullableString("requestedByUserPhone"),
+            requestedByName = json?.optNullableString("requestedByName"),
         )
     }
 

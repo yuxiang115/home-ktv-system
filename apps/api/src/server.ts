@@ -38,6 +38,7 @@ import { registerAdminKtvIndexRoutes } from "./routes/admin-ktv-index.js";
 import { registerAdminRoomsRoutes } from "./routes/admin-rooms.js";
 import { registerControlCommandRoutes } from "./routes/control-commands.js";
 import { registerControllerAuthRoutes } from "./routes/controller-auth.js";
+import { registerControllerUserHistoryRoutes } from "./routes/controller-user-history.js";
 import { registerControlSessionRoutes } from "./routes/control-sessions.js";
 import { PgKtvIndexRawAssetRepository, registerMediaRoutes } from "./routes/media.js";
 import { registerPlayerRoutes } from "./routes/player.js";
@@ -147,6 +148,10 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
   });
   await registerControllerAuthRoutes(server, {
     controllerAuth: repositories.controllerAuth
+  });
+  await registerControllerUserHistoryRoutes(server, {
+    controllerAuth: repositories.controllerAuth,
+    queueEntries: repositories.queueEntries
   });
   await registerControlSessionRoutes(server, {
     config: resolvedConfig,

@@ -1,4 +1,5 @@
 import type {
+  ControllerSongHistoryEntry,
   SongDiscoveryResponse,
   SongSearchNasQueueState,
   SongSearchQueueState,
@@ -12,6 +13,7 @@ import {
   type ControllerUser,
   createControlSession,
   deleteQueueEntry,
+  fetchControllerSongHistory,
   fetchSongDiscovery,
   getCurrentControllerUser,
   loginControllerUser,
@@ -62,6 +64,8 @@ export interface RoomControllerState {
   skipConfirmOpen: boolean;
   songDiscovery: SongDiscoveryResponse | null;
   songDiscoveryStatus: "idle" | "loading" | "success" | "error";
+  songHistory: ControllerSongHistoryEntry[];
+  songHistoryStatus: "idle" | "loading" | "success" | "error";
   songSearch: SongSearchResponse | null;
   songSearchQuery: string;
   songSearchStatus: "idle" | "loading" | "success" | "error";
@@ -79,6 +83,7 @@ export interface RoomControllerState {
   sendInteraction(kind: RoomInteractionKind, message: string): Promise<void>;
   requestSkip(): void;
   refreshSongDiscovery(): void;
+  refreshSongHistory(): Promise<void>;
   setSongSearchQuery(query: string): void;
   setVolumePercent(volumePercent: number): void;
   submitSongSearch(): void;
@@ -106,6 +111,8 @@ export function useRoomControllerRuntime(): RoomControllerState {
   const [skipConfirmOpen, setSkipConfirmOpen] = useState(false);
   const [songDiscovery, setSongDiscovery] = useState<SongDiscoveryResponse | null>(null);
   const [songDiscoveryStatus, setSongDiscoveryStatus] = useState<RoomControllerState["songDiscoveryStatus"]>("idle");
+  const [songHistory, setSongHistory] = useState<ControllerSongHistoryEntry[]>([]);
+  const [songHistoryStatus, setSongHistoryStatus] = useState<RoomControllerState["songHistoryStatus"]>("idle");
   const [pendingNasAssetId, setPendingNasAssetId] = useState<string | null>(null);
   const [pendingInteractionKind, setPendingInteractionKind] = useState<RoomInteractionKind | null>(null);
   const [pendingUndo, setPendingUndo] = useState<{ queueEntryId: string; undoExpiresAt: string } | null>(null);
@@ -228,6 +235,32 @@ export function useRoomControllerRuntime(): RoomControllerState {
     },
     [initial.roomSlug]
   );
+
+  const runSongHistory = useCallback(async () => {
+    setSongHistoryStatus("loading");
+    try {
+      const response = await fetchControllerSongHistory();
+      setSongHistory(response.songs);
+      setSongHistoryStatus("success");
+    } catch (error) {
+      if (isApiCode(error, "AUTH_REQUIRED")) {
+        setSongHistory([]);
+        setSongHistoryStatus("idle");
+        return;
+      }
+      setSongHistoryStatus("error");
+      setErrorMessage(errorMessageFrom(error, "点歌历史加载失败"));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (authStatus !== "authenticated") {
+      setSongHistory([]);
+      setSongHistoryStatus("idle");
+      return;
+    }
+    void runSongHistory();
+  }, [authStatus, runSongHistory]);
 
   useEffect(() => {
     if (authStatus !== "authenticated") {
@@ -471,8 +504,9 @@ export function useRoomControllerRuntime(): RoomControllerState {
   const addSongVersion = useCallback(
     async (songId: string, assetId: string) => {
       await runCommand((input) => addQueueEntry({ ...input, sourceType: "nas", assetId }), { retryOnConflict: true });
+      await runSongHistory();
     },
-    [runCommand]
+    [runCommand, runSongHistory]
   );
 
   const addNasAsset = useCallback(
@@ -552,6 +586,8 @@ export function useRoomControllerRuntime(): RoomControllerState {
     skipConfirmOpen,
     songDiscovery,
     songDiscoveryStatus,
+    songHistory,
+    songHistoryStatus,
     songSearch,
     songSearchQuery,
     songSearchStatus,
@@ -592,6 +628,8 @@ export function useRoomControllerRuntime(): RoomControllerState {
         setSnapshot(null);
         setSongSearch(null);
         setSongDiscovery(null);
+        setSongHistory([]);
+        setSongHistoryStatus("idle");
         setSongSearchQueryState("");
         songSearchQueryRef.current = "";
         setErrorMessage(null);
@@ -652,6 +690,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
     refreshSongDiscovery: () => {
       void runSongDiscovery(createDiscoverySeed());
     },
+    refreshSongHistory: runSongHistory,
     setSongSearchQuery: (query) => {
       songSearchQueryRef.current = query;
       setSongSearchQueryState(query);

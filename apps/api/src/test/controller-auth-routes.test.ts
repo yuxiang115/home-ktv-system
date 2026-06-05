@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import Fastify from "fastify";
+import { InMemoryControllerAuthRepository } from "../modules/controller/repositories/controller-auth-repository.js";
+import type { QueueEntryRepository } from "../modules/playback/repositories/queue-entry-repository.js";
+import { registerControllerAuthRoutes } from "../routes/controller-auth.js";
+import { registerControllerUserHistoryRoutes } from "../routes/controller-user-history.js";
 import { createServer } from "../server.js";
 
 const testConfig = {
@@ -137,6 +142,65 @@ describe("controller auth routes", () => {
     expect(shortPassword.json()).toEqual({ code: "INVALID_PASSWORD" });
     expect(invalidLogin.statusCode).toBe(401);
     expect(invalidLogin.json()).toEqual({ code: "INVALID_CREDENTIALS" });
+    await server.close();
+  });
+
+  it("returns the authenticated controller user's song history only", async () => {
+    const server = Fastify();
+    const controllerAuth = new InMemoryControllerAuthRepository();
+    const queueEntries = {
+      listControllerUserSongHistory: async (phone: string) =>
+        phone === "13800138000"
+          ? [
+              {
+                songId: "ktv-song-sunny",
+                assetId: "ktv-song-sunny",
+                title: "晴天",
+                artistName: "周杰伦",
+                requestCount: 3,
+                lastRequestedAt: "2026-06-05T10:00:00.000Z"
+              }
+            ]
+          : []
+    } as unknown as QueueEntryRepository;
+    await registerControllerAuthRoutes(server, { controllerAuth });
+    await registerControllerUserHistoryRoutes(server, { controllerAuth, queueEntries });
+    const registered = await server.inject({
+      method: "POST",
+      url: "/controller/auth/register",
+      payload: {
+        phone: "13800138000",
+        password: "abcde",
+        displayName: "阿飞"
+      }
+    });
+    const authCookie = extractCookie(registered.headers["set-cookie"], "ktv_controller_auth");
+
+    const guestHistory = await server.inject({
+      method: "GET",
+      url: "/controller/me/song-history"
+    });
+    const userHistory = await server.inject({
+      method: "GET",
+      url: "/controller/me/song-history",
+      headers: { cookie: authCookie }
+    });
+
+    expect(guestHistory.statusCode).toBe(401);
+    expect(guestHistory.json()).toEqual({ code: "AUTH_REQUIRED" });
+    expect(userHistory.statusCode).toBe(200);
+    expect(userHistory.json()).toEqual({
+      songs: [
+        {
+          songId: "ktv-song-sunny",
+          assetId: "ktv-song-sunny",
+          title: "晴天",
+          artistName: "周杰伦",
+          requestCount: 3,
+          lastRequestedAt: "2026-06-05T10:00:00.000Z"
+        }
+      ]
+    });
     await server.close();
   });
 });

@@ -31,6 +31,39 @@ describe("PlayingScreen", () => {
     expect(screen.queryByText("七里香")).toBeNull();
   });
 
+  it("shows the requester avatar and nickname while playing", () => {
+    const roomSnapshot = snapshot({
+      currentTarget: {
+        ...snapshot().currentTarget!,
+        currentQueueEntryPreview: {
+          queueEntryId: "queue-current",
+          songTitle: "七里香",
+          artistName: "周杰伦",
+          requestedByName: "阿飞",
+          requestedByUserPhone: "13800138000"
+        }
+      }
+    });
+
+    render(
+      <PlayingScreen
+        displayState={deriveTvDisplayState({
+          errorMessage: null,
+          firstPlayBlocked: false,
+          snapshot: roomSnapshot,
+          status: "ready"
+        })}
+        snapshot={roomSnapshot}
+        playbackPositionMs={12_345}
+        durationMs={180_000}
+      />
+    );
+
+    expect(screen.getByLabelText("点歌人 阿飞")).toBeTruthy();
+    expect(screen.getByText("阿")).toBeTruthy();
+    expect(screen.getByText("阿飞")).toBeTruthy();
+  });
+
   it("uses the approved success color for active playback state", () => {
     const roomSnapshot = snapshot();
     render(

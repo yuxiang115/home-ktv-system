@@ -367,6 +367,19 @@ export interface SongDiscoveryResponse {
   genres: SongDiscoveryGenre[];
 }
 
+export interface ControllerSongHistoryEntry {
+  songId: SongId;
+  assetId: AssetId;
+  title: string;
+  artistName: string;
+  requestCount: number;
+  lastRequestedAt: string;
+}
+
+export interface ControllerSongHistoryResponse {
+  songs: ControllerSongHistoryEntry[];
+}
+
 export interface SongDiscoverySongsResponse {
   songs: SongDiscoverySong[];
   nextOffset: number | null;

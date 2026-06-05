@@ -1,5 +1,6 @@
 import type {
   ControlSessionId,
+  ControllerSongHistoryEntry,
   MediaSourceRef,
   PlaybackOptions,
   QueueEntry,
@@ -74,6 +75,7 @@ export interface UpdatePreferredVocalModeInput {
 export interface QueueEntryRepository {
   findById(queueEntryId: QueueEntryId): Promise<QueueEntry | null>;
   listEffectiveQueue(roomId: RoomId): Promise<QueueEntry[]>;
+  listControllerUserSongHistory?(phone: string, limit?: number): Promise<ControllerSongHistoryEntry[]>;
   listGlobalSongRequestCounts?(songIds: readonly SongId[]): Promise<Map<SongId, number>>;
   listUndoableRemoved(roomId: RoomId, now: Date): Promise<QueueEntry[]>;
   findCurrentForRoom(roomId: RoomId): Promise<QueueEntry | null>;
@@ -162,6 +164,39 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
         typeof row.request_count === "number" ? row.request_count : Number.parseInt(row.request_count, 10)
       ])
     );
+  }
+
+  async listControllerUserSongHistory(phone: string, limit = 100): Promise<ControllerSongHistoryEntry[]> {
+    const normalizedLimit = Math.min(200, Math.max(1, Math.trunc(limit)));
+    const result = await this.db.query<{
+      song_id: string;
+      title: string;
+      artist_name: string;
+      request_count: string | number;
+      last_requested_at: Date | string;
+    }>(
+      `SELECT q.song_id,
+              s.title,
+              s.primary_artist_name AS artist_name,
+              count(*)::int AS request_count,
+              max(q.requested_at) AS last_requested_at
+       FROM queue_entries q
+       JOIN ktv_songs s ON s.id = q.song_id
+       WHERE q.requested_by_user_phone = $1
+       GROUP BY q.song_id, s.title, s.primary_artist_name
+       ORDER BY max(q.requested_at) DESC
+       LIMIT $2`,
+      [phone, normalizedLimit]
+    );
+
+    return result.rows.map((row) => ({
+      songId: row.song_id as SongId,
+      assetId: row.song_id,
+      title: row.title,
+      artistName: row.artist_name,
+      requestCount: typeof row.request_count === "number" ? row.request_count : Number.parseInt(row.request_count, 10),
+      lastRequestedAt: toIsoString(row.last_requested_at)
+    }));
   }
 
   async listUndoableRemoved(roomId: RoomId, now: Date): Promise<QueueEntry[]> {
@@ -395,6 +430,42 @@ export class InMemoryQueueEntryRepository implements QueueEntryRepository {
       counts.set(source.songId, (counts.get(source.songId) ?? 0) + 1);
     }
     return counts;
+  }
+
+  async listControllerUserSongHistory(phone: string, limit = 100): Promise<ControllerSongHistoryEntry[]> {
+    const counts = new Map<SongId, { songId: SongId; assetId: string; count: number; lastRequestedAt: string }>();
+    for (const entry of this.entries.values()) {
+      if (entry.requestedByUserPhone !== phone) {
+        continue;
+      }
+      const source = sourceRefFromQueueEntry(entry);
+      const current = counts.get(source.songId);
+      if (!current) {
+        counts.set(source.songId, {
+          songId: source.songId,
+          assetId: source.assetId,
+          count: 1,
+          lastRequestedAt: entry.requestedAt
+        });
+        continue;
+      }
+      current.count += 1;
+      if (new Date(entry.requestedAt).getTime() > new Date(current.lastRequestedAt).getTime()) {
+        current.lastRequestedAt = entry.requestedAt;
+      }
+    }
+
+    return Array.from(counts.values())
+      .sort((left, right) => new Date(right.lastRequestedAt).getTime() - new Date(left.lastRequestedAt).getTime())
+      .slice(0, Math.min(200, Math.max(1, Math.trunc(limit))))
+      .map((entry) => ({
+        songId: entry.songId,
+        assetId: entry.assetId,
+        title: entry.songId,
+        artistName: "",
+        requestCount: entry.count,
+        lastRequestedAt: entry.lastRequestedAt
+      }));
   }
 
   async listUndoableRemoved(roomId: RoomId, now: Date): Promise<QueueEntry[]> {
@@ -644,6 +715,6 @@ function compareDates(left: string | null, right: string | null): number {
   return left.localeCompare(right);
 }
 
-function toIsoString(value: Date): string {
-  return value.toISOString();
+function toIsoString(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : value;
 }

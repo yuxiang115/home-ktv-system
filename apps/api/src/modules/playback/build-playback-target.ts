@@ -111,7 +111,9 @@ function queuePreviewFromPlayableMedia(queueEntry: QueueEntry, asset: PlayableMe
   return {
     queueEntryId: queueEntry.id,
     songTitle: asset.title,
-    artistName: asset.artistName
+    artistName: asset.artistName,
+    requestedByUserPhone: queueEntry.requestedByUserPhone ?? null,
+    requestedByName: queueEntry.requestedByName ?? null
   };
 }
 

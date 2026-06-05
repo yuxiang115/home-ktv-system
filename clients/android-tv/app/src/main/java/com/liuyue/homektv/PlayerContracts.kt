@@ -6,6 +6,8 @@ data class QueueEntryPreview(
     val queueEntryId: String,
     val songTitle: String,
     val artistName: String,
+    val requestedByUserPhone: String? = null,
+    val requestedByName: String? = null,
 )
 
 data class TrackRef(

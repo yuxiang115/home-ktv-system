@@ -39,12 +39,16 @@ describe("buildPlaybackTarget", () => {
       currentQueueEntryPreview: {
         queueEntryId: "queue-current",
         songTitle: "七里香",
-        artistName: "周杰伦"
+        artistName: "周杰伦",
+        requestedByName: "阿飞",
+        requestedByUserPhone: "13800138000"
       },
       nextQueueEntryPreview: {
         queueEntryId: "queue-next",
         songTitle: "后来",
-        artistName: "刘若英"
+        artistName: "刘若英",
+        requestedByName: "小王",
+        requestedByUserPhone: "13900139000"
       }
     });
   });
@@ -170,6 +174,8 @@ function createQueueEntry(
     songId,
     assetId,
     requestedBy: "mobile",
+    requestedByUserPhone: id === "queue-current" ? "13800138000" : "13900139000",
+    requestedByName: id === "queue-current" ? "阿飞" : "小王",
     queuePosition: id === "queue-current" ? 1 : 2,
     status,
     priority: 0,

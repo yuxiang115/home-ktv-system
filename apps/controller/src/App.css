@@ -277,30 +277,6 @@ input:focus {
   gap: 8px;
 }
 
-.account-history {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  border-top: 1px solid rgba(148, 163, 184, 0.16);
-  padding-top: 9px;
-  color: var(--ktv-muted);
-  font-size: 0.76rem;
-}
-
-.account-history > strong {
-  color: var(--ktv-neon);
-}
-
-.account-history small {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--ktv-weak);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .top-bar {
   display: flex;
   align-items: center;
@@ -1237,6 +1213,69 @@ input:focus {
   white-space: nowrap;
 }
 
+.my-history-panel {
+  gap: 10px;
+}
+
+.my-history-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border: 1px solid rgba(37, 245, 139, 0.16);
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: var(--ktv-muted);
+  background: rgba(37, 245, 139, 0.06);
+  font-size: 0.78rem;
+}
+
+.my-history-summary strong {
+  color: var(--ktv-neon);
+  font-size: 1.2rem;
+}
+
+.my-history-list {
+  display: grid;
+  gap: 8px;
+}
+
+.my-history-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  padding: 9px;
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.my-history-row__main {
+  min-width: 0;
+}
+
+.my-history-row__main strong,
+.my-history-row__main p {
+  display: block;
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.my-history-row__main p {
+  margin-top: 2px;
+  color: var(--ktv-weak);
+  font-size: 0.76rem;
+}
+
+.my-history-count {
+  color: var(--ktv-muted);
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
 .discovery-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1460,7 +1499,7 @@ input:focus {
   left: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   width: min(100%, 390px);
   margin: 0;
@@ -1603,6 +1642,28 @@ input:focus {
 
 .bottom-tab__icon--control::after {
   right: 6px;
+}
+
+.bottom-tab__icon--my::before {
+  position: absolute;
+  top: 3px;
+  left: 7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  content: "";
+}
+
+.bottom-tab__icon--my::after {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  left: 3px;
+  height: 9px;
+  border-radius: 999px 999px 5px 5px;
+  background: currentColor;
+  content: "";
 }
 
 .queue-add-flyer {

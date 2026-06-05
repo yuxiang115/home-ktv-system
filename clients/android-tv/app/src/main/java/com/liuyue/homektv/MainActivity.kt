@@ -52,6 +52,9 @@ class MainActivity : Activity() {
     private lateinit var statusBanner: LinearLayout
     private lateinit var statusPillText: TextView
     private lateinit var statusMessageText: TextView
+    private lateinit var requesterRow: LinearLayout
+    private lateinit var requesterAvatarText: TextView
+    private lateinit var requesterNameText: TextView
     private lateinit var progressText: TextView
     private lateinit var vocalModeText: TextView
     private lateinit var audioTrackText: TextView
@@ -286,6 +289,54 @@ class MainActivity : Activity() {
             ).apply {
                 leftMargin = dp(24)
                 bottomMargin = dp(22)
+            },
+        )
+
+        requesterRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+        }
+        bottomPanel.addView(
+            requesterRow,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(9)
+            },
+        )
+
+        requesterAvatarText = TextView(this).apply {
+            textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(3, 18, 11))
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            background = roundedBackground(Color.rgb(37, 245, 139), dp(999).toFloat())
+        }
+        requesterRow.addView(requesterAvatarText, LinearLayout.LayoutParams(dp(30), dp(30)))
+
+        requesterRow.addView(TextView(this).apply {
+            text = "点歌人"
+            textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(148, 163, 184))
+            includeFontPadding = false
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            leftMargin = dp(8)
+        })
+
+        requesterNameText = TextView(this).apply {
+            textSize = 18f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(248, 250, 252))
+            includeFontPadding = false
+            maxWidth = dp(360)
+            ellipsize = TextUtils.TruncateAt.END
+            setSingleLine(true)
+        }
+        requesterRow.addView(
+            requesterNameText,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                leftMargin = dp(8)
             },
         )
 
@@ -628,6 +679,7 @@ class MainActivity : Activity() {
         playerClient = PlayerApiClient(config.apiBaseUrl)
         setStatus("正在注册电视")
         progressText.text = "00:00 / --:--"
+        renderRequester(null)
         refreshAudioTrackText()
 
         playerClient?.bootstrap(
@@ -781,6 +833,7 @@ class MainActivity : Activity() {
         selectedTrackKey = null
         currentSampleIndex = -1
         nextSampleButton.visibility = View.GONE
+        renderRequester(target.currentQueueEntryPreview.requestedByName)
         renderPairingOverlay(TvPairingOverlayState.from(roomModeActive = true, snapshot = latestSnapshot))
         playUrl(target.playbackUrl, target = target)
         sendTelemetryOnce(
@@ -793,6 +846,7 @@ class MainActivity : Activity() {
 
     private fun playUrl(url: String, sample: DemoMediaSample? = null, target: PlaybackTarget? = null) {
         currentMediaUrl = url
+        renderRequester(target?.currentQueueEntryPreview?.requestedByName)
         setStatus("正在打开媒体")
         progressText.text = "00:00 / --:--"
         audioTrackText.text = "正在读取音轨"
@@ -849,6 +903,7 @@ class MainActivity : Activity() {
         }
         currentMediaUrl = null
         progressText.text = "00:00 / --:--"
+        renderRequester(null)
         refreshAudioTrackText()
         if (roomModeActive) {
             renderPairingOverlay(TvPairingOverlayState.from(roomModeActive = true, snapshot = latestSnapshot))
@@ -1395,6 +1450,21 @@ class MainActivity : Activity() {
         }
 
         showStatusNotice(notice)
+    }
+
+    private fun renderRequester(name: String?) {
+        if (!::requesterRow.isInitialized) return
+        val displayName = requesterDisplayName(name)
+        if (displayName == null) {
+            requesterRow.visibility = View.GONE
+            requesterNameText.text = ""
+            requesterAvatarText.text = ""
+            return
+        }
+
+        requesterRow.visibility = View.VISIBLE
+        requesterNameText.text = displayName
+        requesterAvatarText.text = requesterAvatarInitial(displayName)
     }
 
     private fun updateIdleStatus(value: String) {

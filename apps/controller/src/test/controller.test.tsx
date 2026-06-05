@@ -160,6 +160,7 @@ describe("mobile controller runtime", () => {
     await user.click(screen.getByRole("button", { name: "登录" }));
 
     expect(await screen.findByRole("button", { name: "打开搜索" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "我的" }));
     expect(screen.getByText("阿飞")).toBeTruthy();
     expect(requests.some((request) => request.url === "/controller/auth/login")).toBe(true);
     expect(requests.some((request) => request.url === "/rooms/living-room/control-session?deviceId=mobile-test-uuid")).toBe(true);
@@ -366,6 +367,49 @@ describe("mobile controller runtime", () => {
     await waitFor(() => {
       const badge = controlTab.querySelector(".bottom-tab__badge");
       expect(badge?.textContent).toBe("1");
+    });
+  });
+
+  it("shows user profile and request history in the My tab and queues history songs again", async () => {
+    const user = userEvent.setup();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))],
+      controllerHistoryResponse: {
+        songs: [
+          {
+            songId: "ktv-song-sunny",
+            assetId: "ktv-song-sunny",
+            title: "晴天",
+            artistName: "周杰伦",
+            requestCount: 3,
+            lastRequestedAt: "2026-06-05T10:00:00.000Z"
+          }
+        ]
+      }
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    await screen.findByRole("button", { name: "打开搜索" });
+    expect(screen.queryByRole("region", { name: "我的账号" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "我的" }));
+
+    expect(await screen.findByRole("region", { name: "我的账号" })).toBeTruthy();
+    expect(screen.getByText("阿飞")).toBeTruthy();
+    expect(screen.getByText("13800138000")).toBeTruthy();
+    const history = await screen.findByRole("region", { name: "点歌历史" });
+    expect(within(history).getByText("晴天")).toBeTruthy();
+    expect(within(history).getByText("周杰伦")).toBeTruthy();
+    expect(within(history).getByText("点过 3 次")).toBeTruthy();
+
+    await user.click(within(history).getByRole("button", { name: "再点 晴天" }));
+    await flush();
+
+    expect(requests.some((request) => request.url === "/controller/me/song-history")).toBe(true);
+    expect(requests.find((request) => request.url === "/rooms/living-room/commands/add-queue-entry")?.body).toMatchObject({
+      sourceType: "nas",
+      assetId: "ktv-song-sunny"
     });
   });
 
@@ -1573,6 +1617,7 @@ async function waitForControllerHome() {
 function controllerRequests(requests: RequestRecord[]) {
   return requests
     .filter((request) => !request.url.startsWith("/controller/auth/"))
+    .filter((request) => !request.url.startsWith("/controller/me/"))
     .map((request) => `${request.method} ${request.url}`);
 }
 
@@ -1593,6 +1638,7 @@ function installControllerFetchMock(options: {
   restoreResponses?: Response[];
   createResponses?: Response[];
   commandResponses?: Record<string, MockResponse | MockResponse[]>;
+  controllerHistoryResponse?: unknown;
   songSearchResponse?: (query: string) => unknown;
   songDiscoveryResponse?: (seed: string) => unknown;
   discoveryArtistSongsResponse?: (artistId: string, offset: number, limit: number) => unknown;
@@ -1630,6 +1676,10 @@ function installControllerFetchMock(options: {
 
       if (method === "PATCH" && requestUrl.pathname === "/controller/auth/profile") {
         return options.profileResponse ?? json({ user: controllerUser({ displayName: body?.displayName ?? "阿飞" }) });
+      }
+
+      if (method === "GET" && requestUrl.pathname === "/controller/me/song-history") {
+        return json(options.controllerHistoryResponse ?? { songs: [] });
       }
 
       if (method === "GET" && requestUrl.pathname.endsWith("/control-session")) {

@@ -19,6 +19,8 @@ export interface QueueEntryPreview {
   queueEntryId: QueueEntryId;
   songTitle: string;
   artistName: string;
+  requestedByUserPhone?: string | null;
+  requestedByName?: string | null;
 }
 
 export interface PlaybackTarget {
