@@ -1,6 +1,7 @@
 package com.liuyue.homektv
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -8,12 +9,11 @@ class PlayerApiPayloadsTest {
     @Test
     fun buildsBootstrapPayloadForAndroidLibVlcRuntime() {
         val json = PlayerApiPayloads.bootstrap(
-            roomSlug = "living-room",
             deviceId = "android-tv-1",
             deviceName = "客厅 Android TV",
         )
 
-        assertEquals("living-room", json.getString("roomSlug"))
+        assertFalse(json.has("roomSlug"))
         assertEquals("android-tv-1", json.getString("deviceId"))
         assertEquals("客厅 Android TV", json.getString("deviceName"))
         assertEquals("android-libvlc-tv", json.getJSONObject("capabilities").getString("runtime"))
@@ -23,14 +23,13 @@ class PlayerApiPayloadsTest {
     @Test
     fun buildsHeartbeatPayloadWithNullCurrentQueueEntry() {
         val json = PlayerApiPayloads.heartbeat(
-            roomSlug = "living-room",
             deviceId = "android-tv-1",
             currentQueueEntryId = null,
             playbackPositionMs = 0L,
             health = "ok",
         )
 
-        assertEquals("living-room", json.getString("roomSlug"))
+        assertFalse(json.has("roomSlug"))
         assertEquals("android-tv-1", json.getString("deviceId"))
         assertNull(json.opt("currentQueueEntryId"))
         assertEquals(0L, json.getLong("playbackPositionMs"))
@@ -40,7 +39,6 @@ class PlayerApiPayloadsTest {
     @Test
     fun buildsSwitchCommittedTelemetryPayload() {
         val json = PlayerApiPayloads.telemetry(
-            roomSlug = "living-room",
             deviceId = "android-tv-1",
             eventType = "playing",
             sessionVersion = 7,

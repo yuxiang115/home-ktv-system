@@ -271,6 +271,12 @@ class InMemoryRuntimeRepositories implements RuntimeRepositories {
 
   async upsertTvPlayer(input: Parameters<PlayerDeviceSessionRepository["upsertTvPlayer"]>[0]): Promise<DeviceSession> {
     const nowIso = input.now.toISOString();
+    for (const device of this.devices.values()) {
+      if (device.roomId === input.roomId && device.deviceType === "tv" && device.id !== input.deviceId) {
+        this.devices.delete(device.id);
+      }
+    }
+
     const existing = this.devices.get(input.deviceId);
     const device: DeviceSession = {
       id: input.deviceId,

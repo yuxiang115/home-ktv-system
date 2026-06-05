@@ -1,10 +1,9 @@
 import type { DeviceSession, DeviceSessionId, Room, RoomId } from "@home-ktv/domain";
-import type { PairingInfo, PlayerConflictState } from "@home-ktv/player-contracts";
+import type { PairingInfo } from "@home-ktv/player-contracts";
 import type { QueryExecutor } from "../../db/query-executor.js";
 import type { RoomClientRow } from "../../db/schema.js";
 import { getOrCreatePairingInfo } from "../rooms/pairing-token-service.js";
 import type { RoomPairingTokenRepository } from "../rooms/repositories/pairing-token-repository.js";
-import { detectPlayerConflict } from "./conflict-service.js";
 
 export interface RegisterPlayerInput {
   room: Room;
@@ -19,10 +18,9 @@ export interface RegisterPlayerInput {
 }
 
 export interface RegisterPlayerResult {
-  status: "registered" | "conflict";
-  deviceSession: DeviceSession | null;
+  status: "registered";
+  deviceSession: DeviceSession;
   pairing: PairingInfo;
-  conflict: PlayerConflictState | null;
 }
 
 export interface UpsertTvPlayerInput {
@@ -56,21 +54,6 @@ export async function registerPlayer(input: RegisterPlayerInput): Promise<Regist
     now,
     ...(input.controllerBaseUrl ? { controllerBaseUrl: input.controllerBaseUrl } : {})
   });
-  const conflict = await detectPlayerConflict({
-    roomId: input.room.id,
-    deviceId: input.deviceId,
-    repository: input.repository,
-    now
-  });
-  if (conflict) {
-    return {
-      status: "conflict",
-      deviceSession: null,
-      pairing,
-      conflict
-    };
-  }
-
   const deviceSession = await input.repository.upsertTvPlayer({
     roomId: input.room.id,
     deviceId: input.deviceId,
@@ -83,8 +66,7 @@ export async function registerPlayer(input: RegisterPlayerInput): Promise<Regist
   return {
     status: "registered",
     deviceSession,
-    pairing,
-    conflict: null
+    pairing
   };
 }
 
@@ -127,6 +109,17 @@ export class PgPlayerDeviceSessionRepository implements PlayerDeviceSessionRepos
   }
 
   async upsertTvPlayer(input: UpsertTvPlayerInput): Promise<DeviceSession> {
+    await this.db.query(
+      `UPDATE room_clients
+       SET revoked_at = $3,
+           updated_at = now()
+       WHERE room_id = $1
+         AND client_type = 'tv'
+         AND device_id <> $2
+         AND revoked_at IS NULL`,
+      [input.roomId, input.deviceId, input.now]
+    );
+
     const result = await this.db.query<RoomClientRow>(
       `INSERT INTO room_clients (id, room_id, client_type, device_id, device_name, last_seen_at, capabilities, pairing_token)
        VALUES ($1, $2, 'tv', $1, $3, $4, $5::jsonb, $6)

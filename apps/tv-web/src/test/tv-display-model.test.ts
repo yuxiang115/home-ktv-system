@@ -45,26 +45,7 @@ describe("tv display model", () => {
     expect(offlineState.heading).not.toContain("500");
   });
 
-  it("derives conflict and first-play prompt states from snapshots", () => {
-    expect(
-      deriveTvDisplayState({
-        errorMessage: null,
-        firstPlayBlocked: false,
-        snapshot: snapshot({
-          conflict: {
-            activeDeviceId: "tv-active",
-            activeDeviceName: "Living Room TV",
-            kind: "active-player-conflict",
-            message: "active player exists",
-            reason: "active-player-exists",
-            roomId: "living-room"
-          },
-          state: "conflict"
-        }),
-        status: "ready"
-      }).kind
-    ).toBe("conflict");
-
+  it("derives first-play prompt states from snapshots", () => {
     expect(
       deriveTvDisplayState({
         errorMessage: null,
@@ -84,8 +65,8 @@ function snapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot {
     sessionVersion: 4,
     state: "playing",
     pairing: {
-      controllerUrl: "http://ktv.local/controller?room=living-room",
-      qrPayload: "http://ktv.local/controller?room=living-room",
+      controllerUrl: "http://ktv.local/controller?token=living-room.test",
+      qrPayload: "http://ktv.local/controller?token=living-room.test",
       roomSlug: "living-room",
       token: "living-room.test",
       tokenExpiresAt: "2026-04-28T00:05:00.000Z"

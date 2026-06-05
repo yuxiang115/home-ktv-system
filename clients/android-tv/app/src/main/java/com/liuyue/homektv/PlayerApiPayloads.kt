@@ -4,12 +4,10 @@ import org.json.JSONObject
 
 object PlayerApiPayloads {
     fun bootstrap(
-        roomSlug: String,
         deviceId: String,
         deviceName: String,
     ): JSONObject {
         return JSONObject()
-            .put("roomSlug", roomSlug)
             .put("deviceId", deviceId)
             .put("deviceName", deviceName)
             .put(
@@ -23,14 +21,12 @@ object PlayerApiPayloads {
     }
 
     fun heartbeat(
-        roomSlug: String,
         deviceId: String,
         currentQueueEntryId: String?,
         playbackPositionMs: Long,
         health: String,
     ): JSONObject {
         return JSONObject()
-            .put("roomSlug", roomSlug)
             .put("deviceId", deviceId)
             .put("currentQueueEntryId", currentQueueEntryId)
             .put("playbackPositionMs", playbackPositionMs.coerceAtLeast(0L))
@@ -38,7 +34,6 @@ object PlayerApiPayloads {
     }
 
     fun telemetry(
-        roomSlug: String,
         deviceId: String,
         eventType: String,
         sessionVersion: Int,
@@ -54,7 +49,6 @@ object PlayerApiPayloads {
         errorCode: String?,
     ): JSONObject {
         return JSONObject()
-            .put("roomSlug", roomSlug)
             .put("deviceId", deviceId)
             .put("eventType", eventType)
             .put("sessionVersion", sessionVersion)
@@ -70,21 +64,15 @@ object PlayerApiPayloads {
             .put("errorCode", errorCode)
     }
 
-    fun switchTransition(
-        roomSlug: String,
-        playbackPositionMs: Long,
-    ): JSONObject {
+    fun switchTransition(playbackPositionMs: Long): JSONObject {
         return JSONObject()
-            .put("roomSlug", roomSlug)
             .put("playbackPositionMs", playbackPositionMs.coerceAtLeast(0L))
     }
 
     fun reconnectRecovery(
-        roomSlug: String,
         deviceId: String,
     ): JSONObject {
         return JSONObject()
-            .put("roomSlug", roomSlug)
             .put("deviceId", deviceId)
     }
 }

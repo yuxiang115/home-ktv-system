@@ -771,7 +771,6 @@ function ControlScreen({
     <>
       <header className="top-bar">
         <div>
-          <p className="eyebrow">{controller.roomSlug}</p>
           <h1>{t("header.title")}</h1>
         </div>
         <div className="top-actions">

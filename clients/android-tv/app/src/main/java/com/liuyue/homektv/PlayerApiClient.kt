@@ -27,7 +27,7 @@ class PlayerApiClient(
     ) {
         postJson(
             path = "/player/bootstrap",
-            body = PlayerApiPayloads.bootstrap(roomSlug, deviceId, deviceName),
+            body = PlayerApiPayloads.bootstrap(deviceId, deviceName),
             parser = { PlayerContractsJson.bootstrapFromJson(it) },
             callback = callback,
         )
@@ -55,7 +55,7 @@ class PlayerApiClient(
     ) {
         postJson(
             path = "/player/heartbeat",
-            body = PlayerApiPayloads.heartbeat(roomSlug, deviceId, currentQueueEntryId, playbackPositionMs, health),
+            body = PlayerApiPayloads.heartbeat(deviceId, currentQueueEntryId, playbackPositionMs, health),
             parser = { Unit },
             callback = callback,
         )
@@ -81,7 +81,6 @@ class PlayerApiClient(
         postJson(
             path = "/player/telemetry",
             body = PlayerApiPayloads.telemetry(
-                roomSlug = roomSlug,
                 deviceId = deviceId,
                 eventType = eventType,
                 sessionVersion = sessionVersion,
@@ -108,7 +107,7 @@ class PlayerApiClient(
     ) {
         postJson(
             path = "/player/switch-transition",
-            body = PlayerApiPayloads.switchTransition(roomSlug, playbackPositionMs),
+            body = PlayerApiPayloads.switchTransition(playbackPositionMs),
             parser = { PlayerContractsJson.switchTransitionFromJson(it) },
             callback = callback,
         )
@@ -121,7 +120,7 @@ class PlayerApiClient(
     ) {
         postJson(
             path = "/player/reconnect-recovery",
-            body = PlayerApiPayloads.reconnectRecovery(roomSlug, deviceId),
+            body = PlayerApiPayloads.reconnectRecovery(deviceId),
             parser = { PlayerContractsJson.reconnectRecoveryFromJson(it) },
             callback = callback,
         )

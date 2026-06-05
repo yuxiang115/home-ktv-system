@@ -74,11 +74,11 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
   }, [client, roomState.snapshot]);
 
   useEffect(() => {
-    if (roomState.status === "error" || !roomState.snapshot?.currentTarget || roomState.snapshot.conflict) {
+    if (roomState.status === "error" || !roomState.snapshot?.currentTarget) {
       setFirstPlayBlocked(false);
       setConfirmedPlaybackTargetKey(null);
     }
-  }, [roomState.status, roomState.snapshot?.currentTarget?.queueEntryId, roomState.snapshot?.conflict]);
+  }, [roomState.status, roomState.snapshot?.currentTarget?.queueEntryId]);
 
   useEffect(() => {
     if (!isTransientLocalNotice(localNotice)) {

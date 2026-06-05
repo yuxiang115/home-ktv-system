@@ -1,6 +1,6 @@
 import type { RoomControlSnapshot, RoomInteractionEvent, RoomSnapshot } from "@home-ktv/player-contracts";
 import { useEffect, useState } from "react";
-import type { BootstrapResult, PlayerClient } from "./player-client.js";
+import type { PlayerClient } from "./player-client.js";
 
 export interface RoomSnapshotState {
   errorMessage: string | null;
@@ -158,9 +158,6 @@ export function useRoomSnapshot(client: PlayerClient, pollingIntervalMs = 1500):
             status: "ready"
           }));
         }
-        if (!shouldContinueSnapshotPolling(bootstrap)) {
-          return;
-        }
         openRealtime();
       } catch (error) {
         if (!cancelled) {
@@ -194,11 +191,7 @@ export function useRoomSnapshot(client: PlayerClient, pollingIntervalMs = 1500):
 }
 
 export function playbackEnabledFromSnapshot(snapshot: RoomSnapshot | null): boolean {
-  return Boolean(snapshot?.currentTarget) && snapshot?.state !== "conflict" && !snapshot?.conflict;
-}
-
-export function shouldContinueSnapshotPolling(bootstrap: BootstrapResult): boolean {
-  return bootstrap.status !== "conflict" && bootstrap.snapshot?.state !== "conflict" && !bootstrap.snapshot?.conflict;
+  return Boolean(snapshot?.currentTarget);
 }
 
 function parseRealtimeMessage(data: unknown): { snapshot?: RoomSnapshot; interaction?: RoomInteractionEvent } | null {

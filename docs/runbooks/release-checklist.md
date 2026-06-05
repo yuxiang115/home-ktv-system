@@ -43,7 +43,7 @@ bash deploy/source/ktv.sh status
 ```bash
 curl -I https://ktv-api.shaolongfei.com/health
 curl -I https://ktv-admin.shaolongfei.com/
-curl -I 'https://ktv-controller.shaolongfei.com/controller?room=living-room'
+curl -I 'https://ktv-controller.shaolongfei.com/controller'
 curl -I 'https://ktv-tv.shaolongfei.com/'
 bash deploy/source/ktv.sh smoke
 ```

@@ -1,12 +1,10 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import type { RoomSnapshot } from "@home-ktv/player-contracts";
 import { afterEach, describe, expect, it } from "vitest";
-import { ConflictScreen } from "../screens/ConflictScreen.js";
 import { IdleScreen } from "../screens/IdleScreen.js";
 import { PlayingScreen } from "../screens/PlayingScreen.js";
 import { PlaybackStatusBanner } from "../components/PlaybackStatusBanner.js";
 import { deriveTvDisplayState } from "../screens/tv-display-model.js";
-import { tvTheme } from "../theme.js";
 
 afterEach(() => {
   cleanup();
@@ -31,36 +29,6 @@ describe("tv screen states", () => {
     expect(screen.getByText("今晚开唱")).toBeTruthy();
     expect(screen.getByText("HomeKTV 请扫码点歌")).toBeTruthy();
     expect(screen.getByLabelText("large pairing QR").parentElement?.style.background).toBe("rgba(255, 255, 255, 0.94)");
-  });
-
-  it("renders the conflict screen with the active device name", () => {
-    const roomSnapshot = snapshot({
-      conflict: {
-        activeDeviceId: "tv-active",
-        activeDeviceName: "Living Room TV",
-        kind: "active-player-conflict",
-        message: "active player exists",
-        reason: "active-player-exists",
-        roomId: "living-room"
-      },
-      state: "conflict"
-    });
-
-    render(
-      <ConflictScreen
-        conflict={roomSnapshot.conflict!}
-        displayState={deriveTvDisplayState({
-          errorMessage: null,
-          firstPlayBlocked: false,
-          snapshot: roomSnapshot,
-          status: "ready"
-        })}
-      />
-    );
-
-    expect(screen.getByText("已有电视端在线")).toBeTruthy();
-    expect(screen.getByText(/Living Room TV/)).toBeTruthy();
-    expect(screen.getByText("连接冲突").style.color).toBe(tvTheme.colors.danger);
   });
 
   it("renders loading state copy in the playing screen", () => {
@@ -213,8 +181,8 @@ function snapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot {
     state: "playing",
     pairing: {
       roomSlug: "living-room",
-      controllerUrl: "http://ktv.local/controller?room=living-room",
-      qrPayload: "http://ktv.local/controller?room=living-room",
+      controllerUrl: "http://ktv.local/controller",
+      qrPayload: "http://ktv.local/controller",
       token: "living-room.test",
       tokenExpiresAt: "2026-04-28T00:05:00.000Z"
     },

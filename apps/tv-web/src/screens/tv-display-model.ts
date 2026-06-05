@@ -1,6 +1,6 @@
 import type { PlaybackNotice, RoomSnapshot } from "@home-ktv/player-contracts";
 
-export type TvDisplayKind = "booting" | "offline" | "waiting" | "idle" | "loading" | "playing" | "recovering" | "conflict";
+export type TvDisplayKind = "booting" | "offline" | "waiting" | "idle" | "loading" | "playing" | "recovering";
 
 export interface FirstPlayPromptModel {
   visible: boolean;
@@ -96,16 +96,6 @@ export function deriveTvDisplayState(input: {
       kind: "waiting",
       stateLabel: "等待中",
       tone: "warning"
-    });
-  }
-
-  if (input.snapshot.conflict || input.snapshot.state === "conflict") {
-    return baseState({
-      detail: "请先关闭当前在线的电视端，再刷新这个页面。",
-      heading: "已有电视端在线",
-      kind: "conflict",
-      stateLabel: "冲突",
-      tone: "danger"
     });
   }
 

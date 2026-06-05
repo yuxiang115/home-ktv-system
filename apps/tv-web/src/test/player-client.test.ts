@@ -52,7 +52,7 @@ describe("PlayerClient", () => {
       value: {
         origin: "http://tv.local:4173",
         search:
-          "?apiBaseUrl=http%3A%2F%2F192.168.5.58%3A4000&roomSlug=living-room&deviceName=SecondTV&deviceId=web-tv-uat-second"
+          "?apiBaseUrl=http%3A%2F%2F192.168.5.58%3A4000&deviceName=SecondTV&deviceId=web-tv-uat-second"
       } as Location
     });
 
@@ -66,7 +66,7 @@ describe("PlayerClient", () => {
       configurable: true,
       value: {
         origin: "http://192.168.5.64:4273",
-        search: "?roomSlug=living-room&deviceId=web-tv-preview"
+        search: "?deviceId=web-tv-preview"
       } as Location
     });
 
@@ -107,8 +107,8 @@ function roomSnapshot(): RoomSnapshot {
     state: "idle",
     pairing: {
       roomSlug: "living-room",
-      controllerUrl: "http://192.168.5.58:4000/controller?room=living-room",
-      qrPayload: "http://192.168.5.58:4000/controller?room=living-room",
+      controllerUrl: "http://192.168.5.58:4000/controller?token=living-room.test",
+      qrPayload: "http://192.168.5.58:4000/controller?token=living-room.test",
       token: "living-room.test",
       tokenExpiresAt: "2026-04-29T13:50:00.000Z"
     },

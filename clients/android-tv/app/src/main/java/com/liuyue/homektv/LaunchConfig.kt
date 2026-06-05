@@ -21,7 +21,7 @@ data class LaunchConfig(
         ): LaunchConfig {
             return LaunchConfig(
                 apiBaseUrl = rawApiBaseUrl.cleanUrl() ?: DEFAULT_API_BASE_URL,
-                roomSlug = rawRoom.cleanValue() ?: DEFAULT_ROOM_SLUG,
+                roomSlug = DEFAULT_ROOM_SLUG,
                 mediaUrl = rawMediaUrl.cleanUrl(),
                 deviceId = rawDeviceId.cleanValue(),
                 deviceName = rawDeviceName.cleanValue() ?: DEFAULT_DEVICE_NAME,

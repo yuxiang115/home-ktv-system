@@ -118,8 +118,7 @@ export async function registerPlayerRoutes(server: FastifyInstance, dependencies
       roomSlug,
       config: dependencies.config,
       repositories: dependencies.repositories,
-      ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {}),
-      conflict: result.conflict
+      ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
     });
 
     await reply.send({
@@ -152,8 +151,7 @@ export async function registerPlayerRoutes(server: FastifyInstance, dependencies
       roomSlug,
       config: dependencies.config,
       repositories: dependencies.repositories,
-      ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {}),
-      conflict: result.conflict
+      ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
     });
 
     if (result.status === "ok") {

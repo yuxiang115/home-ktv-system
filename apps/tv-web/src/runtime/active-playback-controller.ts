@@ -7,7 +7,7 @@ type PlaybackProfile = NonNullable<PlaybackTarget["playbackProfile"]>;
 export type ActivePlaybackResult =
   | { status: "playing"; warning?: string }
   | { status: "blocked"; message: string }
-  | { status: "disabled"; reason: "conflict" | "no-current-target" };
+  | { status: "disabled"; reason: "no-current-target" };
 
 export interface ActivePlaybackControllerInput {
   videoPool: DualVideoPool;
@@ -21,11 +21,6 @@ export class ActivePlaybackController {
   }
 
   async ensurePlaying(snapshot: RoomSnapshot): Promise<ActivePlaybackResult> {
-    if (snapshot.conflict || snapshot.state === "conflict") {
-      this.videoPool.disable();
-      return { status: "disabled", reason: "conflict" };
-    }
-
     if (!snapshot.currentTarget) {
       this.videoPool.disable();
       return { status: "disabled", reason: "no-current-target" };

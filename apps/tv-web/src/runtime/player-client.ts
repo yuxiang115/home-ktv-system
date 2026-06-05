@@ -16,7 +16,7 @@ export interface PlayerClientOptions {
 }
 
 export interface BootstrapResult {
-  status: "registered" | "conflict";
+  status: "registered";
   snapshot: RoomSnapshot | null;
 }
 
@@ -38,7 +38,6 @@ export class PlayerClient {
 
   async bootstrap(): Promise<BootstrapResult> {
     return this.postJson<BootstrapResult>("/player/bootstrap", {
-      roomSlug: this.roomSlug,
       deviceId: this.deviceId,
       deviceName: this.deviceName,
       capabilities: {
@@ -63,7 +62,6 @@ export class PlayerClient {
 
   async sendHeartbeat(input: { currentQueueEntryId: string | null; playbackPositionMs: number; health?: "ok" | "degraded" | "blocked" }): Promise<void> {
     await this.postJson("/player/heartbeat", {
-      roomSlug: this.roomSlug,
       deviceId: this.deviceId,
       currentQueueEntryId: input.currentQueueEntryId,
       playbackPositionMs: input.playbackPositionMs,
@@ -146,7 +144,7 @@ export function createBrowserPlayerClient(): PlayerClient {
     apiBaseUrl: readRuntimeSetting("apiBaseUrl", readDefaultApiBaseUrl()),
     deviceId: readRuntimeSetting("deviceId", "") || readOrCreateDeviceId(),
     deviceName: readRuntimeSetting("deviceName", "Living Room TV"),
-    roomSlug: readRuntimeSetting("roomSlug", "living-room")
+    roomSlug: "living-room"
   });
 }
 

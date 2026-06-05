@@ -16,7 +16,7 @@ class PlayerContractsJsonTest {
         assertEquals("playing", snapshot.state)
         assertEquals(72, snapshot.volumePercent)
         assertEquals("instrumental", snapshot.targetVocalMode)
-        assertEquals("http://192.168.5.64:5176/controller?room=living-room", snapshot.pairing?.qrPayload)
+        assertEquals("http://192.168.5.64:5176/controller", snapshot.pairing?.qrPayload)
 
         val target = snapshot.currentTarget ?: error("expected current target")
         assertEquals("queue-1", target.queueEntryId)
@@ -164,8 +164,8 @@ class PlayerContractsJsonTest {
               "volumePercent": 72,
               "pairing": {
                 "roomSlug": "living-room",
-                "controllerUrl": "http://192.168.5.64:5176/controller?room=living-room",
-                "qrPayload": "http://192.168.5.64:5176/controller?room=living-room",
+                "controllerUrl": "http://192.168.5.64:5176/controller",
+                "qrPayload": "http://192.168.5.64:5176/controller",
                 "token": "token-1",
                 "tokenExpiresAt": "2026-05-22T00:00:00.000Z"
               },

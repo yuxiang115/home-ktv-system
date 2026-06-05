@@ -7,7 +7,6 @@ import type { PlayableMediaRepository } from "../media/playable-media-repository
 import type { RoomPairingTokenRepository } from "./repositories/pairing-token-repository.js";
 import type { ControlSessionRepository } from "../controller/repositories/control-session-repository.js";
 import type { PlayerDeviceSessionRepository } from "../player/register-player.js";
-import { ACTIVE_TV_PLAYER_WINDOW_MS } from "../player/conflict-service.js";
 import { buildRoomSnapshot } from "../../routes/room-snapshots.js";
 import type { OnlineCandidateTask, OnlineCandidateTaskState, PlaybackEvent, QueueEntry, RoomId } from "@home-ktv/domain";
 import {
@@ -17,6 +16,8 @@ import {
   type RoomQueueEntryPreview
 } from "@home-ktv/player-contracts";
 import type { CandidateTaskService } from "../online/candidate-task-service.js";
+
+const ACTIVE_TV_PLAYER_WINDOW_MS = 30_000;
 
 interface RecentPlaybackEventRepository {
   append?: unknown;

@@ -128,8 +128,8 @@ function snapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot {
     state: "playing",
     pairing: {
       roomSlug: "living-room",
-      controllerUrl: "http://ktv.local/controller?room=living-room",
-      qrPayload: "http://ktv.local/controller?room=living-room",
+      controllerUrl: "http://ktv.local/controller",
+      qrPayload: "http://ktv.local/controller",
       token: "living-room.test",
       tokenExpiresAt: "2026-04-28T00:05:00.000Z"
     },

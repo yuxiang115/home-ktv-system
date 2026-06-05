@@ -48,10 +48,10 @@ pnpm dev:local start
 默认访问地址：
 
 ```text
-http://<LAN_IP>:5176/controller?room=living-room
+http://<LAN_IP>:5176/controller
 ```
 
-实际二维码 URL 以后端 `/rooms/:roomSlug/snapshot` 返回的 `pairing.qrPayload` 为准。
+实际二维码 URL 以后端快照返回的 `pairing.qrPayload` 为准。
 
 ## 注意事项
 

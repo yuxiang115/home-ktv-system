@@ -14,7 +14,7 @@ object RoomPlaybackDecision {
         switchInFlight: Boolean,
     ): PlaybackAction {
         val currentTarget = snapshot.currentTarget
-        if (snapshot.conflict || snapshot.state == "conflict" || currentTarget == null) {
+        if (currentTarget == null) {
             return PlaybackAction.StopPlayback
         }
 

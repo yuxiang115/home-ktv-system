@@ -2,7 +2,7 @@ import type { RoomControlSnapshot, RoomInteractionEvent, RoomSnapshot } from "@h
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { PlayerClient } from "../runtime/player-client.js";
-import { shouldContinueSnapshotPolling, useRoomSnapshot } from "../runtime/use-room-snapshot.js";
+import { useRoomSnapshot } from "../runtime/use-room-snapshot.js";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -152,21 +152,6 @@ describe("useRoomSnapshot realtime sync", () => {
     expect(client.fetchSnapshot).toHaveBeenCalled();
   });
 
-  it("does not open realtime or polling after a conflict bootstrap", async () => {
-    const sockets = installWebSocketMock();
-    const client = createClient({
-      bootstrapStatus: "conflict",
-      bootstrapSnapshot: conflictSnapshot(),
-      fetchSnapshots: [roomSnapshot("token-polled")]
-    });
-
-    const { result } = renderHook(() => useRoomSnapshot(asPlayerClient(client)));
-
-    await waitFor(() => expect(result.current.snapshot?.state).toBe("conflict"));
-    expect(sockets).toHaveLength(0);
-    expect(client.fetchSnapshot).not.toHaveBeenCalled();
-  });
-
   it("retries bootstrap after a transient startup failure", async () => {
     vi.useFakeTimers();
     const sockets = installWebSocketMock();
@@ -207,26 +192,6 @@ describe("useRoomSnapshot realtime sync", () => {
   });
 });
 
-describe("shouldContinueSnapshotPolling", () => {
-  it("stops polling after a conflict bootstrap so conflict state is not overwritten", () => {
-    expect(
-      shouldContinueSnapshotPolling({
-        status: "conflict",
-        snapshot: conflictSnapshot()
-      })
-    ).toBe(false);
-  });
-
-  it("continues polling after a registered bootstrap", () => {
-    expect(
-      shouldContinueSnapshotPolling({
-        status: "registered",
-        snapshot: roomSnapshot("token-first")
-      })
-    ).toBe(true);
-  });
-});
-
 function roomSnapshot(token: string, roomSlug = "living-room", sessionVersion = 1): RoomSnapshot {
   return {
     type: "room.snapshot",
@@ -236,8 +201,8 @@ function roomSnapshot(token: string, roomSlug = "living-room", sessionVersion = 
     state: "idle",
     pairing: {
       roomSlug,
-      controllerUrl: `http://192.168.5.58:4000/controller?room=${roomSlug}&token=${token}`,
-      qrPayload: `http://192.168.5.58:4000/controller?room=${roomSlug}&token=${token}`,
+      controllerUrl: `http://192.168.5.58:4000/controller?token=${token}`,
+      qrPayload: `http://192.168.5.58:4000/controller?token=${token}`,
       token,
       tokenExpiresAt: "2026-04-29T13:50:00.000Z"
     },
@@ -268,25 +233,9 @@ function controlSnapshot(token: string, sessionVersion: number): RoomControlSnap
   };
 }
 
-function conflictSnapshot(): RoomSnapshot {
-  return {
-    ...roomSnapshot("token-conflict"),
-    sessionVersion: 0,
-    state: "conflict",
-    conflict: {
-      kind: "active-player-conflict",
-      reason: "active-player-exists",
-      roomId: "living-room",
-      activeDeviceId: "web-tv-active",
-      activeDeviceName: "LivingRoomTV",
-      message: "This room already has an active TV player."
-    }
-  };
-}
-
 function createClient(input: {
   bootstrapSnapshot: RoomSnapshot;
-  bootstrapStatus?: "registered" | "conflict";
+  bootstrapStatus?: "registered";
   fetchSnapshots: RoomSnapshot[];
 }) {
   return {

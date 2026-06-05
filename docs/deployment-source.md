@@ -113,6 +113,6 @@ bash deploy/source/ktv.sh smoke
 
 ```text
 http://<server-ip>:5174/
-http://<server-ip>:5176/controller?room=living-room
+http://<server-ip>:5176/controller
 http://<server-ip>:5173/
 ```

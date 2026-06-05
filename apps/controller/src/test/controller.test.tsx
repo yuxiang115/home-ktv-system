@@ -29,7 +29,7 @@ type MockResponse = Response | Promise<Response>;
 beforeEach(() => {
   vi.stubGlobal("localStorage", createMemoryStorage());
   vi.stubGlobal("crypto", { randomUUID: () => "test-uuid" });
-  window.history.pushState({}, "", "/controller?room=living-room");
+  window.history.pushState({}, "", "/controller");
 });
 
 afterEach(() => {
@@ -674,7 +674,7 @@ describe("mobile controller runtime", () => {
   });
 
   it("tries cookie restore before token exchange and removes token after success", async () => {
-    window.history.pushState({}, "", "/controller?room=living-room&token=pair-token");
+    window.history.pushState({}, "", "/controller?token=pair-token");
     const { requests } = installControllerFetchMock({
       restoreResponses: [json({ code: "CONTROL_SESSION_REQUIRED" }, 401)],
       createResponses: [json(sessionResponse(roomSnapshot()))]
@@ -689,11 +689,11 @@ describe("mobile controller runtime", () => {
       "GET /rooms/living-room/control-session?deviceId=mobile-test-uuid",
       "POST /rooms/living-room/control-sessions"
     ]);
-    expect(window.location.search).toBe("?room=living-room");
+    expect(window.location.search).toBe("");
   });
 
   it("falls back to cookie restore when token exchange returns INVALID_PAIRING_TOKEN", async () => {
-    window.history.pushState({}, "", "/controller?room=living-room&token=expired-token");
+    window.history.pushState({}, "", "/controller?token=expired-token");
     const { requests } = installControllerFetchMock({
       restoreResponses: [json({ code: "CONTROL_SESSION_REQUIRED" }, 401), json(sessionResponse(roomSnapshot()))],
       createResponses: [json({ code: "INVALID_PAIRING_TOKEN" }, 401)]
@@ -709,7 +709,7 @@ describe("mobile controller runtime", () => {
       "POST /rooms/living-room/control-sessions",
       "GET /rooms/living-room/control-session?deviceId=mobile-test-uuid"
     ]);
-    expect(window.location.search).toBe("?room=living-room");
+    expect(window.location.search).toBe("");
   });
 
   it("shows pairing guidance instead of raw CONTROL_SESSION_REQUIRED when opened without a token", async () => {
@@ -2345,8 +2345,8 @@ function roomSnapshot(options: {
     volumePercent: options.volumePercent ?? DEFAULT_ROOM_VOLUME_PERCENT,
     pairing: {
       roomSlug: "living-room",
-      controllerUrl: "http://ktv.local/controller?room=living-room",
-      qrPayload: "http://ktv.local/controller?room=living-room",
+      controllerUrl: "http://ktv.local/controller?token=living-room.test",
+      qrPayload: "http://ktv.local/controller?token=living-room.test",
       token: "token",
       tokenExpiresAt: "2026-05-04T10:10:00.000Z"
     },

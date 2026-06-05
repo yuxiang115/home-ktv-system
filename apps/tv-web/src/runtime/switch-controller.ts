@@ -33,7 +33,7 @@ export type SwitchRuntimeResult =
   | { status: "committed"; switchTarget: SwitchTarget }
   | { status: "reverted"; switchTarget: SwitchTarget; message: string }
   | { status: "unavailable"; reason: string }
-  | { status: "disabled"; reason: "conflict" | "no-current-target" };
+  | { status: "disabled"; reason: "no-current-target" };
 
 export interface SwitchControllerInput {
   client: SwitchRuntimeClient;
@@ -57,7 +57,7 @@ export class SwitchController {
       this.videoPool.disable();
       return {
         status: "disabled",
-        reason: snapshot.conflict ? "conflict" : "no-current-target"
+        reason: "no-current-target"
       };
     }
 
@@ -171,5 +171,5 @@ function revertedMessageForAudioTrackSelection(result: Exclude<AudioTrackSelecti
 }
 
 export function canAttemptRuntimePlayback(snapshot: RoomSnapshot | null): boolean {
-  return Boolean(snapshot?.currentTarget) && snapshot?.state !== "conflict" && !snapshot?.conflict;
+  return Boolean(snapshot?.currentTarget);
 }

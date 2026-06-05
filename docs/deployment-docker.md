@@ -34,7 +34,7 @@ KTV_NAS_HOST_PATH=/mnt/nas/KTV歌曲
 ```text
 API:        https://ktv-api.shaolongfei.com
 Admin:      https://ktv-admin.shaolongfei.com
-Controller: https://ktv-controller.shaolongfei.com/controller?room=living-room
+Controller: https://ktv-controller.shaolongfei.com/controller
 Web TV:     https://ktv-tv.shaolongfei.com/
 ```
 
@@ -124,6 +124,6 @@ curl http://<server-ip>:4000/health
 
 ```text
 http://<server-ip>:5174/
-http://<server-ip>:5176/controller?room=living-room
+http://<server-ip>:5176/controller
 http://<server-ip>:5173/
 ```

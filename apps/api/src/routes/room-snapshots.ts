@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { PlayerState, Room, RoomId } from "@home-ktv/domain";
-import { DEFAULT_ROOM_VOLUME_PERCENT, type PlayerConflictState, type RoomSnapshot } from "@home-ktv/player-contracts";
+import { DEFAULT_ROOM_VOLUME_PERCENT, type RoomSnapshot } from "@home-ktv/player-contracts";
 import type { ApiConfig } from "../config.js";
 import type { MediaGateway } from "../modules/media/media-gateway.js";
 import type { PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
@@ -25,7 +25,6 @@ export interface BuildRoomSnapshotInput {
   config: ApiConfig;
   repositories: RoomSnapshotRepositories;
   mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
-  conflict?: PlayerConflictState | null;
   notice?: RoomSnapshot["notice"];
   now?: Date;
 }
@@ -44,24 +43,6 @@ export async function buildRoomSnapshot(input: BuildRoomSnapshotInput): Promise<
     now,
     ...(input.config.controllerBaseUrl ? { controllerBaseUrl: input.config.controllerBaseUrl } : {})
   });
-
-  if (input.conflict) {
-    return {
-      type: "room.snapshot",
-      roomId: room.id,
-      roomSlug: room.slug,
-      sessionVersion: 0,
-      state: "conflict",
-      volumePercent: DEFAULT_ROOM_VOLUME_PERCENT,
-      pairing,
-      currentTarget: null,
-      switchTarget: null,
-      targetVocalMode: null,
-      conflict: input.conflict,
-      notice: null,
-      generatedAt: now.toISOString()
-    };
-  }
 
   const [session, currentTarget] = await Promise.all([
     input.repositories.playbackSessions.findByRoomId(room.id),

@@ -19,10 +19,10 @@ class LaunchConfigTest {
     }
 
     @Test
-    fun trimsExplicitLaunchValues() {
+    fun trimsExplicitLaunchValuesAndIgnoresRoomOverride() {
         val config = LaunchConfig.from(
             rawApiBaseUrl = " http://192.168.5.64:4000/ ",
-            rawRoom = " living-room ",
+            rawRoom = " game-room ",
             rawMediaUrl = " http://192.168.5.64:4000/media/raw/sample.mkv ",
             rawDeviceId = " android-tv-existing ",
             rawDeviceName = " 客厅电视 ",

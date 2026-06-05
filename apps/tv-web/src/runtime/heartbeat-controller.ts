@@ -9,7 +9,7 @@ export interface HeartbeatRuntimeClient {
   }): Promise<void>;
 }
 
-export type HeartbeatResult = { status: "sent" } | { status: "skipped"; reason: "conflict" };
+export type HeartbeatResult = { status: "sent" };
 
 export interface HeartbeatControllerInput {
   client: HeartbeatRuntimeClient;
@@ -26,10 +26,6 @@ export class HeartbeatController {
   }
 
   async send(snapshot: RoomSnapshot): Promise<HeartbeatResult> {
-    if (snapshot.conflict || snapshot.state === "conflict") {
-      return { status: "skipped", reason: "conflict" };
-    }
-
     const target = this.videoPool.activeTarget ?? snapshot.currentTarget;
 
     await this.client.sendHeartbeat({

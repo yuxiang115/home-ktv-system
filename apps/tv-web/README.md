@@ -41,7 +41,7 @@ pnpm dev:local start
 默认访问地址：
 
 ```text
-http://<LAN_IP>:5173/?apiBaseUrl=http://<LAN_IP>:4000&roomSlug=living-room&deviceName=Living%20Room%20TV
+http://<LAN_IP>:5173/?apiBaseUrl=http://<LAN_IP>:4000&deviceName=Living%20Room%20TV
 ```
 
 ## 与 Android TV 的区别

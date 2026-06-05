@@ -97,10 +97,13 @@ describe("runtime client repositories", () => {
       now
     });
 
-    expect(db.queries[0]).toContain("INSERT INTO room_clients");
-    expect(db.queries[0]).toContain("'tv'");
-    expect(db.queries[0]).not.toContain("device_sessions");
-    expect(db.queries[1]).toContain("UPDATE rooms SET default_player_device_id = $1");
+    expect(db.queries[0]).toContain("UPDATE room_clients");
+    expect(db.queries[0]).toContain("client_type = 'tv'");
+    expect(db.queries[0]).toContain("revoked_at = $3");
+    expect(db.queries[1]).toContain("INSERT INTO room_clients");
+    expect(db.queries[1]).toContain("'tv'");
+    expect(db.queries[1]).not.toContain("device_sessions");
+    expect(db.queries[2]).toContain("UPDATE rooms SET default_player_device_id = $1");
     expect(session.deviceName).toBe("Living Room TV");
   });
 });

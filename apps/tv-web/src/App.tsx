@@ -1,7 +1,6 @@
 import type { RoomSnapshot } from "@home-ktv/player-contracts";
 import type { CSSProperties } from "react";
 import { useRef } from "react";
-import { ConflictScreen } from "./screens/ConflictScreen.js";
 import { InteractionOverlay } from "./components/InteractionOverlay.js";
 import { IdleScreen } from "./screens/IdleScreen.js";
 import { PlayingScreen } from "./screens/PlayingScreen.js";
@@ -68,10 +67,6 @@ function renderScreen(
 
   if (!snapshot) {
     return <SystemScreen displayState={displayState} />;
-  }
-
-  if (snapshot.conflict) {
-    return <ConflictScreen conflict={snapshot.conflict} displayState={displayState} />;
   }
 
   if (snapshot.state === "error") {

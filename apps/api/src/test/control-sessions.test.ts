@@ -65,7 +65,8 @@ describe("room pairing tokens", () => {
       now: new Date("2026-05-01T10:00:00.000Z")
     });
 
-    expect(pairing.controllerUrl).toContain("http://10.91.130.150:5176/controller?room=living-room");
+    expect(pairing.controllerUrl).toContain("http://10.91.130.150:5176/controller?token=");
+    expect(pairing.controllerUrl).not.toContain("room=");
     expect(pairing.controllerUrl).not.toContain("localhost:4000");
   });
 
@@ -87,7 +88,8 @@ describe("room pairing tokens", () => {
       now: new Date("2026-05-01T10:01:00.000Z")
     });
 
-    expect(pairing.controllerUrl).toContain("http://10.91.130.150:5176/controller?room=living-room");
+    expect(pairing.controllerUrl).toContain("http://10.91.130.150:5176/controller?token=");
+    expect(pairing.controllerUrl).not.toContain("room=");
     expect(pairing.controllerUrl).not.toContain("localhost:4000/controller");
   });
 

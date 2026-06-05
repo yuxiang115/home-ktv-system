@@ -157,37 +157,6 @@ describe("switch runtime", () => {
     ]);
   });
 
-  it("keeps playback disabled for an explicit conflict snapshot", async () => {
-    const activeVideo = new FakeVideo();
-    const standbyVideo = new FakeVideo();
-    const pool = new DualVideoPool(activeVideo, standbyVideo);
-    const client = new FakeSwitchClient({
-      status: "ready",
-      switchTarget: switchTarget({ resumePositionMs: 0 }),
-      reason: null
-    });
-    const conflictSnapshot = snapshot({
-      state: "conflict",
-      currentTarget: null,
-      switchTarget: null,
-      conflict: {
-        kind: "active-player-conflict",
-        reason: "active-player-exists",
-        roomId: "living-room",
-        activeDeviceId: "tv-active",
-        activeDeviceName: "Living Room Mini PC",
-        message: "This room already has an active TV player."
-      }
-    });
-
-    const result = await new SwitchController({ client, videoPool: pool }).switchVocalMode(conflictSnapshot);
-
-    expect(canAttemptRuntimePlayback(conflictSnapshot)).toBe(false);
-    expect(result.status).toBe("disabled");
-    expect(client.switchRequests).toEqual([]);
-    expect(activeVideo.playCalls).toBe(0);
-    expect(standbyVideo.playCalls).toBe(0);
-  });
 });
 
 class FakeSwitchClient implements SwitchRuntimeClient {
@@ -255,8 +224,8 @@ function snapshot(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot {
     state: "playing",
     pairing: {
       roomSlug: "living-room",
-      controllerUrl: "http://ktv.local/controller?room=living-room",
-      qrPayload: "http://ktv.local/controller?room=living-room",
+      controllerUrl: "http://ktv.local/controller",
+      qrPayload: "http://ktv.local/controller",
       token: "living-room.test",
       tokenExpiresAt: "2026-04-28T00:05:00.000Z"
     },

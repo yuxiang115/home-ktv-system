@@ -260,8 +260,8 @@ function installFetchMock(options: { taskActionResponse?: Response | Promise<Res
         return json({
           pairing: {
             tokenExpiresAt: "2026-05-04T10:30:45.000Z",
-            controllerUrl: "http://ktv.local/controller?room=living-room&token=token-2",
-            qrPayload: "http://ktv.local/controller?room=living-room&token=token-2",
+            controllerUrl: "http://ktv.local/controller?token=token-2",
+            qrPayload: "http://ktv.local/controller?token=token-2",
             token: "token-2"
           }
         });
@@ -407,8 +407,8 @@ function roomStatus(tokenExpiresAt: string, promoted = false) {
     },
     pairing: {
       tokenExpiresAt,
-      controllerUrl: "http://ktv.local/controller?room=living-room&token=token-1",
-      qrPayload: "http://ktv.local/controller?room=living-room&token=token-1"
+      controllerUrl: "http://ktv.local/controller?token=token-1",
+      qrPayload: "http://ktv.local/controller?token=token-1"
     },
     tvPresence: {
       online: true,
@@ -469,8 +469,8 @@ function realtimeSnapshot() {
     state: "playing",
     pairing: {
       tokenExpiresAt: "2026-05-04T10:45:00.000Z",
-      controllerUrl: "http://ktv.local/controller?room=living-room&token=token-3",
-      qrPayload: "http://ktv.local/controller?room=living-room&token=token-3",
+      controllerUrl: "http://ktv.local/controller?token=token-3",
+      qrPayload: "http://ktv.local/controller?token=token-3",
       token: "token-3"
     },
     tvPresence: {

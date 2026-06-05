@@ -105,7 +105,7 @@ Controller: 通过 Web TV 二维码或 Admin 的 pairing.controllerUrl 进入，
 Web TV:     https://ktv-tv.shaolongfei.com/
 ```
 
-没有历史 cookie 时，裸 `https://ktv-controller.shaolongfei.com/controller?room=living-room` 不能创建控制会话，只能用于前端静态资源可达性检查。手动生成一次可用控制端 URL：
+没有历史 cookie 时，裸 `https://ktv-controller.shaolongfei.com/controller` 不能创建控制会话，只能用于前端静态资源可达性检查。手动生成一次可用控制端 URL：
 
 ```bash
 curl -sS -X POST 'https://ktv-api.shaolongfei.com/admin/rooms/living-room/pairing-token/refresh' \

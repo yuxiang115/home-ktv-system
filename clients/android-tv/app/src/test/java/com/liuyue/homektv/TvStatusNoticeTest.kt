@@ -42,7 +42,6 @@ class TvStatusNoticeTest {
     @Test
     fun mapsIdleStatusCopyForConnectionPill() {
         assertEquals("电视已连接", idleStatusLabelFor("电视在线，等待点歌"))
-        assertEquals("电视连接冲突", idleStatusLabelFor("电视连接冲突"))
         assertEquals("正在注册电视", idleStatusLabelFor("正在注册电视"))
     }
 }

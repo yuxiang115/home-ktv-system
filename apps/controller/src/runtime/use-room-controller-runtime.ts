@@ -638,7 +638,7 @@ function normalizeVolumePercent(value: number): number {
 function readRuntimeParams(): { roomSlug: string; pairingToken: string | null } {
   const search = new URLSearchParams(window.location.search);
   return {
-    roomSlug: search.get("room") || "living-room",
+    roomSlug: "living-room",
     pairingToken: search.get("token")
   };
 }

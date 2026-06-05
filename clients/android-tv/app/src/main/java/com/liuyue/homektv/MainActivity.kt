@@ -636,7 +636,7 @@ class MainActivity : Activity() {
             deviceName = config.deviceName,
             callback = uiCallback(
                 onSuccess = { result ->
-                    setStatus(if (result.status == "conflict") "电视连接冲突" else "电视在线，等待点歌")
+                    setStatus("电视在线，等待点歌")
                     result.snapshot?.let(::applyRoomSnapshot)
                     openRealtime()
                     roomHandler.removeCallbacks(heartbeatTicker)
@@ -855,7 +855,6 @@ class MainActivity : Activity() {
         }
         setStatus(
             when {
-                snapshot?.conflict == true || snapshot?.state == "conflict" -> "电视连接冲突"
                 roomModeActive -> "电视在线，等待点歌"
                 else -> "已停止"
             },

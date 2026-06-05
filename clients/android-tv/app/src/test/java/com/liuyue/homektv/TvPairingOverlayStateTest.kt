@@ -15,7 +15,7 @@ class TvPairingOverlayStateTest {
         assertEquals(true, state.showIdleBackground)
         assertEquals(false, state.showPlayingQr)
         assertEquals(false, state.showPlaybackHud)
-        assertEquals("http://controller.local/controller?room=living-room", state.qrPayload)
+        assertEquals("http://controller.local/controller", state.qrPayload)
     }
 
     @Test
@@ -29,7 +29,7 @@ class TvPairingOverlayStateTest {
         assertEquals(false, state.showIdleBackground)
         assertEquals(true, state.showPlayingQr)
         assertEquals(true, state.showPlaybackHud)
-        assertEquals("http://controller.local/controller?room=living-room", state.qrPayload)
+        assertEquals("http://controller.local/controller", state.qrPayload)
     }
 
     @Test
@@ -53,8 +53,8 @@ class TvPairingOverlayStateTest {
             state = if (currentTarget == null) "idle" else "playing",
             pairing = PairingInfo(
                 roomSlug = "living-room",
-                controllerUrl = "http://controller.local/controller?room=living-room",
-                qrPayload = "http://controller.local/controller?room=living-room",
+                controllerUrl = "http://controller.local/controller",
+                qrPayload = "http://controller.local/controller",
                 token = "token",
                 tokenExpiresAt = "2026-05-22T00:00:00.000Z",
             ),

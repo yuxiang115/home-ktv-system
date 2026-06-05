@@ -32,7 +32,6 @@ fun tvStatusNoticeFor(rawMessage: String): TvStatusNotice? {
 fun idleStatusLabelFor(rawMessage: String): String? {
     val message = rawMessage.trim()
     return when {
-        message.contains("冲突") -> "电视连接冲突"
         message.contains("注册失败") || message.contains("快照失败") -> "连接异常"
         message.contains("正在注册") -> "正在注册电视"
         message.contains("等待点歌") || message.contains("电视在线") -> "电视已连接"

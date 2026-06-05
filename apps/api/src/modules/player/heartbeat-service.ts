@@ -1,6 +1,4 @@
 import type { PlaybackSession, PlayerState, QueueEntryId, Room } from "@home-ktv/domain";
-import type { PlayerConflictState } from "@home-ktv/player-contracts";
-import { detectPlayerConflict } from "./conflict-service.js";
 import type { PlayerDeviceSessionRepository } from "./register-player.js";
 
 export interface HeartbeatPlaybackSessionRepository {
@@ -23,28 +21,18 @@ export interface RecordHeartbeatInput {
   now?: Date;
 }
 
-export type RecordHeartbeatResult =
-  | { status: "ok"; conflict: null; session: PlaybackSession | null }
-  | { status: "conflict"; conflict: PlayerConflictState; session: null };
+export type RecordHeartbeatResult = { status: "ok"; session: PlaybackSession | null };
 
 export async function recordHeartbeat(input: RecordHeartbeatInput): Promise<RecordHeartbeatResult> {
   const now = input.now ?? new Date();
-  const conflict = await detectPlayerConflict({
+  const deviceSession = await input.deviceRepository.updateTvHeartbeat({
     roomId: input.room.id,
     deviceId: input.deviceId,
-    repository: input.deviceRepository,
     now
   });
-
-  if (conflict) {
-    return { status: "conflict", conflict, session: null };
+  if (!deviceSession) {
+    return { status: "ok", session: null };
   }
-
-  await input.deviceRepository.updateTvHeartbeat({
-    roomId: input.room.id,
-    deviceId: input.deviceId,
-    now
-  });
 
   const updateInput: Parameters<HeartbeatPlaybackSessionRepository["updatePlayerPosition"]>[0] = {
     roomId: input.room.id,
@@ -60,7 +48,6 @@ export async function recordHeartbeat(input: RecordHeartbeatInput): Promise<Reco
 
   return {
     status: "ok",
-    conflict: null,
     session
   };
 }
