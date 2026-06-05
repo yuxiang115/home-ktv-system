@@ -17,14 +17,36 @@ import { registerControlCommandRoutes } from "../routes/control-commands.js";
 const now = new Date("2026-05-28T10:00:00.000Z");
 
 describe("source-aware queue command route", () => {
-  it("queues NAS songs by source asset and returns a NAS snapshot", async () => {
+  it("rejects queue commands without a logged-in controller user", async () => {
     const playableAsset = createPlayableMediaAsset();
     const server = await createControlCommandServer({ playableMedia: [playableAsset] });
 
     const response = await server.inject({
       method: "POST",
       url: "/rooms/living-room/commands/add-queue-entry",
-      headers: { cookie: "ktv_control_session=control-session-1" },
+      headers: { cookie: "ktv_control_session=control-session-1; ktv_controller_auth=auth-token" },
+      payload: {
+        commandId: "command-add-nas-guest",
+        sessionVersion: 1,
+        deviceId: "phone-1",
+        sourceType: "nas",
+        assetId: playableAsset.assetId
+      }
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ code: "AUTH_REQUIRED", message: null });
+    await server.close();
+  });
+
+  it("queues NAS songs by source asset and returns a NAS snapshot", async () => {
+    const playableAsset = createPlayableMediaAsset();
+    const server = await createControlCommandServer({ loggedInUser: createControllerUser(), playableMedia: [playableAsset] });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/rooms/living-room/commands/add-queue-entry",
+      headers: { cookie: "ktv_control_session=control-session-1; ktv_controller_auth=auth-token" },
       payload: {
         commandId: "command-add-nas-route",
         sessionVersion: 1,
@@ -53,6 +75,7 @@ describe("source-aware queue command route", () => {
             assetId: playableAsset.assetId,
             songTitle: playableAsset.title,
             artistName: playableAsset.artistName,
+            requestedByName: "阿飞",
             status: "loading"
           }
         ]
@@ -63,12 +86,12 @@ describe("source-aware queue command route", () => {
   });
 
   it("rejects retired indexed queue payloads instead of syncing them", async () => {
-    const server = await createControlCommandServer({ playableMedia: [createPlayableMediaAsset()] });
+    const server = await createControlCommandServer({ loggedInUser: createControllerUser(), playableMedia: [createPlayableMediaAsset()] });
 
     const response = await server.inject({
       method: "POST",
       url: "/rooms/living-room/commands/add-queue-entry",
-      headers: { cookie: "ktv_control_session=control-session-1" },
+      headers: { cookie: "ktv_control_session=control-session-1; ktv_controller_auth=auth-token" },
       payload: {
         commandId: "command-indexed-retired",
         sessionVersion: 1,
@@ -83,12 +106,12 @@ describe("source-aware queue command route", () => {
   });
 
   it("rejects online queue payloads because online supplement is retired", async () => {
-    const server = await createControlCommandServer({ playableMedia: [createPlayableMediaAsset()] });
+    const server = await createControlCommandServer({ loggedInUser: createControllerUser(), playableMedia: [createPlayableMediaAsset()] });
 
     const response = await server.inject({
       method: "POST",
       url: "/rooms/living-room/commands/add-queue-entry",
-      headers: { cookie: "ktv_control_session=control-session-1" },
+      headers: { cookie: "ktv_control_session=control-session-1; ktv_controller_auth=auth-token" },
       payload: {
         commandId: "command-online-not-ready",
         sessionVersion: 1,
@@ -104,7 +127,7 @@ describe("source-aware queue command route", () => {
   });
 });
 
-async function createControlCommandServer(input: { playableMedia: readonly PlayableMediaAsset[] }) {
+async function createControlCommandServer(input: { loggedInUser?: { phone: string; displayName: string }; playableMedia: readonly PlayableMediaAsset[] }) {
   const room = createRoom();
   const queueEntries = new InMemoryQueueEntryRepository();
   const playableMedia = new FakePlayableMediaRepository(input.playableMedia);
@@ -124,6 +147,7 @@ async function createControlCommandServer(input: { playableMedia: readonly Playa
       playableMedia,
       pairingTokens: new InMemoryRoomPairingTokenRepository(),
       controlSessions: new InMemoryControlSessionRepository([createControlSession(room.id)]),
+      controllerAuth: new FakeControllerAuthSessionRepository(input.loggedInUser ?? null),
       controlCommands: new FakeRoomSessionCommandRepository(),
       deviceSessions: new FakeDeviceSessionRepository()
     },
@@ -132,6 +156,32 @@ async function createControlCommandServer(input: { playableMedia: readonly Playa
 
   await server.ready();
   return server;
+}
+
+class FakeControllerAuthSessionRepository {
+  constructor(private readonly user: { phone: string; displayName: string } | null) {}
+
+  async createUser(): Promise<never> {
+    throw new Error("Not implemented");
+  }
+
+  async findUserByPhone(): Promise<null> {
+    return null;
+  }
+
+  async updateDisplayName(): Promise<null> {
+    return null;
+  }
+
+  async createSession(): Promise<void> {}
+
+  async findUserByToken(): Promise<ReturnType<typeof createControllerUser> | null> {
+    return this.user ? createControllerUser(this.user) : null;
+  }
+
+  async touchSession(): Promise<void> {}
+
+  async revokeSession(): Promise<void> {}
 }
 
 class FakeRoomRepository implements RoomRepository {
@@ -298,11 +348,23 @@ function createControlSession(roomId: string): ControlSession {
     roomId,
     deviceId: "phone-1",
     deviceName: "Phone",
+    userPhone: null,
     lastSeenAt: now.toISOString(),
     expiresAt: "2099-01-01T00:00:00.000Z",
     revokedAt: null,
     createdAt: now.toISOString(),
     updatedAt: now.toISOString()
+  };
+}
+
+function createControllerUser(overrides: Partial<{ phone: string; displayName: string }> = {}) {
+  return {
+    phone: "13800138000",
+    displayName: "阿飞",
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    lastLoginAt: now.toISOString(),
+    ...overrides
   };
 }
 

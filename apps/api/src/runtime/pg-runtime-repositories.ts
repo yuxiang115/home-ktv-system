@@ -5,6 +5,10 @@ import {
   PgControlSessionRepository,
   type ControlSessionRepository
 } from "../modules/controller/repositories/control-session-repository.js";
+import {
+  PgControllerAuthRepository,
+  type ControllerAuthRepository
+} from "../modules/controller/repositories/controller-auth-repository.js";
 import { PgKtvIndexReadRepository, type KtvIndexReadRepository } from "../modules/ktv-index/ktv-index-read-repository.js";
 import { NasPlayableMediaRepository } from "../modules/media/nas-playable-media-repository.js";
 import type { PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
@@ -22,6 +26,7 @@ import type { PlayerRouteRepositories } from "../routes/player.js";
 
 export type RuntimeRepositories = PlayerRouteRepositories & {
   controlSessions: ControlSessionRepository;
+  controllerAuth: ControllerAuthRepository;
   controlCommands: RoomSessionCommandRepository;
   songCovers?: SongCoverRepository;
   ktvIndex?: KtvIndexReadRepository;
@@ -46,6 +51,7 @@ export function createPgRuntimeRepositories(
     songCovers: new PgSongCoverRepository(db),
     pairingTokens: new PgRoomPairingTokenRepository(db),
     controlSessions: new PgControlSessionRepository(db),
+    controllerAuth: new PgControllerAuthRepository(db),
     controlCommands: new InMemoryRoomSessionCommandRepository(),
     deviceSessions: new PgPlayerDeviceSessionRepository(db),
     playbackEvents: new InMemoryPlaybackEventRepository(),

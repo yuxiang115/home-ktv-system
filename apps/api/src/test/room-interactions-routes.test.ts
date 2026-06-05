@@ -183,6 +183,7 @@ describe("room interaction routes", () => {
 });
 
 async function createControllerCookie(server: Awaited<ReturnType<typeof createServer>>): Promise<string> {
+  const authCookie = await createAuthCookie(server);
   const refreshed = await server.inject({
     method: "POST",
     url: "/admin/rooms/living-room/pairing-token/refresh"
@@ -191,6 +192,7 @@ async function createControllerCookie(server: Awaited<ReturnType<typeof createSe
   const created = await server.inject({
     method: "POST",
     url: "/rooms/living-room/control-sessions",
+    headers: { cookie: authCookie },
     payload: {
       pairingToken,
       deviceId: "phone-a",
@@ -198,14 +200,31 @@ async function createControllerCookie(server: Awaited<ReturnType<typeof createSe
     }
   });
 
-  return extractControlSessionCookie(created.headers["set-cookie"]);
+  return `${extractControlSessionCookie(created.headers["set-cookie"])}; ${authCookie}`;
+}
+
+async function createAuthCookie(server: Awaited<ReturnType<typeof createServer>>): Promise<string> {
+  const response = await server.inject({
+    method: "POST",
+    url: "/controller/auth/register",
+    payload: {
+      phone: "13800138000",
+      password: "abcde",
+      displayName: "阿飞"
+    }
+  });
+  return extractNamedCookie(response.headers["set-cookie"], "ktv_controller_auth");
 }
 
 function extractControlSessionCookie(header: string | string[] | number | undefined): string {
+  return extractNamedCookie(header, "ktv_control_session");
+}
+
+function extractNamedCookie(header: string | string[] | number | undefined, name: string): string {
   const value = Array.isArray(header) ? header[0] ?? "" : String(header ?? "");
-  const match = value.match(/ktv_control_session=[^;]+/u);
+  const match = value.match(new RegExp(`${name}=[^;]+`, "u"));
   if (!match) {
-    throw new Error("Missing control session cookie");
+    throw new Error(`Missing ${name} cookie`);
   }
   return match[0];
 }

@@ -18,6 +18,8 @@ export interface AppendQueueEntryInput {
   songId?: SongId;
   assetId?: SongId;
   requestedBy: string;
+  requestedByUserPhone?: string | null;
+  requestedByName?: string | null;
   queuePosition: number;
   status?: QueueEntryStatus;
   priority?: number;
@@ -85,7 +87,7 @@ export interface QueueEntryRepository {
 }
 
 const queueEntrySelectColumns = `id, room_id, song_id,
-              requested_by, queue_position, status,
+              requested_by, requested_by_user_phone, requested_by_name, queue_position, status,
               priority, playback_options, requested_at, started_at, ended_at,
               removed_at, removed_by_control_session_id, undo_expires_at`;
 
@@ -98,6 +100,8 @@ export function mapQueueEntryRow(row: QueueEntryRow): QueueEntry {
     songId: source.songId,
     assetId: source.assetId,
     requestedBy: row.requested_by,
+    requestedByUserPhone: row.requested_by_user_phone ?? null,
+    requestedByName: row.requested_by_name ?? null,
     queuePosition: row.queue_position,
     status: row.status as QueueEntryStatus,
     priority: row.priority,
@@ -199,16 +203,18 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
     const result = await this.db.query<QueueEntryRow>(
       `INSERT INTO queue_entries (
          room_id, song_id,
-         requested_by, queue_position, status, priority,
+         requested_by, requested_by_user_phone, requested_by_name, queue_position, status, priority,
          playback_options, requested_at, started_at, ended_at, removed_at,
          removed_by_control_session_id, undo_expires_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12, $13)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12, $13, $14, $15)
        RETURNING ${queueEntrySelectColumns}`,
       [
         input.roomId,
         source.songId,
         input.requestedBy,
+        input.requestedByUserPhone ?? null,
+        input.requestedByName ?? null,
         input.queuePosition,
         input.status ?? "queued",
         input.priority ?? 0,
@@ -295,7 +301,7 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
        WHERE qe.room_id = $1
          AND qe.id = ordered.id
        RETURNING qe.id, qe.room_id, qe.song_id,
-                 qe.requested_by, qe.queue_position, qe.status, qe.priority, qe.playback_options,
+                 qe.requested_by, qe.requested_by_user_phone, qe.requested_by_name, qe.queue_position, qe.status, qe.priority, qe.playback_options,
                  qe.requested_at, qe.started_at, qe.ended_at, qe.removed_at,
                  qe.removed_by_control_session_id, qe.undo_expires_at`,
       [roomId, orderedQueueEntryIds]
@@ -416,6 +422,8 @@ export class InMemoryQueueEntryRepository implements QueueEntryRepository {
       songId: source.songId,
       assetId: source.assetId,
       requestedBy: input.requestedBy,
+      requestedByUserPhone: input.requestedByUserPhone ?? null,
+      requestedByName: input.requestedByName ?? null,
       queuePosition: input.queuePosition,
       status: input.status ?? "queued",
       priority: input.priority ?? 0,

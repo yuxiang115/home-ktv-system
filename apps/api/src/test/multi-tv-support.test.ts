@@ -74,10 +74,12 @@ async function createControlSnapshot(server: Awaited<ReturnType<typeof createSer
     url: "/admin/rooms/living-room/pairing-token/refresh"
   });
   const pairingToken = refreshed.json().pairing.token as string;
+  const authCookie = await createAuthCookie(server);
 
   const controlSession = await server.inject({
     method: "POST",
     url: "/rooms/living-room/control-sessions",
+    headers: { cookie: authCookie },
     payload: {
       pairingToken,
       deviceId: "phone-a",
@@ -87,4 +89,26 @@ async function createControlSnapshot(server: Awaited<ReturnType<typeof createSer
 
   expect(controlSession.statusCode).toBe(200);
   return controlSession.json().snapshot;
+}
+
+async function createAuthCookie(server: Awaited<ReturnType<typeof createServer>>): Promise<string> {
+  const response = await server.inject({
+    method: "POST",
+    url: "/controller/auth/register",
+    payload: {
+      phone: "13800138000",
+      password: "abcde",
+      displayName: "阿飞"
+    }
+  });
+  return extractNamedCookie(response.headers["set-cookie"], "ktv_controller_auth");
+}
+
+function extractNamedCookie(header: string | string[] | number | undefined, name: string): string {
+  const value = Array.isArray(header) ? String(header[0] ?? "") : String(header ?? "");
+  const match = value.match(new RegExp(`${name}=[^;]+`, "u"));
+  if (!match) {
+    throw new Error(`Missing ${name} cookie`);
+  }
+  return match[0];
 }

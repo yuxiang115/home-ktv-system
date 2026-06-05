@@ -14,6 +14,8 @@ import type { PlaybackSessionRepository } from "../modules/playback/repositories
 import type { QueueEntryRepository } from "../modules/playback/repositories/queue-entry-repository.js";
 import type { PlayerDeviceSessionRepository } from "../modules/player/register-player.js";
 import type { PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
+import { restoreControllerAuth } from "../modules/controller/controller-auth-service.js";
+import type { ControllerAuthRepository } from "../modules/controller/repositories/controller-auth-repository.js";
 
 export interface ControlSessionRouteRepositories {
   rooms: RoomRepository;
@@ -22,6 +24,7 @@ export interface ControlSessionRouteRepositories {
   playableMedia?: PlayableMediaRepository;
   pairingTokens: RoomPairingTokenRepository;
   controlSessions: ControlSessionRepository;
+  controllerAuth: ControllerAuthRepository;
   deviceSessions: PlayerDeviceSessionRepository;
 }
 
@@ -52,11 +55,21 @@ export async function registerControlSessionRoutes(
       }
 
       try {
+        const user = await restoreControllerAuth({
+          cookieHeader: request.headers.cookie,
+          repository: dependencies.repositories.controllerAuth
+        });
+        if (!user) {
+          await reply.code(401).send({ code: "AUTH_REQUIRED" });
+          return;
+        }
+
         const controlSession = await createControlSession({
           room,
           pairingToken: requiredString(body.pairingToken, "pairingToken"),
           deviceId: requiredString(body.deviceId, "deviceId"),
           deviceName: body.deviceName ?? "Mobile Controller",
+          user,
           pairingTokens: dependencies.repositories.pairingTokens,
           controlSessions: dependencies.repositories.controlSessions
         });
@@ -97,6 +110,14 @@ export async function registerControlSessionRoutes(
       });
       if (!controlSession) {
         await reply.code(401).send({ code: "CONTROL_SESSION_REQUIRED" });
+        return;
+      }
+      const user = await restoreControllerAuth({
+        cookieHeader: request.headers.cookie,
+        repository: dependencies.repositories.controllerAuth
+      });
+      if (!user) {
+        await reply.code(401).send({ code: "AUTH_REQUIRED" });
         return;
       }
 

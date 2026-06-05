@@ -6,6 +6,7 @@ export interface UpsertControlSessionInput {
   roomId: RoomId;
   deviceId: string;
   deviceName: string;
+  userPhone?: string | null;
   lastSeenAt: Date;
   expiresAt: Date;
   now: Date;
@@ -46,6 +47,7 @@ function mapControlSessionRow(row: ControlSessionRow): ControlSession {
     roomId: row.room_id as RoomId,
     deviceId: row.device_id,
     deviceName: row.device_name,
+    userPhone: row.user_phone ?? null,
     lastSeenAt: row.last_seen_at.toISOString(),
     expiresAt: row.expires_at.toISOString(),
     revokedAt: row.revoked_at?.toISOString() ?? null,
@@ -59,17 +61,18 @@ export class PgControlSessionRepository implements ControlSessionRepository {
 
   async upsertForDevice(input: UpsertControlSessionInput): Promise<ControlSession> {
     const result = await this.db.query<ControlSessionRow>(
-      `INSERT INTO room_clients (room_id, client_type, device_id, device_name, last_seen_at, expires_at, capabilities)
-       VALUES ($1, 'controller', $2, $3, $4, $5, '{}'::jsonb)
+      `INSERT INTO room_clients (room_id, client_type, device_id, device_name, user_phone, last_seen_at, expires_at, capabilities)
+       VALUES ($1, 'controller', $2, $3, $4, $5, $6, '{}'::jsonb)
        ON CONFLICT (room_id, client_type, device_id) DO UPDATE
        SET device_name = EXCLUDED.device_name,
+           user_phone = EXCLUDED.user_phone,
            last_seen_at = EXCLUDED.last_seen_at,
            expires_at = EXCLUDED.expires_at,
            revoked_at = NULL,
            updated_at = now()
-       RETURNING id, room_id, client_type, device_id, device_name, last_seen_at, expires_at,
+       RETURNING id, room_id, client_type, device_id, device_name, user_phone, last_seen_at, expires_at,
                  revoked_at, capabilities, pairing_token, created_at, updated_at`,
-      [input.roomId, input.deviceId, input.deviceName, input.lastSeenAt, input.expiresAt]
+      [input.roomId, input.deviceId, input.deviceName, input.userPhone ?? null, input.lastSeenAt, input.expiresAt]
     );
 
     const row = result.rows[0];
@@ -82,7 +85,7 @@ export class PgControlSessionRepository implements ControlSessionRepository {
 
   async findActiveByIdAndDevice(input: FindActiveControlSessionInput): Promise<ControlSession | null> {
     const result = await this.db.query<ControlSessionRow>(
-      `SELECT id, room_id, client_type, device_id, device_name, last_seen_at, expires_at,
+      `SELECT id, room_id, client_type, device_id, device_name, user_phone, last_seen_at, expires_at,
               revoked_at, capabilities, pairing_token, created_at, updated_at
        FROM room_clients
        WHERE id = $1
@@ -107,7 +110,7 @@ export class PgControlSessionRepository implements ControlSessionRepository {
        WHERE id = $1
          AND client_type = 'controller'
          AND revoked_at IS NULL
-       RETURNING id, room_id, client_type, device_id, device_name, last_seen_at, expires_at,
+       RETURNING id, room_id, client_type, device_id, device_name, user_phone, last_seen_at, expires_at,
                  revoked_at, capabilities, pairing_token, created_at, updated_at`,
       [input.sessionId, input.lastSeenAt, input.expiresAt]
     );
@@ -152,6 +155,7 @@ export class InMemoryControlSessionRepository implements ControlSessionRepositor
       roomId: input.roomId,
       deviceId: input.deviceId,
       deviceName: input.deviceName,
+      userPhone: input.userPhone ?? existing?.userPhone ?? null,
       lastSeenAt: input.lastSeenAt.toISOString(),
       expiresAt: input.expiresAt.toISOString(),
       revokedAt: null,

@@ -3,14 +3,17 @@ import type { ApiConfig } from "../config.js";
 import type { MediaGateway } from "../modules/media/media-gateway.js";
 import type { ControlSessionRepository } from "../modules/controller/repositories/control-session-repository.js";
 import { restoreControlSession } from "../modules/controller/control-session-service.js";
+import { restoreControllerAuth } from "../modules/controller/controller-auth-service.js";
 import { buildRoomControlSnapshot, type ControlSnapshotRepositories } from "../modules/rooms/build-control-snapshot.js";
 import { executeRoomCommand } from "../modules/playback/session-command-service.js";
 import type { CommandExecutionResult } from "../modules/playback/session-command-service.js";
 import type { RoomSessionCommandRepository } from "../modules/playback/repositories/room-session-command-repository.js";
 import type { RoomSnapshotBroadcaster } from "../modules/realtime/room-snapshot-broadcaster.js";
+import type { ControllerAuthRepository } from "../modules/controller/repositories/controller-auth-repository.js";
 
 export interface ControlCommandsRouteRepositories extends ControlSnapshotRepositories {
   controlSessions: ControlSessionRepository;
+  controllerAuth: ControllerAuthRepository;
   controlCommands: RoomSessionCommandRepository;
 }
 
@@ -150,6 +153,14 @@ async function handleCommand(
     await reply.code(401).send({ code: "CONTROL_SESSION_REQUIRED" });
     return;
   }
+  const controllerUser = await restoreControllerAuth({
+    cookieHeader: request.headers.cookie,
+    repository: dependencies.repositories.controllerAuth
+  });
+  if (!controllerUser) {
+    await reply.code(401).send({ code: "AUTH_REQUIRED", message: null });
+    return;
+  }
 
   const result = await executeRoomCommand({
     commandId: requiredString(request.body.commandId, "commandId"),
@@ -158,6 +169,7 @@ async function handleCommand(
     type,
     payload,
     controlSession,
+    controllerUser,
     repositories: dependencies.repositories,
     ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {}),
     config: dependencies.config

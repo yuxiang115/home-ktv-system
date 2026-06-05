@@ -1,4 +1,4 @@
-import type { ControlSession, Room } from "@home-ktv/domain";
+import type { ControlSession, ControllerUser, Room } from "@home-ktv/domain";
 import type { ControlSessionInfo } from "@home-ktv/player-contracts";
 import type { ControlSessionRepository } from "./repositories/control-session-repository.js";
 import type { RoomPairingTokenRepository } from "../rooms/repositories/pairing-token-repository.js";
@@ -12,6 +12,7 @@ export interface CreateControlSessionInput {
   pairingToken: string;
   deviceId: string;
   deviceName: string;
+  user: Pick<ControllerUser, "phone" | "displayName">;
   pairingTokens: RoomPairingTokenRepository;
   controlSessions: ControlSessionRepository;
   now?: Date;
@@ -66,6 +67,7 @@ export async function createControlSession(input: CreateControlSessionInput): Pr
     roomId: input.room.id,
     deviceId: input.deviceId,
     deviceName: input.deviceName,
+    userPhone: input.user.phone,
     lastSeenAt: now,
     expiresAt: new Date(now.getTime() + CONTROL_SESSION_IDLE_TTL_MS),
     now
@@ -131,6 +133,7 @@ export function toControlSessionInfo(input: { session: ControlSession; roomSlug:
     roomSlug: input.roomSlug,
     deviceId: input.session.deviceId,
     deviceName: input.session.deviceName,
+    userPhone: input.session.userPhone ?? null,
     expiresAt: input.session.expiresAt,
     lastSeenAt: input.session.lastSeenAt
   };

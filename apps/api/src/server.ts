@@ -14,6 +14,7 @@ import {
   InMemoryControlSessionRepository,
   type ControlSessionRepository
 } from "./modules/controller/repositories/control-session-repository.js";
+import { InMemoryControllerAuthRepository } from "./modules/controller/repositories/controller-auth-repository.js";
 import type { PlaybackEventRepository } from "./modules/playback/repositories/playback-event-repository.js";
 import type {
   UpdatePlaybackFactsInput,
@@ -36,6 +37,7 @@ import { registerCors } from "./routes/cors.js";
 import { registerAdminKtvIndexRoutes } from "./routes/admin-ktv-index.js";
 import { registerAdminRoomsRoutes } from "./routes/admin-rooms.js";
 import { registerControlCommandRoutes } from "./routes/control-commands.js";
+import { registerControllerAuthRoutes } from "./routes/controller-auth.js";
 import { registerControlSessionRoutes } from "./routes/control-sessions.js";
 import { PgKtvIndexRawAssetRepository, registerMediaRoutes } from "./routes/media.js";
 import { registerPlayerRoutes } from "./routes/player.js";
@@ -143,6 +145,9 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     repositories,
     ...(mediaGateway ? { mediaGateway } : {})
   });
+  await registerControllerAuthRoutes(server, {
+    controllerAuth: repositories.controllerAuth
+  });
   await registerControlSessionRoutes(server, {
     config: resolvedConfig,
     repositories,
@@ -202,6 +207,7 @@ class InMemoryRuntimeRepositories implements RuntimeRepositories {
 
   readonly pairingTokens = new InMemoryRoomPairingTokenRepository();
   readonly controlSessions = new InMemoryControlSessionRepository();
+  readonly controllerAuth = new InMemoryControllerAuthRepository();
   readonly controlCommands = new InMemoryRoomSessionCommandRepository();
 
   readonly queueEntries = new InMemoryQueueEntryRepository();

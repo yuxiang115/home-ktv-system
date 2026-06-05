@@ -157,10 +157,12 @@ describe("control sessions", () => {
       publicBaseUrl: "http://ktv.local",
       roomSlug: "living-room"
     });
+    const authCookie = await seedAuthCookie(server);
 
     const response = await server.inject({
       method: "POST",
       url: "/rooms/living-room/control-sessions",
+      headers: { cookie: authCookie },
       payload: {
         pairingToken: await seedPairingToken(server),
         deviceId: "phone-a",
@@ -189,16 +191,18 @@ describe("control sessions", () => {
       roomSlug: "living-room"
     });
     const pairingToken = await seedPairingToken(server);
+    const authCookie = await seedAuthCookie(server);
     const created = await server.inject({
       method: "POST",
       url: "/rooms/living-room/control-sessions",
+      headers: { cookie: authCookie },
       payload: {
         pairingToken,
         deviceId: "phone-a",
         deviceName: "Controller A"
       }
     });
-    const cookie = extractControlSessionCookie(created.headers["set-cookie"]);
+    const cookie = `${extractControlSessionCookie(created.headers["set-cookie"])}; ${authCookie}`;
 
     const restored = await server.inject({
       method: "GET",
@@ -225,16 +229,18 @@ describe("control sessions", () => {
       roomSlug: "living-room"
     });
     const pairingToken = await seedPairingToken(server);
+    const authCookie = await seedAuthCookie(server);
     const created = await server.inject({
       method: "POST",
       url: "/rooms/living-room/control-sessions",
+      headers: { cookie: authCookie },
       payload: {
         pairingToken,
         deviceId: "phone-a",
         deviceName: "Controller A"
       }
     });
-    const cookie = extractControlSessionCookie(created.headers["set-cookie"]);
+    const cookie = `${extractControlSessionCookie(created.headers["set-cookie"])}; ${authCookie}`;
 
     const restored = await server.inject({
       method: "GET",
@@ -260,10 +266,12 @@ describe("control sessions", () => {
       publicBaseUrl: "http://ktv.local",
       roomSlug: "living-room"
     });
+    const authCookie = await seedAuthCookie(server);
 
     const missing = await server.inject({
       method: "GET",
-      url: "/rooms/living-room/control-session?deviceId=phone-a"
+      url: "/rooms/living-room/control-session?deviceId=phone-a",
+      headers: { cookie: authCookie }
     });
 
     expect(missing.statusCode).toBe(401);
@@ -287,17 +295,19 @@ describe("control sessions", () => {
       url: "/rooms/living-room/snapshot"
     });
     const originalToken = originalPairing.json().pairing.token as string;
+    const authCookie = await seedAuthCookie(server);
 
     const created = await server.inject({
       method: "POST",
       url: "/rooms/living-room/control-sessions",
+      headers: { cookie: authCookie },
       payload: {
         pairingToken: originalToken,
         deviceId: "phone-a",
         deviceName: "Controller A"
       }
     });
-    const cookie = extractControlSessionCookie(created.headers["set-cookie"]);
+    const cookie = `${extractControlSessionCookie(created.headers["set-cookie"])}; ${authCookie}`;
 
     const refreshed = await server.inject({
       method: "POST",
@@ -311,6 +321,7 @@ describe("control sessions", () => {
     const rejected = await server.inject({
       method: "POST",
       url: "/rooms/living-room/control-sessions",
+      headers: { cookie: authCookie },
       payload: {
         pairingToken: originalToken,
         deviceId: "phone-b",
@@ -356,10 +367,31 @@ async function seedPairingToken(server: Awaited<ReturnType<typeof createServer>>
   return response.json().pairing.token;
 }
 
+async function seedAuthCookie(server: Awaited<ReturnType<typeof createServer>>): Promise<string> {
+  const response = await server.inject({
+    method: "POST",
+    url: "/controller/auth/register",
+    payload: {
+      phone: `1380013${Math.floor(Math.random() * 10000).toString().padStart(4, "0")}`,
+      password: "abcde",
+      displayName: "阿飞"
+    }
+  });
+
+  return extractNamedCookie(response.headers["set-cookie"], "ktv_controller_auth");
+}
+
 function extractControlSessionCookie(setCookie: unknown): string {
+  return extractNamedCookie(setCookie, "ktv_control_session");
+}
+
+function extractNamedCookie(setCookie: unknown, name: string): string {
   if (Array.isArray(setCookie)) {
-    return String(setCookie[0] ?? "");
+    return String(setCookie.find((cookie) => String(cookie).startsWith(`${name}=`)) ?? "");
   }
 
-  return String(setCookie ?? "");
+  return String(setCookie ?? "")
+    .split(";")
+    .find((part) => part.trim().startsWith(`${name}=`))
+    ?.trim() ?? "";
 }

@@ -92,6 +92,7 @@ export interface ControlSessionInfo {
   roomSlug: string;
   deviceId: string;
   deviceName: string;
+  userPhone?: string | null;
   expiresAt: string;
   lastSeenAt: string;
 }
@@ -123,6 +124,8 @@ export interface RoomQueueEntryPreview {
   songTitle: string;
   artistName: string;
   requestedBy: string;
+  requestedByUserPhone?: string | null;
+  requestedByName?: string | null;
   queuePosition: number;
   status: QueueEntryStatus;
   canPromote: boolean;

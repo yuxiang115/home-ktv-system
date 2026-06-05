@@ -215,6 +215,8 @@ function queueEntryPreviewFromPlayableMedia(
     songTitle: playableMedia.title,
     artistName: playableMedia.artistName,
     requestedBy: queueEntry.requestedBy,
+    requestedByUserPhone: queueEntry.requestedByUserPhone ?? null,
+    requestedByName: queueEntry.requestedByName ?? null,
     queuePosition: queueEntry.queuePosition,
     status: removed ? "removed" : queueEntry.status,
     canPromote: removed ? false : canPromote,

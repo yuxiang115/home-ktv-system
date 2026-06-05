@@ -131,6 +131,40 @@ describe("mobile controller API client", () => {
 });
 
 describe("mobile controller runtime", () => {
+  it("shows the login/register gate and does not restore or search as a guest", async () => {
+    const { requests } = installControllerFetchMock({
+      authMeResponse: json({ code: "AUTH_REQUIRED" }, 401)
+    });
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "登录 KTV 控制端" })).toBeTruthy();
+    expect(screen.getByLabelText("手机号")).toBeTruthy();
+    expect(screen.getByLabelText("密码")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "打开搜索" })).toBeNull();
+    expect(requests.map((request) => request.url)).toEqual(["/controller/auth/me"]);
+  });
+
+  it("logs in and enters the controller home", async () => {
+    const user = userEvent.setup();
+    const { requests } = installControllerFetchMock({
+      authMeResponse: json({ code: "AUTH_REQUIRED" }, 401),
+      loginResponse: json({ user: controllerUser() })
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    await user.type(await screen.findByLabelText("手机号"), "13800138000");
+    await user.type(screen.getByLabelText("密码"), "abcde");
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    expect(await screen.findByRole("button", { name: "打开搜索" })).toBeTruthy();
+    expect(screen.getByText("阿飞")).toBeTruthy();
+    expect(requests.some((request) => request.url === "/controller/auth/login")).toBe(true);
+    expect(requests.some((request) => request.url === "/rooms/living-room/control-session?deviceId=mobile-test-uuid")).toBe(true);
+  });
+
   it("switches the KTV controller chrome between Chinese and English", async () => {
     const user = userEvent.setup();
     installControllerFetchMock({
@@ -376,6 +410,7 @@ describe("mobile controller runtime", () => {
     render(<App />);
 
     const recommendations = await screen.findByRole("region", { name: "推荐歌曲" });
+    expect(await within(recommendations).findByText("NAS 晴天")).toBeTruthy();
     const controlTab = screen.getByRole("button", { name: "操控" });
     await waitFor(() => {
       expect(controlTab.querySelector(".bottom-tab__badge")?.textContent).toBe("1");
@@ -412,6 +447,7 @@ describe("mobile controller runtime", () => {
     render(<App />);
 
     const recommendations = await screen.findByRole("region", { name: "推荐歌曲" });
+    expect(await within(recommendations).findByText("NAS 晴天")).toBeTruthy();
     await user.click(within(recommendations).getByRole("button", { name: "点歌 NAS 晴天" }));
     await flush();
 
@@ -678,7 +714,7 @@ describe("mobile controller runtime", () => {
 
     await openControlTab();
     expect(screen.getByText("电视在线")).toBeTruthy();
-    expect(requests.slice(0, 2).map((request) => `${request.method} ${request.url}`)).toEqual([
+    expect(controllerRequests(requests).slice(0, 2)).toEqual([
       "GET /rooms/living-room/control-session?deviceId=mobile-test-uuid",
       "POST /rooms/living-room/control-sessions"
     ]);
@@ -697,7 +733,7 @@ describe("mobile controller runtime", () => {
 
     await openControlTab();
     expect(screen.getByText("电视在线")).toBeTruthy();
-    expect(requests.slice(0, 3).map((request) => `${request.method} ${request.url}`)).toEqual([
+    expect(controllerRequests(requests).slice(0, 3)).toEqual([
       "GET /rooms/living-room/control-session?deviceId=mobile-test-uuid",
       "POST /rooms/living-room/control-sessions",
       "GET /rooms/living-room/control-session?deviceId=mobile-test-uuid"
@@ -1515,14 +1551,29 @@ async function flush() {
 }
 
 async function openControlTab() {
+  await waitForControllerHome();
   fireEvent.click(screen.getByRole("button", { name: /操控|Control/u }));
   await flush();
   return screen.getByRole("region", { name: /当前播放|Current playback/u });
 }
 
 async function openSearchOverlay(user: ReturnType<typeof userEvent.setup>) {
+  await waitForControllerHome();
   await user.click(screen.getByRole("button", { name: "打开搜索" }));
   return screen.getByRole("dialog", { name: "搜索歌曲" });
+}
+
+async function waitForControllerHome() {
+  if (screen.queryByRole("button", { name: "打开搜索" })) {
+    return;
+  }
+  await screen.findByRole("button", { name: "打开搜索" });
+}
+
+function controllerRequests(requests: RequestRecord[]) {
+  return requests
+    .filter((request) => !request.url.startsWith("/controller/auth/"))
+    .map((request) => `${request.method} ${request.url}`);
 }
 
 async function typeSearchQuery(user: ReturnType<typeof userEvent.setup>, query: string) {
@@ -1534,6 +1585,11 @@ async function typeSearchQuery(user: ReturnType<typeof userEvent.setup>, query: 
 }
 
 function installControllerFetchMock(options: {
+  authMeResponse?: Response;
+  loginResponse?: Response;
+  registerResponse?: Response;
+  logoutResponse?: Response;
+  profileResponse?: Response;
   restoreResponses?: Response[];
   createResponses?: Response[];
   commandResponses?: Record<string, MockResponse | MockResponse[]>;
@@ -1555,6 +1611,26 @@ function installControllerFetchMock(options: {
       const method = init?.method ?? "GET";
       const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
       requests.push({ url, method, body });
+
+      if (method === "GET" && requestUrl.pathname === "/controller/auth/me") {
+        return options.authMeResponse ?? json({ user: controllerUser() });
+      }
+
+      if (method === "POST" && requestUrl.pathname === "/controller/auth/login") {
+        return options.loginResponse ?? json({ user: controllerUser() });
+      }
+
+      if (method === "POST" && requestUrl.pathname === "/controller/auth/register") {
+        return options.registerResponse ?? json({ user: controllerUser() });
+      }
+
+      if (method === "POST" && requestUrl.pathname === "/controller/auth/logout") {
+        return options.logoutResponse ?? new Response(null, { status: 204 });
+      }
+
+      if (method === "PATCH" && requestUrl.pathname === "/controller/auth/profile") {
+        return options.profileResponse ?? json({ user: controllerUser({ displayName: body?.displayName ?? "阿飞" }) });
+      }
 
       if (method === "GET" && requestUrl.pathname.endsWith("/control-session")) {
         return restoreResponses.shift() ?? json(sessionResponse(roomSnapshot()));
@@ -1687,6 +1763,7 @@ function sessionResponse(snapshot: RoomControlSnapshot) {
       roomSlug: "living-room",
       deviceId: "mobile-test-uuid",
       deviceName: "Phone",
+      userPhone: "13800138000",
       expiresAt: "2026-05-04T12:00:00.000Z",
       lastSeenAt: "2026-05-04T10:00:00.000Z"
     },
@@ -2085,6 +2162,8 @@ function roomSnapshot(options: {
       songTitle: index === 0 ? "下一首" : `新增歌曲 ${index + 1}`,
       artistName: index === 0 ? "歌手" : "新增歌手",
       requestedBy: "phone-1",
+      requestedByUserPhone: "13800138000",
+      requestedByName: "阿飞",
       queuePosition: index + 2,
       status: queueStatus,
       canPromote: queueStatus === "queued",
@@ -2093,6 +2172,14 @@ function roomSnapshot(options: {
     })),
     notice: null,
     generatedAt: "2026-05-04T10:00:00.000Z"
+  };
+}
+
+function controllerUser(overrides: Partial<{ phone: string; displayName: string }> = {}) {
+  return {
+    phone: "13800138000",
+    displayName: "阿飞",
+    ...overrides
   };
 }
 

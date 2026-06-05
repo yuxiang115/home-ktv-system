@@ -3,6 +3,15 @@ import type { ControlSessionInfo, RoomControlSnapshot, RoomInteractionEvent, Roo
 
 const deviceIdStorageKey = "home_ktv_device_id";
 
+export interface ControllerUser {
+  phone: string;
+  displayName: string;
+}
+
+export interface ControllerAuthResponse {
+  user: ControllerUser;
+}
+
 export interface ControllerSessionResponse {
   controlSession: ControlSessionInfo;
   snapshot: RoomControlSnapshot | null;
@@ -81,6 +90,41 @@ export async function createControlSession(input: {
       deviceId: input.deviceId,
       deviceName: input.deviceName ?? "Mobile Controller"
     })
+  });
+}
+
+export async function getCurrentControllerUser(): Promise<ControllerAuthResponse> {
+  return fetchController<ControllerAuthResponse>("/controller/auth/me");
+}
+
+export async function loginControllerUser(input: { phone: string; password: string }): Promise<ControllerAuthResponse> {
+  return fetchController<ControllerAuthResponse>("/controller/auth/login", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function registerControllerUser(input: {
+  phone: string;
+  password: string;
+  displayName: string;
+}): Promise<ControllerAuthResponse> {
+  return fetchController<ControllerAuthResponse>("/controller/auth/register", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function logoutControllerUser(): Promise<void> {
+  await fetchController<void>("/controller/auth/logout", {
+    method: "POST"
+  });
+}
+
+export async function updateControllerUserProfile(input: { displayName: string }): Promise<ControllerAuthResponse> {
+  return fetchController<ControllerAuthResponse>("/controller/auth/profile", {
+    method: "PATCH",
+    body: JSON.stringify(input)
   });
 }
 

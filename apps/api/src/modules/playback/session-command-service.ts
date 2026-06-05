@@ -29,6 +29,7 @@ export interface ExecuteRoomCommandInput {
   type: ControlCommandType;
   payload: Record<string, unknown>;
   controlSession: ControlSessionInfo;
+  controllerUser?: { phone: string; displayName: string } | undefined;
   repositories: CommandRepositories;
   mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   config: ApiConfig;
@@ -597,6 +598,8 @@ async function addSourceQueueEntry(
     roomId: context.room.id,
     songId: playableMedia.songId,
     requestedBy: input.controlSession.deviceId,
+    requestedByUserPhone: input.controllerUser?.phone ?? null,
+    requestedByName: input.controllerUser?.displayName ?? null,
     queuePosition: queuePosition + 1,
     playbackOptions: { preferredVocalMode }
   });

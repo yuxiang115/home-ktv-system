@@ -9,10 +9,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addQueueEntry,
   ControllerApiError,
+  type ControllerUser,
   createControlSession,
   deleteQueueEntry,
   fetchSongDiscovery,
+  getCurrentControllerUser,
+  loginControllerUser,
+  logoutControllerUser,
   promoteQueueEntry,
+  registerControllerUser,
   realtimeUrl,
   restoreControlSession,
   searchSongs,
@@ -20,6 +25,7 @@ import {
   setVolume,
   skipCurrent,
   switchVocalMode,
+  updateControllerUserProfile,
   undoDeleteQueueEntry
 } from "../api/client.js";
 import { getOrCreateDeviceId } from "../api/client.js";
@@ -40,6 +46,8 @@ interface ControllerCommandResponse {
 }
 
 export interface RoomControllerState {
+  authStatus: "checking" | "authenticated" | "unauthenticated";
+  authUser: ControllerUser | null;
   connectionStatus: "connecting" | "connected" | "reconnecting" | "error";
   deviceId: string;
   duplicateConfirm:
@@ -77,11 +85,17 @@ export interface RoomControllerState {
   switchVocalMode(): Promise<void>;
   undoDelete(queueEntryId: string): Promise<void>;
   cancelSkip(): void;
+  login(input: { phone: string; password: string }): Promise<void>;
+  register(input: { phone: string; password: string; displayName: string }): Promise<void>;
+  logout(): Promise<void>;
+  updateDisplayName(displayName: string): Promise<void>;
 }
 
 export function useRoomControllerRuntime(): RoomControllerState {
   const initial = useMemo(() => readRuntimeParams(), []);
   const [deviceId] = useState(() => getOrCreateDeviceId());
+  const [authStatus, setAuthStatus] = useState<RoomControllerState["authStatus"]>("checking");
+  const [authUser, setAuthUser] = useState<ControllerUser | null>(null);
   const [snapshot, setSnapshot] = useState<RoomControlSnapshot | null>(null);
   const [songSearch, setSongSearch] = useState<SongSearchResponse | null>(null);
   const [songSearchQuery, setSongSearchQueryState] = useState("");
@@ -103,6 +117,36 @@ export function useRoomControllerRuntime(): RoomControllerState {
   const discoveryAbortRef = useRef<AbortController | null>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const volumeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadUser = async () => {
+      try {
+        const response = await getCurrentControllerUser();
+        if (!cancelled) {
+          setAuthUser(response.user);
+          setAuthStatus("authenticated");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          if (isApiCode(error, "AUTH_REQUIRED")) {
+            setAuthUser(null);
+            setAuthStatus("unauthenticated");
+            setConnectionStatus("connecting");
+            return;
+          }
+          setAuthUser(null);
+          setAuthStatus("unauthenticated");
+          setErrorMessage(errorMessageFrom(error, "登录状态检查失败"));
+        }
+      }
+    };
+
+    void loadUser();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -186,6 +230,9 @@ export function useRoomControllerRuntime(): RoomControllerState {
   );
 
   useEffect(() => {
+    if (authStatus !== "authenticated") {
+      return;
+    }
     let cancelled = false;
     let websocket: WebSocket | null = null;
     let realtimeConnecting = false;
@@ -349,7 +396,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
       searchAbortRef.current?.abort();
       discoveryAbortRef.current?.abort();
     };
-  }, [clearSearchDebounce, clearVolumeDebounce, deviceId, initial.pairingToken, initial.roomSlug, runSongDiscovery, runSongSearch]);
+  }, [authStatus, clearSearchDebounce, clearVolumeDebounce, deviceId, initial.pairingToken, initial.roomSlug, runSongDiscovery, runSongSearch]);
 
   useEffect(() => {
     if (pendingVolumePercent != null && snapshot?.volumePercent === pendingVolumePercent) {
@@ -492,6 +539,8 @@ export function useRoomControllerRuntime(): RoomControllerState {
   );
 
   return {
+    authStatus,
+    authUser,
     connectionStatus,
     deviceId,
     duplicateConfirm,
@@ -512,6 +561,52 @@ export function useRoomControllerRuntime(): RoomControllerState {
     addNasAsset,
     cancelDuplicateAdd: () => setDuplicateConfirm(null),
     cancelSkip: () => setSkipConfirmOpen(false),
+    login: async (input) => {
+      try {
+        const response = await loginControllerUser(input);
+        setAuthUser(response.user);
+        setAuthStatus("authenticated");
+        setErrorMessage(null);
+      } catch (error) {
+        setErrorMessage(authErrorMessageFrom(error, "登录失败"));
+        throw error;
+      }
+    },
+    register: async (input) => {
+      try {
+        const response = await registerControllerUser(input);
+        setAuthUser(response.user);
+        setAuthStatus("authenticated");
+        setErrorMessage(null);
+      } catch (error) {
+        setErrorMessage(authErrorMessageFrom(error, "注册失败"));
+        throw error;
+      }
+    },
+    logout: async () => {
+      try {
+        await logoutControllerUser();
+      } finally {
+        setAuthUser(null);
+        setAuthStatus("unauthenticated");
+        setSnapshot(null);
+        setSongSearch(null);
+        setSongDiscovery(null);
+        setSongSearchQueryState("");
+        songSearchQueryRef.current = "";
+        setErrorMessage(null);
+      }
+    },
+    updateDisplayName: async (displayName) => {
+      try {
+        const response = await updateControllerUserProfile({ displayName });
+        setAuthUser(response.user);
+        setErrorMessage(null);
+      } catch (error) {
+        setErrorMessage(authErrorMessageFrom(error, "昵称修改失败"));
+        throw error;
+      }
+    },
     confirmDuplicateAdd: async () => {
       const selection = duplicateConfirm;
       if (!selection) {
@@ -651,5 +746,26 @@ function errorMessageFrom(error: unknown, fallback: string): string {
     }
   }
 
+  return error instanceof Error ? error.message : fallback;
+}
+
+function authErrorMessageFrom(error: unknown, fallback: string): string {
+  if (error instanceof ControllerApiError) {
+    if (error.code === "INVALID_CREDENTIALS") {
+      return "手机号或密码不正确";
+    }
+    if (error.code === "USER_ALREADY_EXISTS") {
+      return "这个手机号已经注册";
+    }
+    if (error.code === "INVALID_PASSWORD") {
+      return "密码至少 5 位";
+    }
+    if (error.code === "INVALID_PHONE") {
+      return "请输入正确的手机号";
+    }
+    if (error.code === "INVALID_DISPLAY_NAME") {
+      return "昵称不能为空";
+    }
+  }
   return error instanceof Error ? error.message : fallback;
 }

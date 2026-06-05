@@ -12,6 +12,8 @@ describe("PgQueueEntryRepository", () => {
         room_id: "living-room",
         song_id: "ktv-song-1",
         requested_by: "phone-a",
+        requested_by_user_phone: "13800138000",
+        requested_by_name: "阿飞",
         queue_position: 1,
         status: "queued",
         priority: 0,
@@ -30,18 +32,24 @@ describe("PgQueueEntryRepository", () => {
       roomId: "living-room",
       songId: "ktv-song-1",
       requestedBy: "phone-a",
+      requestedByUserPhone: "13800138000",
+      requestedByName: "阿飞",
       queuePosition: 1,
       requestedAt: now
-    });
+    } as Parameters<PgQueueEntryRepository["append"]>[0]);
 
     expect(db.queries[0]).toContain("room_id, song_id");
+    expect(db.queries[0]).toContain("requested_by_user_phone");
+    expect(db.queries[0]).toContain("requested_by_name");
     expect(db.queries[0]).not.toContain("source_type");
     expect(db.queries[0]).not.toContain("nas_asset_id");
-    expect(db.values[0]?.slice(0, 2)).toEqual(["living-room", "ktv-song-1"]);
+    expect(db.values[0]?.slice(0, 5)).toEqual(["living-room", "ktv-song-1", "phone-a", "13800138000", "阿飞"]);
     expect(entry).toMatchObject({
       source: { sourceType: "nas", songId: "ktv-song-1", assetId: "ktv-song-1" },
       songId: "ktv-song-1",
-      assetId: "ktv-song-1"
+      assetId: "ktv-song-1",
+      requestedByUserPhone: "13800138000",
+      requestedByName: "阿飞"
     });
   });
 

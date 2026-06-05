@@ -8,6 +8,8 @@ export const tableNames = {
   rooms: "rooms",
   roomClients: "room_clients",
   queueEntries: "queue_entries",
+  controllerUsers: "controller_users",
+  controllerAuthSessions: "controller_auth_sessions",
   ktvSongs: "ktv_songs"
 } as const;
 
@@ -49,6 +51,8 @@ export interface QueueEntryRow {
   room_id: string;
   song_id: string;
   requested_by: string;
+  requested_by_user_phone?: string | null;
+  requested_by_name?: string | null;
   queue_position: number;
   status: string;
   priority: number;
@@ -67,11 +71,32 @@ export interface RoomClientRow {
   client_type: string;
   device_id: string;
   device_name: string;
+  user_phone?: string | null;
   last_seen_at: Date | null;
   expires_at: Date | null;
   revoked_at: Date | null;
   capabilities: Record<string, unknown>;
   pairing_token: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface ControllerUserRow {
+  phone: string;
+  display_name: string;
+  password_hash: string;
+  created_at: Date;
+  updated_at: Date;
+  last_login_at: Date | null;
+}
+
+export interface ControllerAuthSessionRow {
+  id: string;
+  phone: string;
+  token_hash: string;
+  expires_at: Date;
+  revoked_at: Date | null;
+  last_seen_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -121,6 +146,8 @@ CREATE TABLE IF NOT EXISTS queue_entries (
   room_id text NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
   song_id text NOT NULL,
   requested_by text NOT NULL,
+  requested_by_user_phone text,
+  requested_by_name text,
   queue_position integer NOT NULL,
   status text NOT NULL CHECK (status IN ('queued', 'preparing', 'loading', 'playing', 'played', 'skipped', 'failed', 'removed')),
   priority integer NOT NULL DEFAULT 0,
@@ -133,12 +160,33 @@ CREATE TABLE IF NOT EXISTS queue_entries (
   undo_expires_at timestamptz
 );
 
+CREATE TABLE IF NOT EXISTS controller_users (
+  phone text PRIMARY KEY,
+  display_name text NOT NULL,
+  password_hash text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  last_login_at timestamptz
+);
+
+CREATE TABLE IF NOT EXISTS controller_auth_sessions (
+  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  phone text NOT NULL REFERENCES controller_users(phone) ON DELETE CASCADE,
+  token_hash text NOT NULL UNIQUE,
+  expires_at timestamptz NOT NULL,
+  revoked_at timestamptz,
+  last_seen_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS room_clients (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
   room_id text NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
   client_type text NOT NULL CHECK (client_type IN ('tv', 'controller')),
   device_id text NOT NULL,
   device_name text NOT NULL,
+  user_phone text REFERENCES controller_users(phone) ON DELETE SET NULL,
   last_seen_at timestamptz,
   expires_at timestamptz,
   revoked_at timestamptz,
@@ -171,6 +219,12 @@ CREATE INDEX IF NOT EXISTS queue_entries_room_position_idx ON queue_entries(room
 CREATE INDEX IF NOT EXISTS queue_entries_room_effective_position_idx
   ON queue_entries(room_id, status, queue_position)
   WHERE status IN ('queued', 'preparing', 'loading', 'playing');
+CREATE INDEX IF NOT EXISTS queue_entries_requested_by_user_idx
+  ON queue_entries(requested_by_user_phone, requested_at DESC)
+  WHERE requested_by_user_phone IS NOT NULL;
+CREATE INDEX IF NOT EXISTS controller_auth_sessions_active_idx
+  ON controller_auth_sessions(phone, expires_at DESC)
+  WHERE revoked_at IS NULL;
 CREATE INDEX IF NOT EXISTS room_clients_room_type_seen_idx
   ON room_clients(room_id, client_type, last_seen_at DESC)
   WHERE revoked_at IS NULL;

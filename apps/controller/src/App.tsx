@@ -1,6 +1,6 @@
 import type { SongDiscoveryArtist, SongDiscoveryGenre, SongDiscoverySong, SongSearchNasResult } from "@home-ktv/domain";
 import type { RoomInteractionKind } from "@home-ktv/player-contracts";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { fetchDiscoveryArtistSongs, fetchDiscoveryGenreSongs } from "./api/client.js";
 import {
   I18nProvider,
@@ -111,24 +111,36 @@ function ControllerApp() {
     };
   }, []);
 
+  if (controller.authStatus !== "authenticated") {
+    return (
+      <main className="app-shell auth-shell" aria-label="KTV 控制端登录">
+        <AppNotices controller={controller} noticeMessage={noticeMessage} t={t} />
+        <AuthGate controller={controller} />
+      </main>
+    );
+  }
+
   return (
     <main className={`app-shell app-shell--${activeTab}`} aria-label={t("app.aria")}>
       <AppNotices controller={controller} noticeMessage={noticeMessage} t={t} />
 
       {activeTab === "home" ? (
-        <HomeScreen
-          controller={controller}
-          discovery={discovery}
-          browseView={browseView}
-          onQueueAddFeedback={triggerQueueAddFeedback}
-          goBackBrowseView={goBackBrowseView}
-          openBrowseView={openBrowseView}
-          setInteractionComposer={setInteractionComposer}
-          setSearchOpen={setSearchOpen}
-          t={t}
-          visibleArtists={visibleArtists}
-          visibleGenres={visibleGenres}
-        />
+        <>
+          <AccountPanel controller={controller} />
+          <HomeScreen
+            controller={controller}
+            discovery={discovery}
+            browseView={browseView}
+            onQueueAddFeedback={triggerQueueAddFeedback}
+            goBackBrowseView={goBackBrowseView}
+            openBrowseView={openBrowseView}
+            setInteractionComposer={setInteractionComposer}
+            setSearchOpen={setSearchOpen}
+            t={t}
+            visibleArtists={visibleArtists}
+            visibleGenres={visibleGenres}
+          />
+        </>
       ) : (
         <ControlScreen
           controller={controller}
@@ -218,6 +230,168 @@ function ControllerApp() {
         t={t}
       />
     </main>
+  );
+}
+
+function AuthGate({ controller }: { controller: RoomControllerState }) {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [pending, setPending] = useState(false);
+  const isRegister = mode === "register";
+  const canSubmit = phone.trim().length > 0 && password.length >= 5 && (!isRegister || displayName.trim().length > 0);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canSubmit || pending) {
+      return;
+    }
+
+    setPending(true);
+    try {
+      if (isRegister) {
+        await controller.register({ phone: phone.trim(), password, displayName: displayName.trim() });
+      } else {
+        await controller.login({ phone: phone.trim(), password });
+      }
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <section className="auth-panel" aria-label="控制端账号">
+      <div className="auth-brand">
+        <span className="auth-brand__mark" aria-hidden="true">K</span>
+        <div>
+          <p>HomeKTV</p>
+          <h1>{isRegister ? "注册 KTV 控制端" : "登录 KTV 控制端"}</h1>
+        </div>
+      </div>
+      <form className="auth-form" onSubmit={(event) => void submit(event)}>
+        <label>
+          <span>手机号</span>
+          <input
+            autoComplete="tel"
+            inputMode="tel"
+            name="phone"
+            type="tel"
+            value={phone}
+            onChange={(event) => setPhone(event.target.value)}
+          />
+        </label>
+        {isRegister ? (
+          <label>
+            <span>昵称</span>
+            <input
+              autoComplete="name"
+              name="displayName"
+              type="text"
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+            />
+          </label>
+        ) : null}
+        <label>
+          <span>密码</span>
+          <input
+            autoComplete={isRegister ? "new-password" : "current-password"}
+            name="password"
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </label>
+        <button className="primary-button auth-submit" type="submit" disabled={!canSubmit || pending}>
+          {pending ? "处理中" : isRegister ? "注册并进入" : "登录"}
+        </button>
+      </form>
+      <div className="auth-switch">
+        <button className="secondary-button" type="button" onClick={() => setMode(isRegister ? "login" : "register")}>
+          {isRegister ? "已有账号，去登录" : "没有账号，去注册"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function AccountPanel({ controller }: { controller: RoomControllerState }) {
+  const user = controller.authUser;
+  const [editing, setEditing] = useState(false);
+  const [displayName, setDisplayName] = useState(user?.displayName ?? "");
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    setDisplayName(user?.displayName ?? "");
+  }, [user?.displayName]);
+
+  if (!user) {
+    return null;
+  }
+
+  const myQueue = controller.snapshot?.queue.filter((entry) => entry.requestedByUserPhone === user.phone) ?? [];
+
+  const save = async () => {
+    if (!displayName.trim() || pending) {
+      return;
+    }
+    setPending(true);
+    try {
+      await controller.updateDisplayName(displayName.trim());
+      setEditing(false);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <section className="account-panel" aria-label="我的账号">
+      <div className="account-panel__main">
+        <span className="account-avatar" aria-hidden="true">{user.displayName.slice(0, 1).toUpperCase()}</span>
+        <div>
+          {editing ? (
+            <label className="account-edit">
+              <span>昵称</span>
+              <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+            </label>
+          ) : (
+            <>
+              <strong>{user.displayName}</strong>
+              <p>{user.phone}</p>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="account-panel__actions">
+        {editing ? (
+          <>
+            <button className="primary-button compact-button" type="button" disabled={pending} onClick={() => void save()}>
+              保存
+            </button>
+            <button className="secondary-button compact-button" type="button" onClick={() => setEditing(false)}>
+              取消
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="secondary-button compact-button" type="button" onClick={() => setEditing(true)}>
+              改昵称
+            </button>
+            <button className="secondary-button compact-button" type="button" onClick={() => void controller.logout()}>
+              退出
+            </button>
+          </>
+        )}
+      </div>
+      <div className="account-history" aria-label="我的点歌">
+        <span>我的点歌</span>
+        <strong>{myQueue.length}</strong>
+        {myQueue.slice(0, 2).map((entry) => (
+          <small key={entry.queueEntryId}>{entry.songTitle}</small>
+        ))}
+      </div>
+    </section>
   );
 }
 

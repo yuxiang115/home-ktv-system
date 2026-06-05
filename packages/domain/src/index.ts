@@ -7,6 +7,7 @@ export type DeviceSessionId = EntityId;
 export type PlaybackEventId = EntityId;
 export type ControlSessionId = EntityId;
 export type ControlCommandId = EntityId;
+export type ControllerUserPhone = string;
 export type SwitchFamily = string;
 
 export const switchFamily = {
@@ -537,6 +538,8 @@ export interface QueueEntry {
   songId: SongId;
   assetId: AssetId;
   requestedBy: string;
+  requestedByUserPhone?: ControllerUserPhone | null;
+  requestedByName?: string | null;
   queuePosition: number;
   status: QueueEntryStatus;
   priority: number;
@@ -590,11 +593,20 @@ export interface ControlSession {
   roomId: RoomId;
   deviceId: string;
   deviceName: string;
+  userPhone?: ControllerUserPhone | null;
   lastSeenAt: string;
   expiresAt: string;
   revokedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ControllerUser {
+  phone: ControllerUserPhone;
+  displayName: string;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt: string | null;
 }
 
 export interface PlaybackEvent<TPayload extends Record<string, unknown> = Record<string, unknown>> {
