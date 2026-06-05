@@ -255,7 +255,7 @@ const dictionaries: Record<AppLanguage, Record<string, string>> = {
     "header.title": "点歌控制台",
     "nav.aria": "控制端导航",
     "nav.home": "首页",
-    "nav.control": "控制",
+    "nav.control": "操控",
     "shortcut.aria": "互动快捷操作",
     "shortcut.emoji": "发表情",
     "shortcut.bullet": "发弹幕",

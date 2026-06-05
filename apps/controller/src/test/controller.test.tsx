@@ -335,7 +335,7 @@ describe("mobile controller runtime", () => {
 
     await screen.findByText("歌手点歌");
 
-    const controlTab = screen.getByRole("button", { name: "控制" });
+    const controlTab = screen.getByRole("button", { name: "操控" });
     await waitFor(() => {
       const badge = controlTab.querySelector(".bottom-tab__badge");
       expect(badge?.textContent).toBe("1");
@@ -383,7 +383,7 @@ describe("mobile controller runtime", () => {
     render(<App />);
 
     const recommendations = await screen.findByRole("region", { name: "推荐歌曲" });
-    const controlTab = screen.getByRole("button", { name: "控制" });
+    const controlTab = screen.getByRole("button", { name: "操控" });
     await waitFor(() => {
       expect(controlTab.querySelector(".bottom-tab__badge")?.textContent).toBe("1");
     });
@@ -1064,6 +1064,10 @@ describe("mobile controller runtime", () => {
     const dialog = await typeSearchQuery(user, "晴天");
     const search = within(dialog);
     expect(await search.findByText("晴天", { selector: "strong" })).toBeTruthy();
+    const compactSongRow = search.getAllByRole("article", { name: /晴天/u })[0];
+    expect(compactSongRow?.classList.contains("compact-song-row")).toBe(true);
+    expect(compactSongRow?.closest(".compact-result-list")).toBeTruthy();
+    expect(within(compactSongRow!).getByText("高清版").closest(".compact-version-row")).toBeTruthy();
     expect(search.getByText("NAS 曲库")).toBeTruthy();
     expect(search.getByText("1 个版本")).toBeTruthy();
     expect(search.getByText("2 个版本")).toBeTruthy();
@@ -1198,7 +1202,7 @@ describe("mobile controller runtime", () => {
     const search = within(dialog);
     expect(await search.findByText("NAS 曲库")).toBeTruthy();
     expect(search.getByText("NAS 晴天")).toBeTruthy();
-    expect(search.getAllByText("NAS曲库").length).toBeGreaterThan(0);
+    expect(search.getByText("NAS 晴天.mkv").closest(".compact-version-row")).toBeTruthy();
     expect(search.getByText("2 个版本")).toBeTruthy();
     expect(search.getByText("单音轨歌曲源")).toBeTruthy();
     expect(search.getByText("未知大小")).toBeTruthy();
@@ -1793,7 +1797,7 @@ async function flush() {
 }
 
 async function openControlTab() {
-  fireEvent.click(screen.getByRole("button", { name: /控制|Control/u }));
+  fireEvent.click(screen.getByRole("button", { name: /操控|Control/u }));
   await flush();
   return screen.getByRole("region", { name: /当前播放|Current playback/u });
 }
