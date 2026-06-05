@@ -792,10 +792,6 @@ function ControlScreen({
           <span className="playback-state-chip">{playbackLabel}</span>
           <span>{currentModeLabel}</span>
         </div>
-        <div className="mode-summary" aria-label={t("current.modeAria")}>
-          <span className="mode-summary-label">{t("current.currentMode")}</span>
-          <span className={`mode-summary-value ${current?.vocalMode ?? "unknown"}`}>{currentModeLabel}</span>
-        </div>
         <div className="volume-control">
           <div className="volume-control__header">
             <span className="volume-control__label">{t("volume.label")}</span>

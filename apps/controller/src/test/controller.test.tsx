@@ -934,7 +934,7 @@ describe("mobile controller runtime", () => {
     await openControlTab();
     expect(screen.getByText("电视在线")).toBeTruthy();
     expect(screen.getByRole("button", { name: "切到伴唱" })).toBeTruthy();
-    expect(screen.getByLabelText("current-vocal-mode").textContent).toContain("原唱");
+    expect(screen.queryByLabelText("current-vocal-mode")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "切到伴唱" }));
     await flush();
@@ -945,7 +945,7 @@ describe("mobile controller runtime", () => {
     });
   });
 
-  it("shows the current vocal mode clearly in the playback panel", async () => {
+  it("omits the dedicated current mode row from the playback panel", async () => {
     const { requests } = installControllerFetchMock({
       restoreResponses: [json(sessionResponse(roomSnapshot()))]
     });
@@ -955,9 +955,9 @@ describe("mobile controller runtime", () => {
 
     await openControlTab();
     expect(requests.some((request) => request.url.includes("/control-session"))).toBe(true);
-    const modeSummary = screen.getByLabelText("current-vocal-mode");
-    expect(modeSummary.textContent).toContain("当前模式");
-    expect(modeSummary.textContent).toContain("伴唱");
+    expect(screen.queryByLabelText("current-vocal-mode")).toBeNull();
+    expect(screen.queryByText("当前模式")).toBeNull();
+    expect(screen.getAllByText("伴唱").length).toBeGreaterThan(0);
   });
 
   it("renders one room volume slider and sends set-volume after adjustment", async () => {
@@ -1017,7 +1017,7 @@ describe("mobile controller runtime", () => {
     await openControlTab();
     expect(screen.getByText("播放中")).toBeTruthy();
     expect(screen.getAllByText("伴唱").length).toBeGreaterThan(0);
-    expect(screen.getByText("当前模式")).toBeTruthy();
+    expect(screen.queryByText("当前模式")).toBeNull();
 
     const appText = screen.getByLabelText("Home KTV 点歌控制台").textContent ?? "";
     expect(appText).not.toContain("unknown");
