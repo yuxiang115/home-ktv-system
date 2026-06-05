@@ -115,6 +115,13 @@ export async function runWebDeploySmokeCheck(options, dependencies = {}) {
     checks.push(heartbeat.response.ok ? pass("runtime", "tv heartbeat", "accepted") : fail("runtime", "tv heartbeat", `HTTP ${heartbeat.response.status}`));
 
     if (token) {
+      const auth = await authenticateSmokeController(fetchImpl, config, controllerOrigin);
+      checks.push(
+        auth.cookie
+          ? pass("runtime", "controller auth", auth.message)
+          : fail("runtime", "controller auth", auth.message)
+      );
+
       const controlSession = await postJson(
         fetchImpl,
         apiUrl(config, `/rooms/${encodeURIComponent(config.roomSlug)}/control-sessions`),
@@ -123,7 +130,7 @@ export async function runWebDeploySmokeCheck(options, dependencies = {}) {
           deviceId: controllerDeviceId,
           deviceName: "Smoke Controller"
         },
-        { origin: controllerOrigin }
+        auth.cookie ? { origin: controllerOrigin, cookie: auth.cookie } : { origin: controllerOrigin }
       );
       const tvOnline = controlSession.body?.snapshot?.tvPresence?.online === true;
       checks.push(
@@ -161,6 +168,42 @@ async function checkCors(fetchImpl, config, origin, name) {
     return pass("cors", name, `${origin} allowed`);
   }
   return fail("cors", name, `expected access-control-allow-origin=${origin}, got ${allowOrigin || "missing"}`);
+}
+
+async function authenticateSmokeController(fetchImpl, config, origin) {
+  const credentials = {
+    phone: "9000000000",
+    password: "smoke-pass",
+    displayName: "Smoke Tester"
+  };
+  const register = await postJson(
+    fetchImpl,
+    apiUrl(config, "/controller/auth/register"),
+    credentials,
+    { origin }
+  );
+  if (register.response.ok) {
+    const cookie = cookieHeaderFromSetCookie(register.response);
+    return cookie ? { cookie, message: "registered smoke controller user" } : { cookie: "", message: "register did not return auth cookie" };
+  }
+  if (register.response.status !== 409) {
+    return { cookie: "", message: `register HTTP ${register.response.status}` };
+  }
+
+  const login = await postJson(
+    fetchImpl,
+    apiUrl(config, "/controller/auth/login"),
+    {
+      phone: credentials.phone,
+      password: credentials.password
+    },
+    { origin }
+  );
+  if (!login.response.ok) {
+    return { cookie: "", message: `login HTTP ${login.response.status}` };
+  }
+  const cookie = cookieHeaderFromSetCookie(login.response);
+  return cookie ? { cookie, message: "logged in smoke controller user" } : { cookie: "", message: "login did not return auth cookie" };
 }
 
 async function probePage(fetchImpl, name, url) {
@@ -313,6 +356,17 @@ function getHeader(response, name) {
     }
   }
   return response.headers?.[name] ?? response.headers?.[name.toLowerCase()] ?? null;
+}
+
+function cookieHeaderFromSetCookie(response) {
+  const setCookieHeaders =
+    typeof response.headers?.getSetCookie === "function"
+      ? response.headers.getSetCookie()
+      : [getHeader(response, "set-cookie")].filter(Boolean);
+  const cookiePairs = setCookieHeaders
+    .map((header) => String(header).split(";")[0]?.trim())
+    .filter(Boolean);
+  return cookiePairs.join("; ");
 }
 
 function summarize(checks) {

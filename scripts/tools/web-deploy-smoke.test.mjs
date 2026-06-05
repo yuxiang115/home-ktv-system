@@ -44,7 +44,19 @@ test("runWebDeploySmokeCheck verifies CORS, TV presence, page reachability, and 
         if (pathname === "/player/heartbeat") {
           return jsonResponse({ status: "ok" }, { "access-control-allow-origin": origin ?? "" });
         }
+        if (pathname === "/controller/auth/register") {
+          return jsonResponse(
+            { user: { phone: "13900000000", displayName: "Smoke Tester" } },
+            {
+              "access-control-allow-origin": origin ?? "",
+              "set-cookie": "ktv_controller_auth=smoke-auth-token; HttpOnly; SameSite=Lax; Path=/"
+            }
+          );
+        }
         if (pathname === "/rooms/living-room/control-sessions") {
+          if (!String(init.headers?.cookie ?? "").includes("ktv_controller_auth=smoke-auth-token")) {
+            return jsonResponse({ code: "AUTH_REQUIRED" }, { "access-control-allow-origin": origin ?? "" }, 401);
+          }
           return jsonResponse({
             snapshot: {
               tvPresence: { online: true, deviceName: "Smoke TV", lastSeenAt: "2026-05-28T00:00:00.000Z" }
@@ -66,6 +78,7 @@ test("runWebDeploySmokeCheck verifies CORS, TV presence, page reachability, and 
   assert.equal(report.checks.some((check) => check.name === "tv default api base"), true);
   assert.equal(report.checks.some((check) => check.name === "controller default api base"), true);
   assert.equal(calls.some((call) => call.url.includes("/player/bootstrap")), true);
+  assert.equal(calls.some((call) => call.url.includes("/controller/auth/register")), true);
   assert.equal(calls.some((call) => call.url.includes("/control-sessions")), true);
 });
 
