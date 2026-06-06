@@ -35,7 +35,7 @@ describe("NAS library admin workspace", () => {
 
     expect(await screen.findByRole("heading", { name: "曲库总览" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "首页" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "NAS 曲库" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "搜索预览" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "导入" })).toBeNull();
     expect(screen.queryByText("正式歌曲")).toBeNull();
 
@@ -59,25 +59,24 @@ describe("NAS library admin workspace", () => {
     expect(requests.some((request) => request.url.startsWith("/admin/import"))).toBe(false);
   });
 
-  it("renders NAS diagnostics, sample reads, and preview results", async () => {
+  it("renders NAS search preview without duplicate diagnostics panels", async () => {
     const user = userEvent.setup();
     installFetchMock();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "NAS 曲库" }));
+    await user.click(screen.getByRole("button", { name: "搜索预览" }));
 
-    const diagnostics = await screen.findByRole("region", { name: "NAS 曲库诊断" });
-    expect(within(diagnostics).getByText("探测覆盖率")).toBeTruthy();
-    expect(await within(diagnostics).findByText("0.81%")).toBeTruthy();
-    expect(within(diagnostics).getByText("音轨分布")).toBeTruthy();
-    expect(within(diagnostics).getByText("1 条音轨")).toBeTruthy();
-    expect(within(diagnostics).getByText("NAS 抽样读取")).toBeTruthy();
-    expect(within(diagnostics).getByText("搜索预览")).toBeTruthy();
-    expect(within(diagnostics).getAllByText("未映射").length).toBeGreaterThan(0);
-    expect(within(diagnostics).getByText("relative/song.mkv")).toBeTruthy();
-    expect(within(diagnostics).getByText("path outside source root")).toBeTruthy();
-    expect(within(diagnostics).getByText("周杰伦 - 七里香")).toBeTruthy();
-    expect(within(diagnostics).getByText("/mnt/nas/KTV歌曲/周杰伦-七里香.mkv")).toBeTruthy();
+    const preview = await screen.findByRole("region", { name: "NAS 搜索预览" });
+    expect(within(preview).getByRole("heading", { name: "搜索预览" })).toBeTruthy();
+    expect(within(preview).getByLabelText("预览关键词")).toBeTruthy();
+    expect(within(preview).getByText("预览结果")).toBeTruthy();
+    expect(within(preview).getByText("索引状态")).toBeTruthy();
+    expect(within(preview).getByText("周杰伦 - 七里香")).toBeTruthy();
+    expect(within(preview).getByText("/mnt/nas/KTV歌曲/周杰伦-七里香.mkv")).toBeTruthy();
+    expect(within(preview).queryByText("探测覆盖率")).toBeNull();
+    expect(within(preview).queryByText("音轨分布")).toBeNull();
+    expect(within(preview).queryByText("NAS 抽样读取")).toBeNull();
+    expect(within(preview).queryByText("relative/song.mkv")).toBeNull();
   });
 
   it("refreshes and searches NAS diagnostics through the runtime only", async () => {
@@ -92,7 +91,7 @@ describe("NAS library admin workspace", () => {
 
     expect(await screen.findByText("未映射")).toBeTruthy();
     const beforeRefresh = requests.filter((request) => request.url.startsWith("/admin/ktv-index/diagnostics")).length;
-    await user.click(screen.getByRole("button", { name: "刷新诊断" }));
+    await user.click(screen.getByRole("button", { name: "刷新" }));
 
     await waitFor(() => {
       expect(requests.filter((request) => request.url.startsWith("/admin/ktv-index/diagnostics")).length).toBeGreaterThan(beforeRefresh);
@@ -101,7 +100,7 @@ describe("NAS library admin workspace", () => {
     await user.type(screen.getByLabelText("搜索"), "七里香");
 
     await waitFor(() => {
-      expect(requests.some((request) => request.url === "/admin/ktv-index/diagnostics?q=%E4%B8%83%E9%87%8C%E9%A6%99&sampleSize=12&sampleTimeoutMs=250")).toBe(true);
+      expect(requests.some((request) => request.url === "/admin/ktv-index/diagnostics?q=%E4%B8%83%E9%87%8C%E9%A6%99&sampleSize=0&sampleTimeoutMs=250")).toBe(true);
     });
     expect(requests.some((request) => request.url.startsWith("/admin/catalog/"))).toBe(false);
     expect(requests.some((request) => request.url.startsWith("/admin/import"))).toBe(false);
@@ -118,7 +117,7 @@ function SongCatalogRuntimeProbe() {
         <input value={runtime.ktvIndexQuery} onChange={(event) => runtime.setKtvIndexQuery(event.target.value)} />
       </label>
       <button type="button" onClick={() => void runtime.refreshKtvIndexDiagnostics()}>
-        刷新诊断
+        刷新
       </button>
       <p>{sample?.status === "unmapped" ? "未映射" : sample?.status}</p>
       <p>{sample?.filePath}</p>

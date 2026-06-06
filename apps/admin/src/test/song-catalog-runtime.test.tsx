@@ -22,7 +22,7 @@ describe("useSongCatalogRuntime", () => {
     const { result } = renderHook(() => useSongCatalogRuntime(), { wrapper: createWrapper() });
 
     await waitFor(() => expect(result.current.ktvIndexDiagnostics?.songCount).toBe(1));
-    expect(requests.some((request) => request.method === "GET" && request.url === "/admin/ktv-index/diagnostics?sampleSize=12&sampleTimeoutMs=250")).toBe(true);
+    expect(requests.some((request) => request.method === "GET" && request.url === "/admin/ktv-index/diagnostics?sampleSize=0&sampleTimeoutMs=250")).toBe(true);
 
     const beforeRefresh = requests.length;
     await act(async () => {
@@ -45,7 +45,7 @@ describe("useSongCatalogRuntime", () => {
     });
 
     await waitFor(() => {
-      expect(requests.some((request) => request.url === "/admin/ktv-index/diagnostics?q=%E4%B8%83%E9%87%8C%E9%A6%99&sampleSize=12&sampleTimeoutMs=250")).toBe(true);
+      expect(requests.some((request) => request.url === "/admin/ktv-index/diagnostics?q=%E4%B8%83%E9%87%8C%E9%A6%99&sampleSize=0&sampleTimeoutMs=250")).toBe(true);
     });
   });
 });

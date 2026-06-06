@@ -23,7 +23,7 @@ export function useSongCatalogRuntime(): UseSongCatalogRuntimeResult {
     queryFn: () =>
       fetchKtvIndexDiagnostics({
         query: debouncedKtvIndexQuery,
-        sampleSize: 12,
+        sampleSize: 0,
         sampleTimeoutMs: 250
       }),
     retry: false

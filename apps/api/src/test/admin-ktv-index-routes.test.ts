@@ -45,6 +45,29 @@ describe("admin KTV index routes", () => {
     });
   });
 
+  it("allows the diagnostics preview page to disable NAS sample reads", async () => {
+    const ktvIndex = {
+      searchIndexedSongs: vi.fn(async () => []),
+      getDiagnostics: vi.fn(async () => createDiagnosticsFixture()),
+      getAdminDashboard: vi.fn(async () => createDashboardFixture())
+    };
+    const server = Fastify();
+    await registerAdminKtvIndexRoutes(server, { ktvIndex });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/admin/ktv-index/diagnostics?sampleSize=0&sampleTimeoutMs=250"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(ktvIndex.getDiagnostics).toHaveBeenCalledWith({
+      previewQuery: "",
+      previewLimit: 8,
+      sampleSize: 0,
+      sampleTimeoutMs: 250
+    });
+  });
+
   it("returns the Admin dashboard report from the indexed catalog repository", async () => {
     const ktvIndex = {
       searchIndexedSongs: vi.fn(async () => []),

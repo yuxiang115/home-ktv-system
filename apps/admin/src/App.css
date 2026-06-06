@@ -943,6 +943,10 @@ code {
   gap: 20px;
 }
 
+.ktv-index-search-workbench {
+  gap: 16px;
+}
+
 .ktv-index-header,
 .editor-header,
 .real-mv-preview,
@@ -1052,6 +1056,12 @@ code {
 .ktv-index-header h2 {
   font-size: 20px;
   line-height: 1.25;
+}
+
+.ktv-index-search-hero {
+  align-items: end;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.42fr) minmax(320px, 1fr);
 }
 
 .ktv-index-metrics,
@@ -1207,7 +1217,8 @@ code {
 .fact-grid dt,
 .real-mv-facts dt,
 .asset-facts dt,
-.ktv-synced-source-card dt {
+.ktv-synced-source-card dt,
+.ktv-index-status-fact dt {
   color: #a6b3d3;
   font-size: 11px;
   font-weight: 950;
@@ -1225,7 +1236,8 @@ code {
 .fact-grid dd,
 .real-mv-facts dd,
 .asset-facts dd,
-.ktv-synced-source-card dd {
+.ktv-synced-source-card dd,
+.ktv-index-status-fact dd {
   color: var(--text);
   font-size: 18px;
   font-weight: 950;
@@ -1233,6 +1245,10 @@ code {
   min-width: 0;
   overflow-wrap: anywhere;
   text-shadow: 0 0 12px rgba(255, 255, 255, 0.12);
+}
+
+.ktv-index-status-fact dd {
+  font-size: 14px;
 }
 
 .ktv-index-metrics .metric-card:nth-child(-n + 3) dd,
@@ -1265,6 +1281,72 @@ code {
 .ktv-index-preview,
 .room-status-wide {
   grid-column: 1 / -1;
+}
+
+.ktv-index-search-layout {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+  min-width: 0;
+}
+
+.ktv-index-search-layout .ktv-index-preview {
+  grid-column: auto;
+}
+
+.ktv-index-preview-toolbar,
+.ktv-index-status-panel header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  min-width: 0;
+}
+
+.ktv-index-preview-toolbar span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.ktv-index-status-panel {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.048), rgba(255, 255, 255, 0.014)),
+    rgba(3, 7, 18, 0.62);
+  border: 1px solid rgba(122, 202, 255, 0.15);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.052), var(--shadow-panel);
+  min-width: 0;
+  padding: 16px;
+}
+
+.ktv-index-status-panel h3 {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.ktv-index-status-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.ktv-index-status-fact {
+  border-top: 1px solid rgba(122, 202, 255, 0.13);
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-top: 10px;
+}
+
+.ktv-index-status-fact:first-child {
+  border-top: 0;
+  padding-top: 0;
 }
 
 .ktv-index-detail-grid h3,
@@ -1413,6 +1495,18 @@ code {
   box-shadow: 0 0 20px rgba(41, 216, 255, 0.1);
 }
 
+.ktv-index-search-field--hero {
+  gap: 8px;
+}
+
+.ktv-index-search-field--hero input {
+  border-color: rgba(41, 216, 255, 0.34);
+  border-radius: 12px;
+  font-size: 16px;
+  min-height: 50px;
+  padding: 11px 14px;
+}
+
 .ktv-index-preview-list,
 .room-task-list,
 .room-event-list,
@@ -1429,7 +1523,7 @@ code {
 }
 
 .ktv-index-preview-list {
-  max-height: 280px;
+  max-height: min(680px, calc(100vh - 330px));
   overflow: auto;
 }
 
@@ -2008,6 +2102,11 @@ code {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .ktv-index-search-hero,
+  .ktv-index-search-layout {
+    grid-template-columns: 1fr;
+  }
+
   .ktv-index-metrics .metric-card:nth-child(-n + 3) {
     grid-column: span 1;
     min-height: 94px;
@@ -2134,6 +2233,21 @@ code {
   .room-section-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .ktv-index-search-hero {
+    align-items: stretch;
+  }
+
+  .ktv-index-preview-toolbar,
+  .ktv-index-status-panel header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ktv-index-search-field--hero input {
+    font-size: 15px;
+    min-height: 46px;
   }
 
   .room-status-grid,

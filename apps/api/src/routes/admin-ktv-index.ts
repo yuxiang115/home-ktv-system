@@ -48,7 +48,8 @@ export async function registerAdminKtvIndexRoutes(
 
 function parseBoundedNumber(value: string | number | undefined, fallback: number, min: number, max: number): number {
   const parsed = typeof value === "number" ? value : Number.parseInt(value ?? "", 10);
-  return Math.min(max, Math.max(min, parsed || fallback));
+  const normalized = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.min(max, Math.max(min, normalized));
 }
 
 function parseDashboardTrendRange(value: string | undefined): AdminDashboardTrendRange {

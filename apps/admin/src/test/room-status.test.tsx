@@ -50,7 +50,7 @@ describe("room status view", () => {
     expect(await screen.findByRole("heading", { name: "Library overview" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Imports" })).toBeNull();
     expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "NAS library" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Search preview" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Rooms" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "中文" }));
@@ -72,7 +72,7 @@ describe("room status view", () => {
     await user.click(screen.getByRole("button", { name: "房间" }));
 
     expect(await screen.findByRole("heading", { name: "房间状态" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "NAS 曲库" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "搜索预览" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "导入" })).toBeNull();
   });
 
