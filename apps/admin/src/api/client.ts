@@ -1,4 +1,4 @@
-import type { KtvIndexDiagnosticsResponse } from "@home-ktv/domain";
+import type { AdminDashboardResponse, KtvIndexDiagnosticsResponse } from "@home-ktv/domain";
 import type { RoomStatusResponse, RoomStatusRefreshResponse } from "../rooms/types.js";
 
 const adminDeviceIdStorageKey = "home_ktv_admin_device_id";
@@ -40,6 +40,10 @@ export async function fetchKtvIndexDiagnostics(
   }
   const queryString = params.toString();
   return fetchAdmin<KtvIndexDiagnosticsResponse>(`/admin/ktv-index/diagnostics${queryString ? `?${queryString}` : ""}`);
+}
+
+export async function fetchAdminDashboard(): Promise<AdminDashboardResponse> {
+  return fetchAdmin<AdminDashboardResponse>("/admin/ktv-index/dashboard");
 }
 
 export async function fetchRoomStatus(roomSlug: string): Promise<RoomStatusResponse> {

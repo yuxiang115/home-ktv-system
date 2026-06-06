@@ -29,6 +29,10 @@ export async function registerAdminKtvIndexRoutes(
       })
     );
   });
+
+  server.get("/admin/ktv-index/dashboard", async (_request, reply) => {
+    await reply.send(await dependencies.ktvIndex.getAdminDashboard());
+  });
 }
 
 function parseBoundedNumber(value: string | number | undefined, fallback: number, min: number, max: number): number {

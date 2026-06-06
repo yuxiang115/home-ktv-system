@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { refreshPairingToken, refreshRoomStatus } from "../api/client.js";
+import { fetchAdminDashboard, refreshPairingToken, refreshRoomStatus } from "../api/client.js";
 
 type RequestRecord = {
   url: string;
@@ -25,16 +25,21 @@ describe("admin api client", () => {
         if (requestUrl.pathname === "/admin/rooms/living-room/pairing-token/refresh") {
           return json({ pairing: { tokenExpiresAt: "2026-05-04T10:30:45.000Z", controllerUrl: "url", qrPayload: "url" } });
         }
+        if (requestUrl.pathname === "/admin/ktv-index/dashboard") {
+          return json({ generatedAt: "2026-06-06T08:00:00.000Z", metrics: [], health: {}, storage: {}, catalog: {}, requests: {} });
+        }
         return json({ error: "NOT_FOUND" }, 404);
       })
     );
 
     await refreshRoomStatus("living-room");
     await refreshPairingToken("living-room");
+    await fetchAdminDashboard();
 
     expect(requests).toEqual([
       { url: "/admin/rooms/living-room", method: "GET" },
-      { url: "/admin/rooms/living-room/pairing-token/refresh", method: "POST" }
+      { url: "/admin/rooms/living-room/pairing-token/refresh", method: "POST" },
+      { url: "/admin/ktv-index/dashboard", method: "GET" }
     ]);
   });
 });

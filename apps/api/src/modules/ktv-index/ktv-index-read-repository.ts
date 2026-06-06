@@ -1,4 +1,11 @@
 import type {
+  AdminDashboardChartPoint,
+  AdminDashboardLargestSong,
+  AdminDashboardRecentRequest,
+  AdminDashboardRequestTrendPoint,
+  AdminDashboardResponse,
+  AdminDashboardSongRank,
+  AdminDashboardUserRank,
   KtvIndexDiagnosticsPreviewResult,
   KtvIndexDiagnosticsResponse,
   KtvIndexNasSampleResult,
@@ -66,6 +73,7 @@ export interface KtvIndexReadRepository {
   listIndexedSongsByArtist?(input: ListKtvIndexedSongsByArtistInput): Promise<SongSearchIndexedResult[]>;
   listIndexedSongsByGenre?(input: ListKtvIndexedSongsByGenreInput): Promise<SongSearchIndexedResult[]>;
   getDiagnostics(input?: GetKtvIndexDiagnosticsInput): Promise<KtvIndexDiagnosticsResponse>;
+  getAdminDashboard(): Promise<AdminDashboardResponse>;
 }
 
 export interface KtvIndexReadRepositoryOptions {
@@ -111,6 +119,14 @@ interface CountRow {
   missing_asset_count: number | string;
   song_count: number | string;
   artist_count: number | string;
+  total_size_bytes?: number | string | null;
+  tagged_song_count?: number | string;
+  cover_count?: number | string;
+  user_count?: number | string;
+  queue_entry_count?: number | string;
+  total_song_request_count?: number | string;
+  recent_queue_entry_count?: number | string;
+  latest_requested_at?: Date | string | null;
 }
 
 interface ParseStrategyRow {
@@ -149,6 +165,67 @@ interface DiscoveryGenreSummaryRow {
   genre: string;
   song_count: number | string;
   play_count: number | string;
+}
+
+interface DashboardCountRow {
+  active_asset_count: number | string;
+  missing_asset_count: number | string;
+  song_count: number | string;
+  artist_count: number | string;
+  total_size_bytes: number | string | null;
+  tagged_song_count: number | string;
+  cover_count: number | string;
+  user_count: number | string;
+  queue_entry_count: number | string;
+  total_song_request_count: number | string;
+  recent_queue_entry_count: number | string;
+  latest_requested_at: Date | string | null;
+}
+
+interface DashboardLabelCountRow {
+  label: string | null;
+  count: number | string;
+}
+
+interface DashboardLargestSongRow {
+  song_id: string;
+  title: string;
+  artist_name: string;
+  file_name: string;
+  extension: string | null;
+  size_bytes: number | string | null;
+}
+
+interface DashboardTrendRow {
+  date: string | Date;
+  request_count: number | string;
+  unique_requester_count: number | string;
+}
+
+interface DashboardSongRankRow {
+  song_id: string;
+  title: string;
+  artist_name: string;
+  request_count: number | string;
+  last_requested_at: Date | string | null;
+}
+
+interface DashboardUserRankRow {
+  requester_id: string | null;
+  display_name: string | null;
+  request_count: number | string;
+  unique_song_count: number | string;
+  last_requested_at: Date | string | null;
+}
+
+interface DashboardRecentRequestRow {
+  queue_entry_id: string;
+  song_id: string | null;
+  title: string | null;
+  artist_name: string | null;
+  requester_name: string | null;
+  requested_at: Date | string;
+  status: AdminDashboardRecentRequest["status"];
 }
 
 const untaggedDiscoveryGenre = "未打标签";
@@ -328,6 +405,114 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
       minParseConfidence: confidence.minParseConfidence,
       nasSample,
       preview
+    };
+  }
+
+  async getAdminDashboard(): Promise<AdminDashboardResponse> {
+    const tables = await this.getTableAvailability();
+    const emptyDashboard = createEmptyAdminDashboard(tables);
+    if (!tables.every((table) => table.exists)) {
+      return emptyDashboard;
+    }
+
+    const [
+      latestRun,
+      counts,
+      parseStrategies,
+      technicalStatusCounts,
+      audioTrackDistribution,
+      confidence,
+      sizeBuckets,
+      extensionDistribution,
+      largestSongs,
+      topArtists,
+      topStyles,
+      requestStatusDistribution,
+      requestTrend,
+      topSongs,
+      topRequestedArtists,
+      topRequesters,
+      recentRequests
+    ] = await Promise.all([
+      this.getLatestRun(),
+      this.getDashboardCounts(),
+      this.getParseStrategies(),
+      this.getTechnicalStatusCounts(),
+      this.getAudioTrackDistribution(),
+      this.getConfidenceSummary(),
+      this.getSizeBuckets(),
+      this.getExtensionDistribution(),
+      this.getLargestSongs(),
+      this.getDashboardTopArtists(),
+      this.getTopStyles(),
+      this.getRequestStatusDistribution(),
+      this.getRequestTrend(),
+      this.getTopRequestedSongs(),
+      this.getTopRequestedArtists(),
+      this.getTopRequesters(),
+      this.getRecentRequests()
+    ]);
+
+    const probedCount = countTechnicalStatus(technicalStatusCounts, "probed");
+    const probeCoveragePercent = calculateProbeCoveragePercent({
+      activeAssetCount: counts.activeAssetCount,
+      probedCount
+    });
+    return {
+      generatedAt: new Date().toISOString(),
+      metrics: [
+        { id: "songs", label: "总歌曲数", value: counts.songCount, unit: "首", trendLabel: null },
+        { id: "artists", label: "歌手数", value: counts.artistCount, unit: "位", trendLabel: null },
+        { id: "storage", label: "总存储", value: counts.totalSizeBytes, unit: "bytes", trendLabel: null },
+        {
+          id: "requests",
+          label: "累计点歌",
+          value: counts.queueEntryCount,
+          unit: "次",
+          trendLabel: `近 30 天 ${counts.recentQueueEntryCount} 次`
+        },
+        { id: "users", label: "用户数", value: counts.userCount, unit: "人", trendLabel: null },
+        {
+          id: "coverage",
+          label: "探测覆盖",
+          value: probeCoveragePercent,
+          unit: "percent",
+          trendLabel: `待探测 ${countTechnicalStatus(technicalStatusCounts, "pending")}`
+        }
+      ],
+      health: {
+        latestRun,
+        sourceRoot: latestRun?.sourceRoot ?? null,
+        probeCoveragePercent,
+        lowConfidenceCount: confidence.lowConfidenceCount,
+        missingAssetCount: counts.missingAssetCount
+      },
+      storage: {
+        totalBytes: counts.totalSizeBytes,
+        sizeBuckets,
+        extensionDistribution,
+        largestSongs
+      },
+      catalog: {
+        topArtists,
+        topStyles,
+        parseStrategies: parseStrategies.map((row) => ({ label: row.parseStrategy, value: row.count })),
+        technicalStatus: technicalStatusCounts.map((row) => ({ label: row.technicalStatus, value: row.count })),
+        audioTrackDistribution: audioTrackDistribution.map((row) => ({
+          label: `${row.audioTrackCount} 条音轨`,
+          value: row.count
+        }))
+      },
+      requests: {
+        totalQueueEntries: counts.queueEntryCount,
+        totalSongRequests: counts.totalSongRequestCount,
+        requestTrend,
+        statusDistribution: requestStatusDistribution,
+        topSongs,
+        topArtists: topRequestedArtists,
+        topRequesters,
+        recentRequests
+      }
     };
   }
 
@@ -561,6 +746,291 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
     };
   }
 
+  private async getDashboardCounts(): Promise<{
+    activeAssetCount: number;
+    missingAssetCount: number;
+    songCount: number;
+    artistCount: number;
+    totalSizeBytes: number;
+    taggedSongCount: number;
+    coverCount: number;
+    userCount: number;
+    queueEntryCount: number;
+    totalSongRequestCount: number;
+    recentQueueEntryCount: number;
+    latestRequestedAt: string | null;
+  }> {
+    const result = await this.db.query<DashboardCountRow>(
+      `SELECT count(*) FILTER (WHERE s.missing_at IS NULL) AS active_asset_count,
+              count(*) FILTER (WHERE s.missing_at IS NOT NULL) AS missing_asset_count,
+              (SELECT count(*) FROM ktv_songs s2 WHERE s2.missing_at IS NULL) AS song_count,
+              (SELECT count(DISTINCT artist_name)
+               FROM ktv_songs s3
+               CROSS JOIN LATERAL unnest(
+                 CASE
+                   WHEN cardinality(s3.artist_names) > 0 THEN s3.artist_names
+                   ELSE ARRAY[s3.primary_artist_name]::text[]
+                 END
+               ) AS artist(artist_name)
+               WHERE s3.missing_at IS NULL AND length(trim(artist_name)) > 0) AS artist_count,
+              coalesce(sum(s.size_bytes) FILTER (WHERE s.missing_at IS NULL), 0) AS total_size_bytes,
+              count(*) FILTER (
+                WHERE s.missing_at IS NULL
+                  AND EXISTS (SELECT 1 FROM unnest(s.style_tags) AS tag(tag_name) WHERE length(trim(tag_name)) > 0)
+              ) AS tagged_song_count,
+              count(*) FILTER (WHERE s.missing_at IS NULL AND s.cover_image_url IS NOT NULL) AS cover_count,
+              (SELECT count(*) FROM controller_users) AS user_count,
+              (SELECT count(*) FROM queue_entries) AS queue_entry_count,
+              coalesce(sum(s.request_count) FILTER (WHERE s.missing_at IS NULL), 0) AS total_song_request_count,
+              (SELECT count(*) FROM queue_entries WHERE requested_at >= now() - interval '30 days') AS recent_queue_entry_count,
+              (SELECT max(requested_at) FROM queue_entries) AS latest_requested_at
+       FROM ktv_songs s`
+    );
+    const row = result.rows[0];
+    return {
+      activeAssetCount: toNumber(row?.active_asset_count ?? 0),
+      missingAssetCount: toNumber(row?.missing_asset_count ?? 0),
+      songCount: toNumber(row?.song_count ?? 0),
+      artistCount: toNumber(row?.artist_count ?? 0),
+      totalSizeBytes: toNumber(row?.total_size_bytes ?? 0),
+      taggedSongCount: toNumber(row?.tagged_song_count ?? 0),
+      coverCount: toNumber(row?.cover_count ?? 0),
+      userCount: toNumber(row?.user_count ?? 0),
+      queueEntryCount: toNumber(row?.queue_entry_count ?? 0),
+      totalSongRequestCount: toNumber(row?.total_song_request_count ?? 0),
+      recentQueueEntryCount: toNumber(row?.recent_queue_entry_count ?? 0),
+      latestRequestedAt: row?.latest_requested_at ? toIsoString(row.latest_requested_at) : null
+    };
+  }
+
+  private async getSizeBuckets(): Promise<AdminDashboardChartPoint[]> {
+    const result = await this.db.query<DashboardLabelCountRow>(
+      `WITH bucketed AS (
+         SELECT CASE
+                  WHEN size_bytes IS NULL THEN '未知'
+                  WHEN size_bytes < 100 * 1024 * 1024 THEN '100MB 以下'
+                  WHEN size_bytes < 300 * 1024 * 1024 THEN '100-300MB'
+                  WHEN size_bytes < 700 * 1024 * 1024 THEN '300-700MB'
+                  WHEN size_bytes < 1024 * 1024 * 1024 THEN '700MB-1GB'
+                  WHEN size_bytes < 2 * 1024 * 1024 * 1024 THEN '1-2GB'
+                  ELSE '2GB 以上'
+                END AS size_bucket,
+                CASE
+                  WHEN size_bytes IS NULL THEN 0
+                  WHEN size_bytes < 100 * 1024 * 1024 THEN 1
+                  WHEN size_bytes < 300 * 1024 * 1024 THEN 2
+                  WHEN size_bytes < 700 * 1024 * 1024 THEN 3
+                  WHEN size_bytes < 1024 * 1024 * 1024 THEN 4
+                  WHEN size_bytes < 2 * 1024 * 1024 * 1024 THEN 5
+                  ELSE 6
+                END AS sort_order
+         FROM ktv_songs
+         WHERE missing_at IS NULL
+       )
+       SELECT size_bucket AS label, count(*)::int AS count
+       FROM bucketed
+       GROUP BY size_bucket, sort_order
+       ORDER BY sort_order ASC`
+    );
+    return mapLabelCountRows(result.rows);
+  }
+
+  private async getExtensionDistribution(): Promise<AdminDashboardChartPoint[]> {
+    const result = await this.db.query<DashboardLabelCountRow>(
+      `SELECT coalesce(nullif(extension, ''), 'unknown') AS label,
+              count(*)::int AS count
+       FROM ktv_songs
+       WHERE missing_at IS NULL
+       GROUP BY extension
+       ORDER BY count DESC, label ASC
+       LIMIT 12`
+    );
+    return mapLabelCountRows(result.rows);
+  }
+
+  private async getLargestSongs(): Promise<AdminDashboardLargestSong[]> {
+    const result = await this.db.query<DashboardLargestSongRow>(
+      `SELECT s.id AS song_id,
+              s.title,
+              s.primary_artist_name AS artist_name,
+              s.file_name,
+              s.extension,
+              s.size_bytes
+       FROM ktv_songs s
+       WHERE s.missing_at IS NULL AND s.size_bytes IS NOT NULL
+       ORDER BY s.size_bytes DESC, s.title ASC
+       LIMIT 8`
+    );
+    return result.rows.map((row) => ({
+      songId: row.song_id,
+      title: row.title,
+      artistName: row.artist_name,
+      fileName: row.file_name,
+      extension: row.extension ?? "unknown",
+      sizeBytes: toNumber(row.size_bytes ?? 0)
+    }));
+  }
+
+  private async getDashboardTopArtists(): Promise<AdminDashboardChartPoint[]> {
+    const artists = await this.listDiscoveryArtists();
+    return artists.slice(0, 12).map((artist) => ({
+      label: artist.artistName,
+      value: artist.songCount
+    }));
+  }
+
+  private async getTopStyles(): Promise<AdminDashboardChartPoint[]> {
+    const result = await this.db.query<DashboardLabelCountRow>(
+      `WITH style_tag_catalog AS (
+         SELECT s.id AS song_id,
+                tag.tag_name
+         FROM ktv_songs s
+         CROSS JOIN LATERAL unnest(s.style_tags) AS tag(tag_name)
+         WHERE s.missing_at IS NULL AND length(trim(tag.tag_name)) > 0
+       )
+       SELECT tag_name AS label,
+              count(DISTINCT song_id)::int AS count
+       FROM style_tag_catalog
+       GROUP BY tag_name
+       ORDER BY count DESC, label ASC
+       LIMIT 12`
+    );
+    return mapLabelCountRows(result.rows);
+  }
+
+  private async getRequestStatusDistribution(): Promise<AdminDashboardChartPoint[]> {
+    const result = await this.db.query<DashboardLabelCountRow>(
+      `SELECT status AS label, count(*)::int AS count
+       FROM queue_entries
+       GROUP BY status
+       ORDER BY count DESC, status ASC`
+    );
+    return mapLabelCountRows(result.rows);
+  }
+
+  private async getRequestTrend(): Promise<AdminDashboardRequestTrendPoint[]> {
+    const result = await this.db.query<DashboardTrendRow>(
+      `SELECT to_char(date_trunc('day', requested_at), 'YYYY-MM-DD') AS date,
+              count(*)::int AS request_count,
+              count(DISTINCT coalesce(requested_by_user_phone, requested_by, requested_by_name, 'unknown'))::int AS unique_requester_count
+       FROM queue_entries
+       WHERE requested_at >= current_date - interval '13 days'
+       GROUP BY date_trunc('day', requested_at)
+       ORDER BY date ASC`
+    );
+    return result.rows.map((row) => ({
+      date: row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date),
+      requestCount: toNumber(row.request_count),
+      uniqueRequesterCount: toNumber(row.unique_requester_count)
+    }));
+  }
+
+  private async getTopRequestedSongs(): Promise<AdminDashboardSongRank[]> {
+    const result = await this.db.query<DashboardSongRankRow>(
+      `WITH top_requested_songs AS (
+         SELECT q.song_id,
+                count(*)::int AS request_count,
+                max(q.requested_at) AS last_requested_at
+         FROM queue_entries q
+         GROUP BY q.song_id
+         ORDER BY request_count DESC, last_requested_at DESC NULLS LAST
+         LIMIT 10
+       )
+       SELECT t.song_id,
+              coalesce(s.title, '未知歌曲') AS title,
+              coalesce(s.primary_artist_name, '未知歌手') AS artist_name,
+              t.request_count,
+              t.last_requested_at
+       FROM top_requested_songs t
+       LEFT JOIN ktv_songs s ON s.id = t.song_id
+       ORDER BY t.request_count DESC, t.last_requested_at DESC NULLS LAST`
+    );
+    return result.rows.map((row) => ({
+      songId: row.song_id,
+      title: row.title,
+      artistName: row.artist_name,
+      requestCount: toNumber(row.request_count),
+      lastRequestedAt: row.last_requested_at ? toIsoString(row.last_requested_at) : null
+    }));
+  }
+
+  private async getTopRequestedArtists(): Promise<AdminDashboardChartPoint[]> {
+    const result = await this.db.query<DashboardLabelCountRow>(
+      `WITH top_requested_artists AS (
+         SELECT coalesce(s.primary_artist_name, '未知歌手') AS artist_name,
+                count(*)::int AS request_count
+         FROM queue_entries q
+         LEFT JOIN ktv_songs s ON s.id = q.song_id
+         GROUP BY coalesce(s.primary_artist_name, '未知歌手')
+       )
+       SELECT artist_name AS label, request_count AS count
+       FROM top_requested_artists
+       ORDER BY request_count DESC, artist_name ASC
+       LIMIT 10`
+    );
+    return mapLabelCountRows(result.rows);
+  }
+
+  private async getTopRequesters(): Promise<AdminDashboardUserRank[]> {
+    const result = await this.db.query<DashboardUserRankRow>(
+      `WITH top_requesters AS (
+         SELECT coalesce(q.requested_by_user_phone, q.requested_by, q.requested_by_name, 'unknown') AS requester_id,
+                coalesce(max(u.display_name), max(q.requested_by_name), max(q.requested_by), '未知用户') AS display_name,
+                count(*)::int AS request_count,
+                count(DISTINCT q.song_id)::int AS unique_song_count,
+                max(q.requested_at) AS last_requested_at
+         FROM queue_entries q
+         LEFT JOIN controller_users u ON u.phone = q.requested_by_user_phone
+         GROUP BY coalesce(q.requested_by_user_phone, q.requested_by, q.requested_by_name, 'unknown')
+       )
+       SELECT requester_id,
+              display_name,
+              request_count,
+              unique_song_count,
+              last_requested_at
+       FROM top_requesters
+       ORDER BY request_count DESC, last_requested_at DESC NULLS LAST
+       LIMIT 10`
+    );
+    return result.rows.map((row) => ({
+      requesterId: row.requester_id ?? "unknown",
+      displayName: row.display_name ?? "未知用户",
+      requestCount: toNumber(row.request_count),
+      uniqueSongCount: toNumber(row.unique_song_count),
+      lastRequestedAt: row.last_requested_at ? toIsoString(row.last_requested_at) : null
+    }));
+  }
+
+  private async getRecentRequests(): Promise<AdminDashboardRecentRequest[]> {
+    const result = await this.db.query<DashboardRecentRequestRow>(
+      `WITH recent_requests AS (
+         SELECT q.id AS queue_entry_id,
+                q.song_id,
+                coalesce(s.title, '未知歌曲') AS title,
+                coalesce(s.primary_artist_name, '未知歌手') AS artist_name,
+                coalesce(u.display_name, q.requested_by_name, q.requested_by, '未知用户') AS requester_name,
+                q.requested_at,
+                q.status
+         FROM queue_entries q
+         LEFT JOIN ktv_songs s ON s.id = q.song_id
+         LEFT JOIN controller_users u ON u.phone = q.requested_by_user_phone
+         ORDER BY q.requested_at DESC
+         LIMIT 12
+       )
+       SELECT *
+       FROM recent_requests`
+    );
+    return result.rows.map((row) => ({
+      queueEntryId: row.queue_entry_id,
+      songId: row.song_id,
+      title: row.title ?? "未知歌曲",
+      artistName: row.artist_name ?? "未知歌手",
+      requesterName: row.requester_name ?? "未知用户",
+      requestedAt: toIsoString(row.requested_at),
+      status: row.status
+    }));
+  }
+
   private async getParseStrategies(): Promise<KtvIndexDiagnosticsResponse["parseStrategies"]> {
     const result = await this.db.query<ParseStrategyRow>(
       `SELECT parse_strategy, count(*)::int AS count
@@ -727,6 +1197,57 @@ function createEmptyNasSample(): KtvIndexDiagnosticsResponse["nasSample"] {
     unmapped: 0,
     results: [] satisfies KtvIndexNasSampleResult[]
   };
+}
+
+function createEmptyAdminDashboard(tables: KtvIndexTableAvailability[]): AdminDashboardResponse {
+  return {
+    generatedAt: new Date().toISOString(),
+    metrics: [
+      { id: "songs", label: "总歌曲数", value: 0, unit: "首", trendLabel: null },
+      { id: "artists", label: "歌手数", value: 0, unit: "位", trendLabel: null },
+      { id: "storage", label: "总存储", value: 0, unit: "bytes", trendLabel: null },
+      { id: "requests", label: "累计点歌", value: 0, unit: "次", trendLabel: "近 30 天 0 次" },
+      { id: "users", label: "用户数", value: 0, unit: "人", trendLabel: null },
+      { id: "coverage", label: "探测覆盖", value: 0, unit: "percent", trendLabel: "待探测 0" }
+    ],
+    health: {
+      latestRun: null,
+      sourceRoot: tables.every((table) => table.exists) ? null : "索引表未就绪",
+      probeCoveragePercent: 0,
+      lowConfidenceCount: 0,
+      missingAssetCount: 0
+    },
+    storage: {
+      totalBytes: 0,
+      sizeBuckets: [],
+      extensionDistribution: [],
+      largestSongs: []
+    },
+    catalog: {
+      topArtists: [],
+      topStyles: [],
+      parseStrategies: [],
+      technicalStatus: [],
+      audioTrackDistribution: []
+    },
+    requests: {
+      totalQueueEntries: 0,
+      totalSongRequests: 0,
+      requestTrend: [],
+      statusDistribution: [],
+      topSongs: [],
+      topArtists: [],
+      topRequesters: [],
+      recentRequests: []
+    }
+  };
+}
+
+function mapLabelCountRows(rows: readonly DashboardLabelCountRow[]): AdminDashboardChartPoint[] {
+  return rows.map((row) => ({
+    label: row.label ?? "unknown",
+    value: toNumber(row.count)
+  }));
 }
 
 function discoverySongPageLimit(value: number | undefined): number {

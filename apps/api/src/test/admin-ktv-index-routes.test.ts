@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import type { KtvIndexDiagnosticsResponse } from "@home-ktv/domain";
+import type { AdminDashboardResponse, KtvIndexDiagnosticsResponse } from "@home-ktv/domain";
 import { describe, expect, it, vi } from "vitest";
 import { registerAdminKtvIndexRoutes } from "../routes/admin-ktv-index.js";
 
@@ -7,7 +7,8 @@ describe("admin KTV index routes", () => {
   it("returns bounded raw diagnostics for the requested preview query", async () => {
     const ktvIndex = {
       searchIndexedSongs: vi.fn(async () => []),
-      getDiagnostics: vi.fn(async () => createDiagnosticsFixture())
+      getDiagnostics: vi.fn(async () => createDiagnosticsFixture()),
+      getAdminDashboard: vi.fn(async () => createDashboardFixture())
     };
     const server = Fastify();
     await registerAdminKtvIndexRoutes(server, { ktvIndex });
@@ -42,6 +43,34 @@ describe("admin KTV index routes", () => {
         }
       ]
     });
+  });
+
+  it("returns the Admin dashboard report from the indexed catalog repository", async () => {
+    const ktvIndex = {
+      searchIndexedSongs: vi.fn(async () => []),
+      getDiagnostics: vi.fn(async () => createDiagnosticsFixture()),
+      getAdminDashboard: vi.fn(async () => createDashboardFixture())
+    };
+    const server = Fastify();
+    await registerAdminKtvIndexRoutes(server, { ktvIndex });
+
+    const response = await server.inject({
+      method: "GET",
+      url: "/admin/ktv-index/dashboard"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(ktvIndex.getAdminDashboard).toHaveBeenCalledWith();
+    const body = response.json();
+    expect(body).toMatchObject({
+      generatedAt: "2026-06-06T08:00:00.000Z",
+      requests: {
+        totalQueueEntries: 240,
+        topSongs: [{ title: "七里香", requestCount: 32 }],
+        topRequesters: [{ displayName: "阿飞", requestCount: 55 }]
+      }
+    });
+    expect(body.metrics).toEqual(expect.arrayContaining([expect.objectContaining({ id: "songs", label: "总歌曲数", value: 31893 })]));
   });
 });
 
@@ -121,5 +150,80 @@ function createDiagnosticsFixture(): KtvIndexDiagnosticsResponse {
         ]
       }
     ]
+  };
+}
+
+function createDashboardFixture(): AdminDashboardResponse {
+  return {
+    generatedAt: "2026-06-06T08:00:00.000Z",
+    metrics: [
+      { id: "songs", label: "总歌曲数", value: 31893, unit: "首", trendLabel: null },
+      { id: "storage", label: "总存储", value: 987654321, unit: "bytes", trendLabel: null }
+    ],
+    health: {
+      latestRun: null,
+      sourceRoot: "/mnt/nas/KTV歌曲",
+      probeCoveragePercent: 81.5,
+      lowConfidenceCount: 3,
+      missingAssetCount: 2
+    },
+    storage: {
+      totalBytes: 987654321,
+      sizeBuckets: [{ label: "100-300MB", value: 120 }],
+      extensionDistribution: [{ label: ".mkv", value: 300 }],
+      largestSongs: [
+        {
+          songId: "ktv-song-1",
+          title: "七里香",
+          artistName: "周杰伦",
+          fileName: "周杰伦-七里香.mkv",
+          extension: ".mkv",
+          sizeBytes: 987654321
+        }
+      ]
+    },
+    catalog: {
+      topArtists: [{ label: "周杰伦", value: 120 }],
+      topStyles: [{ label: "流行", value: 600 }],
+      parseStrategies: [{ label: "filename", value: 31893 }],
+      technicalStatus: [{ label: "probed", value: 280 }],
+      audioTrackDistribution: [{ label: "2 条音轨", value: 260 }]
+    },
+    requests: {
+      totalQueueEntries: 240,
+      totalSongRequests: 340,
+      requestTrend: [{ date: "2026-06-06", requestCount: 12, uniqueRequesterCount: 3 }],
+      statusDistribution: [{ label: "played", value: 180 }],
+      topSongs: [
+        {
+          songId: "ktv-song-1",
+          title: "七里香",
+          artistName: "周杰伦",
+          requestCount: 32,
+          lastRequestedAt: "2026-06-06T07:30:00.000Z"
+        }
+      ],
+      topArtists: [{ label: "周杰伦", value: 80 }],
+      topRequesters: [
+        {
+          requesterId: "13800000000",
+          displayName: "阿飞",
+          requestCount: 55,
+          uniqueSongCount: 30,
+          lastRequestedAt: "2026-06-06T07:30:00.000Z"
+        }
+      ],
+      recentRequests: [
+        {
+          queueEntryId: "queue-1",
+          songId: "ktv-song-1",
+          title: "七里香",
+          artistName: "周杰伦",
+          requesterName: "阿飞",
+          requestedAt: "2026-06-06T07:30:00.000Z",
+          status: "played"
+        }
+      ]
+    }
   };
 }

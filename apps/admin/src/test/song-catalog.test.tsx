@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { KtvIndexDiagnosticsResponse } from "@home-ktv/domain";
+import type { AdminDashboardResponse, KtvIndexDiagnosticsResponse } from "@home-ktv/domain";
 import { App } from "../App.js";
 import { useSongCatalogRuntime } from "../songs/use-song-catalog-runtime.js";
 
@@ -29,23 +29,32 @@ afterEach(() => {
 });
 
 describe("NAS library admin workspace", () => {
-  it("opens directly on NAS library diagnostics without mounting retired import or catalog workspaces", async () => {
+  it("opens on the Admin report dashboard before mounting NAS diagnostics", async () => {
     const { requests } = installFetchMock();
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "NAS 曲库" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "曲库总览" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "首页" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "NAS 曲库" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "导入" })).toBeNull();
     expect(screen.queryByText("正式歌曲")).toBeNull();
 
-    await waitFor(() => expect(requests.some((request) => request.url.startsWith("/admin/ktv-index/diagnostics"))).toBe(true));
+    await waitFor(() => expect(requests.some((request) => request.url === "/admin/ktv-index/dashboard")).toBe(true));
+    expect(screen.getByText("总歌曲数")).toBeTruthy();
+    expect(screen.getByText("31,893")).toBeTruthy();
+    expect(screen.getByText("唱榜 Top 10")).toBeTruthy();
+    expect(screen.getAllByText("阿飞").length).toBeGreaterThan(0);
+    expect(requests.some((request) => request.url.startsWith("/admin/ktv-index/diagnostics"))).toBe(false);
     expect(requests.some((request) => request.url.startsWith("/admin/catalog/"))).toBe(false);
     expect(requests.some((request) => request.url.startsWith("/admin/import"))).toBe(false);
   });
 
   it("renders NAS diagnostics, sample reads, and preview results", async () => {
+    const user = userEvent.setup();
     installFetchMock();
     render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "NAS 曲库" }));
 
     const diagnostics = await screen.findByRole("region", { name: "NAS 曲库诊断" });
     expect(within(diagnostics).getByText("探测覆盖率")).toBeTruthy();
@@ -121,6 +130,10 @@ function installFetchMock() {
 
       if (method === "GET" && requestUrl.pathname === "/admin/ktv-index/diagnostics") {
         return json(createKtvDiagnostics());
+      }
+
+      if (method === "GET" && requestUrl.pathname === "/admin/ktv-index/dashboard") {
+        return json(createAdminDashboard());
       }
 
       return json({ error: "UNHANDLED_TEST_ROUTE" }, 500);
@@ -213,5 +226,85 @@ function createKtvDiagnostics(): KtvIndexDiagnosticsResponse {
         ]
       }
     ]
+  };
+}
+
+function createAdminDashboard(): AdminDashboardResponse {
+  return {
+    generatedAt: "2026-06-06T08:00:00.000Z",
+    metrics: [
+      { id: "songs", label: "总歌曲数", value: 31893, unit: "首", trendLabel: null },
+      { id: "artists", label: "歌手数", value: 8568, unit: "位", trendLabel: null },
+      { id: "storage", label: "总存储", value: 9876543210, unit: "bytes", trendLabel: null },
+      { id: "requests", label: "累计点歌", value: 240, unit: "次", trendLabel: "近 30 天 19 次" }
+    ],
+    health: {
+      latestRun: null,
+      sourceRoot: "/mnt/nas/KTV歌曲",
+      probeCoveragePercent: 0.81,
+      lowConfidenceCount: 3,
+      missingAssetCount: 2
+    },
+    storage: {
+      totalBytes: 9876543210,
+      sizeBuckets: [
+        { label: "100MB 以下", value: 8 },
+        { label: "100-300MB", value: 120 }
+      ],
+      extensionDistribution: [{ label: ".mkv", value: 300 }],
+      largestSongs: [
+        {
+          songId: "ktv-largest-1",
+          title: "最长的电影",
+          artistName: "周杰伦",
+          fileName: "周杰伦-最长的电影.mkv",
+          extension: ".mkv",
+          sizeBytes: 1999000000
+        }
+      ]
+    },
+    catalog: {
+      topArtists: [{ label: "周杰伦", value: 120 }],
+      topStyles: [{ label: "流行", value: 600 }],
+      parseStrategies: [{ label: "filename", value: 34385 }],
+      technicalStatus: [{ label: "probed", value: 280 }],
+      audioTrackDistribution: [{ label: "2 条音轨", value: 260 }]
+    },
+    requests: {
+      totalQueueEntries: 240,
+      totalSongRequests: 340,
+      requestTrend: [{ date: "2026-06-06", requestCount: 12, uniqueRequesterCount: 3 }],
+      statusDistribution: [{ label: "played", value: 180 }],
+      topSongs: [
+        {
+          songId: "ktv-song-1",
+          title: "七里香",
+          artistName: "周杰伦",
+          requestCount: 32,
+          lastRequestedAt: "2026-06-06T07:30:00.000Z"
+        }
+      ],
+      topArtists: [{ label: "周杰伦", value: 80 }],
+      topRequesters: [
+        {
+          requesterId: "13800000000",
+          displayName: "阿飞",
+          requestCount: 55,
+          uniqueSongCount: 30,
+          lastRequestedAt: "2026-06-06T07:30:00.000Z"
+        }
+      ],
+      recentRequests: [
+        {
+          queueEntryId: "queue-1",
+          songId: "ktv-song-1",
+          title: "七里香",
+          artistName: "周杰伦",
+          requesterName: "阿飞",
+          requestedAt: "2026-06-06T07:30:00.000Z",
+          status: "played"
+        }
+      ]
+    }
   };
 }

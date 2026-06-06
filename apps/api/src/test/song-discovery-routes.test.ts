@@ -317,6 +317,10 @@ class FakeKtvIndexReadRepository implements KtvIndexReadRepository {
   async getDiagnostics(): Promise<never> {
     throw new Error("Not implemented");
   }
+
+  async getAdminDashboard(): Promise<never> {
+    throw new Error("Not implemented");
+  }
 }
 
 class FakeQueueEntryRepository implements QueueEntryRepository {

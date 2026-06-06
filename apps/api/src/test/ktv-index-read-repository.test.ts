@@ -235,6 +235,62 @@ describe("PgKtvIndexReadRepository", () => {
       expect.stringContaining("parse_confidence < 0.75")
     ]));
   });
+
+  it("builds a complete Admin dashboard report from catalog, storage, and request history", async () => {
+    const db = new ScriptedKtvIndexDb();
+    const repository = new PgKtvIndexReadRepository(db);
+
+    const dashboard = await repository.getAdminDashboard();
+
+    expect(dashboard.metrics).toEqual([
+      { id: "songs", label: "总歌曲数", value: 31893, unit: "首", trendLabel: null },
+      { id: "artists", label: "歌手数", value: 8568, unit: "位", trendLabel: null },
+      { id: "storage", label: "总存储", value: 9876543210, unit: "bytes", trendLabel: null },
+      { id: "requests", label: "累计点歌", value: 240, unit: "次", trendLabel: "近 30 天 19 次" },
+      { id: "users", label: "用户数", value: 6, unit: "人", trendLabel: null },
+      { id: "coverage", label: "探测覆盖", value: 0.81, unit: "percent", trendLabel: "待探测 100" }
+    ]);
+    expect(dashboard.storage).toMatchObject({
+      totalBytes: 9876543210,
+      sizeBuckets: [
+        { label: "100MB 以下", value: 8 },
+        { label: "100-300MB", value: 120 }
+      ],
+      extensionDistribution: [{ label: ".mkv", value: 300 }],
+      largestSongs: [
+        {
+          title: "最长的电影",
+          artistName: "周杰伦",
+          fileName: "周杰伦-最长的电影.mkv",
+          sizeBytes: 1999000000
+        }
+      ]
+    });
+    expect(dashboard.catalog.topArtists).toEqual(expect.arrayContaining([{ label: "周杰伦", value: 120 }]));
+    expect(dashboard.catalog.topStyles).toEqual(expect.arrayContaining([{ label: "流行", value: 600 }]));
+    expect(dashboard.catalog.parseStrategies).toEqual(expect.arrayContaining([{ label: "filename", value: 34385 }]));
+    expect(dashboard.catalog.technicalStatus).toEqual(expect.arrayContaining([{ label: "failed", value: 2 }]));
+    expect(dashboard.catalog.audioTrackDistribution).toEqual(expect.arrayContaining([{ label: "1 条音轨", value: 12 }]));
+    expect(dashboard.requests).toMatchObject({
+      totalQueueEntries: 240,
+      totalSongRequests: 340,
+      requestTrend: [{ date: "2026-06-06", requestCount: 12, uniqueRequesterCount: 3 }],
+      statusDistribution: [{ label: "played", value: 180 }],
+      topSongs: [{ title: "七里香", artistName: "周杰伦", requestCount: 32 }],
+      topArtists: [{ label: "周杰伦", value: 80 }],
+      topRequesters: [{ requesterId: "13800000000", displayName: "阿飞", requestCount: 55, uniqueSongCount: 30 }],
+      recentRequests: [{ title: "七里香", requesterName: "阿飞", status: "played" }]
+    });
+
+    expect(db.queries.map((query) => query.text)).toEqual(expect.arrayContaining([
+      expect.stringContaining("sum(s.size_bytes) FILTER"),
+      expect.stringContaining("CASE"),
+      expect.stringContaining("GROUP BY extension"),
+      expect.stringContaining("requested_by_user_phone"),
+      expect.stringContaining("date_trunc('day', requested_at)"),
+      expect.stringContaining("controller_users")
+    ]));
+  });
 });
 
 describe("buildNasSample", () => {
@@ -342,7 +398,15 @@ class ScriptedKtvIndexDb implements QueryExecutor {
             active_asset_count: "34385",
             missing_asset_count: "28",
             song_count: "31893",
-            artist_count: "8568"
+            artist_count: "8568",
+            total_size_bytes: "9876543210",
+            tagged_song_count: "28000",
+            cover_count: "1200",
+            user_count: "6",
+            queue_entry_count: "240",
+            total_song_request_count: "340",
+            recent_queue_entry_count: "19",
+            latest_requested_at: new Date("2026-06-06T07:30:00.000Z")
           }
         ] as TRow[]
       };
@@ -385,6 +449,102 @@ class ScriptedKtvIndexDb implements QueryExecutor {
         rows: [
           { artist_id: "周杰伦", artist_name: "周杰伦", song_count: "120", play_count: "300" },
           { artist_id: "五月天", artist_name: "五月天", song_count: "80", play_count: "40" }
+        ] as TRow[]
+      };
+    }
+
+    if (text.includes("CASE") && text.includes("size_bucket")) {
+      return {
+        rows: [
+          { label: "100MB 以下", count: "8" },
+          { label: "100-300MB", count: "120" }
+        ] as TRow[]
+      };
+    }
+
+    if (text.includes("GROUP BY extension")) {
+      return { rows: [{ label: ".mkv", count: "300" }] as TRow[] };
+    }
+
+    if (text.includes("ORDER BY s.size_bytes DESC")) {
+      return {
+        rows: [
+          {
+            song_id: "ktv-largest-1",
+            title: "最长的电影",
+            artist_name: "周杰伦",
+            file_name: "周杰伦-最长的电影.mkv",
+            extension: ".mkv",
+            size_bytes: "1999000000"
+          }
+        ] as TRow[]
+      };
+    }
+
+    if (text.includes("style_tag_catalog")) {
+      return { rows: [{ label: "流行", count: "600" }] as TRow[] };
+    }
+
+    if (text.includes("GROUP BY status")) {
+      return { rows: [{ label: "played", count: "180" }] as TRow[] };
+    }
+
+    if (text.includes("date_trunc('day', requested_at)")) {
+      return {
+        rows: [
+          {
+            date: "2026-06-06",
+            request_count: "12",
+            unique_requester_count: "3"
+          }
+        ] as TRow[]
+      };
+    }
+
+    if (text.includes("top_requested_songs")) {
+      return {
+        rows: [
+          {
+            song_id: "ktv-song-1",
+            title: "七里香",
+            artist_name: "周杰伦",
+            request_count: "32",
+            last_requested_at: new Date("2026-06-06T07:30:00.000Z")
+          }
+        ] as TRow[]
+      };
+    }
+
+    if (text.includes("top_requested_artists")) {
+      return { rows: [{ label: "周杰伦", count: "80" }] as TRow[] };
+    }
+
+    if (text.includes("top_requesters")) {
+      return {
+        rows: [
+          {
+            requester_id: "13800000000",
+            display_name: "阿飞",
+            request_count: "55",
+            unique_song_count: "30",
+            last_requested_at: new Date("2026-06-06T07:30:00.000Z")
+          }
+        ] as TRow[]
+      };
+    }
+
+    if (text.includes("recent_requests")) {
+      return {
+        rows: [
+          {
+            queue_entry_id: "queue-1",
+            song_id: "ktv-song-1",
+            title: "七里香",
+            artist_name: "周杰伦",
+            requester_name: "阿飞",
+            requested_at: new Date("2026-06-06T07:30:00.000Z"),
+            status: "played"
+          }
         ] as TRow[]
       };
     }

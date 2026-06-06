@@ -480,6 +480,97 @@ export interface KtvIndexDiagnosticsResponse {
   preview: KtvIndexDiagnosticsPreviewResult[];
 }
 
+export interface AdminDashboardMetric {
+  id: string;
+  label: string;
+  value: number;
+  unit: string | null;
+  trendLabel: string | null;
+}
+
+export interface AdminDashboardChartPoint {
+  label: string;
+  value: number;
+}
+
+export interface AdminDashboardRequestTrendPoint {
+  date: string;
+  requestCount: number;
+  uniqueRequesterCount: number;
+}
+
+export interface AdminDashboardSongRank {
+  songId: SongId;
+  title: string;
+  artistName: string;
+  requestCount: number;
+  lastRequestedAt: string | null;
+}
+
+export interface AdminDashboardUserRank {
+  requesterId: string;
+  displayName: string;
+  requestCount: number;
+  uniqueSongCount: number;
+  lastRequestedAt: string | null;
+}
+
+export interface AdminDashboardRecentRequest {
+  queueEntryId: QueueEntryId;
+  songId: SongId | null;
+  title: string;
+  artistName: string;
+  requesterName: string;
+  requestedAt: string;
+  status: QueueEntryStatus;
+}
+
+export interface AdminDashboardLargestSong {
+  songId: SongId;
+  title: string;
+  artistName: string;
+  fileName: string;
+  extension: string;
+  sizeBytes: number;
+}
+
+export interface AdminDashboardHealth {
+  latestRun: KtvIndexRunSummary | null;
+  sourceRoot: string | null;
+  probeCoveragePercent: number;
+  lowConfidenceCount: number;
+  missingAssetCount: number;
+}
+
+export interface AdminDashboardResponse {
+  generatedAt: string;
+  metrics: AdminDashboardMetric[];
+  health: AdminDashboardHealth;
+  storage: {
+    totalBytes: number;
+    sizeBuckets: AdminDashboardChartPoint[];
+    extensionDistribution: AdminDashboardChartPoint[];
+    largestSongs: AdminDashboardLargestSong[];
+  };
+  catalog: {
+    topArtists: AdminDashboardChartPoint[];
+    topStyles: AdminDashboardChartPoint[];
+    parseStrategies: AdminDashboardChartPoint[];
+    technicalStatus: AdminDashboardChartPoint[];
+    audioTrackDistribution: AdminDashboardChartPoint[];
+  };
+  requests: {
+    totalQueueEntries: number;
+    totalSongRequests: number;
+    requestTrend: AdminDashboardRequestTrendPoint[];
+    statusDistribution: AdminDashboardChartPoint[];
+    topSongs: AdminDashboardSongRank[];
+    topArtists: AdminDashboardChartPoint[];
+    topRequesters: AdminDashboardUserRank[];
+    recentRequests: AdminDashboardRecentRequest[];
+  };
+}
+
 export interface KtvIndexSyncedSourceRecord {
   songId: SongId;
   assetId: AssetId;

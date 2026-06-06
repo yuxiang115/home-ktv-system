@@ -34,7 +34,7 @@ describe("room status view", () => {
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "NAS 曲库" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "曲库总览" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "中文" })).toBeTruthy();
   });
 
@@ -43,30 +43,31 @@ describe("room status view", () => {
     installFetchMock();
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "NAS 曲库" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "曲库总览" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "English" }));
 
-    expect(await screen.findByRole("heading", { name: "NAS library" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Library overview" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Imports" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "NAS library" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Rooms" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "中文" }));
 
-    expect(screen.getByRole("heading", { name: "NAS 曲库" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "曲库总览" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "房间" }));
 
     expect(await screen.findByRole("heading", { name: "房间状态" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "刷新房间状态" })).toBeTruthy();
   });
 
-  it("defaults to NAS library and switches to Rooms without reloading", async () => {
+  it("defaults to dashboard and switches to Rooms without reloading", async () => {
     const user = userEvent.setup();
     installFetchMock();
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "NAS 曲库" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "曲库总览" })).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "房间" }));
 
@@ -181,6 +182,10 @@ function installFetchMock() {
         });
       }
 
+      if (method === "GET" && requestUrl.pathname === "/admin/ktv-index/dashboard") {
+        return json(createAdminDashboard());
+      }
+
       if (method === "GET" && requestUrl.pathname === "/admin/rooms/living-room") {
         return json(roomStatus(refreshed ? "2026-05-04T10:30:00.000Z" : "2026-05-04T10:15:00.000Z"));
       }
@@ -202,6 +207,43 @@ function installFetchMock() {
   );
 
   return { requests };
+}
+
+function createAdminDashboard() {
+  return {
+    generatedAt: "2026-06-06T08:00:00.000Z",
+    metrics: [{ id: "songs", label: "总歌曲数", value: 1, unit: "首", trendLabel: null }],
+    health: {
+      latestRun: null,
+      sourceRoot: "/mnt/nas/KTV歌曲",
+      probeCoveragePercent: 0,
+      lowConfidenceCount: 0,
+      missingAssetCount: 0
+    },
+    storage: {
+      totalBytes: 0,
+      sizeBuckets: [],
+      extensionDistribution: [],
+      largestSongs: []
+    },
+    catalog: {
+      topArtists: [],
+      topStyles: [],
+      parseStrategies: [],
+      technicalStatus: [],
+      audioTrackDistribution: []
+    },
+    requests: {
+      totalQueueEntries: 0,
+      totalSongRequests: 0,
+      requestTrend: [],
+      statusDistribution: [],
+      topSongs: [],
+      topArtists: [],
+      topRequesters: [],
+      recentRequests: []
+    }
+  };
 }
 
 function roomStatus(tokenExpiresAt: string) {
