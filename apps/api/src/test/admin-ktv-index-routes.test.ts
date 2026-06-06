@@ -196,7 +196,6 @@ function createDashboardFixture(): AdminDashboardResponse {
       totalQueueEntries: 240,
       totalSongRequests: 340,
       requestTrend: [{ date: "2026-06-06", requestCount: 12, uniqueRequesterCount: 3 }],
-      statusDistribution: [{ label: "played", value: 180 }],
       topSongs: [
         {
           songId: "ktv-song-1",

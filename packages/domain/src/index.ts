@@ -568,7 +568,6 @@ export interface AdminDashboardResponse {
     totalQueueEntries: number;
     totalSongRequests: number;
     requestTrend: AdminDashboardRequestTrendPoint[];
-    statusDistribution: AdminDashboardChartPoint[];
     topSongs: AdminDashboardSongRank[];
     topArtists: AdminDashboardChartPoint[];
     topRequesters: AdminDashboardUserRank[];

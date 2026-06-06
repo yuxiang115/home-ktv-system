@@ -278,7 +278,6 @@ describe("PgKtvIndexReadRepository", () => {
       totalQueueEntries: 240,
       totalSongRequests: 340,
       requestTrend: [{ date: "2026-06-06", requestCount: 12, uniqueRequesterCount: 3 }],
-      statusDistribution: [{ label: "played", value: 180 }],
       topSongs: [{ title: "七里香", artistName: "周杰伦", requestCount: 32 }],
       topArtists: [{ label: "周杰伦", value: 80 }],
       topRequesters: [{ requesterId: "13800000000", displayName: "阿飞", requestCount: 55, uniqueSongCount: 30 }],

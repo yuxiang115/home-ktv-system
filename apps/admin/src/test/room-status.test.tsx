@@ -240,7 +240,6 @@ function createAdminDashboard() {
       totalQueueEntries: 0,
       totalSongRequests: 0,
       requestTrend: [],
-      statusDistribution: [],
       topSongs: [],
       topArtists: [],
       topRequesters: [],

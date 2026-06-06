@@ -470,7 +470,6 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
       largestSongs,
       topArtists,
       topStyles,
-      requestStatusDistribution,
       requestTrend,
       topSongs,
       topRequestedArtists,
@@ -491,7 +490,6 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
       this.getLargestSongs(),
       this.getDashboardTopArtists(),
       this.getTopStyles(),
-      this.getRequestStatusDistribution(),
       this.getRequestTrend(trendRange),
       this.getTopRequestedSongs(),
       this.getTopRequestedArtists(),
@@ -556,7 +554,6 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
         totalQueueEntries: counts.queueEntryCount,
         totalSongRequests: counts.totalSongRequestCount,
         requestTrend,
-        statusDistribution: requestStatusDistribution,
         topSongs,
         topArtists: topRequestedArtists,
         topRequesters,
@@ -940,16 +937,6 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
       })),
       20
     );
-  }
-
-  private async getRequestStatusDistribution(): Promise<AdminDashboardChartPoint[]> {
-    const result = await this.db.query<DashboardLabelCountRow>(
-      `SELECT status AS label, count(*)::int AS count
-       FROM queue_entries
-       GROUP BY status
-       ORDER BY count DESC, status ASC`
-    );
-    return mapLabelCountRows(result.rows);
   }
 
   private async getRequestTrend(trendRange: AdminDashboardTrendRange): Promise<AdminDashboardRequestTrendPoint[]> {
@@ -1361,7 +1348,6 @@ function createEmptyAdminDashboard(tables: KtvIndexTableAvailability[]): AdminDa
       totalQueueEntries: 0,
       totalSongRequests: 0,
       requestTrend: [],
-      statusDistribution: [],
       topSongs: [],
       topArtists: [],
       topRequesters: [],
