@@ -83,7 +83,6 @@ export async function runWebDeploySmokeCheck(options, dependencies = {}) {
   const controllerOrigin = originFor(config.controllerBaseUrl);
   const tvOrigin = originFor(config.tvWebBaseUrl);
   const controllerDeviceId = `smoke-controller-${Date.now()}`;
-  const tvDeviceId = `smoke-tv-${Date.now()}`;
 
   checks.push(await checkCors(fetchImpl, config, controllerOrigin, "cors controller"));
   checks.push(await checkCors(fetchImpl, config, tvOrigin, "cors tv"));
@@ -94,8 +93,9 @@ export async function runWebDeploySmokeCheck(options, dependencies = {}) {
 
   const bootstrap = await postJson(fetchImpl, apiUrl(config, "/player/bootstrap"), {
     roomSlug: config.roomSlug,
-    deviceId: tvDeviceId,
+    deviceId: `smoke-tv-${Date.now()}`,
     deviceName: "Smoke TV",
+    probeOnly: true,
     capabilities: { runtime: "web-deploy-smoke" }
   }, { origin: tvOrigin });
 
@@ -103,16 +103,7 @@ export async function runWebDeploySmokeCheck(options, dependencies = {}) {
     checks.push(fail("runtime", "tv bootstrap", `HTTP ${bootstrap.response.status}`));
   } else {
     const token = readPairingToken(bootstrap.body);
-    checks.push(token ? pass("runtime", "tv bootstrap", "registered and returned pairing token") : fail("runtime", "tv bootstrap", "missing pairing token"));
-
-    const heartbeat = await postJson(fetchImpl, apiUrl(config, "/player/heartbeat"), {
-      roomSlug: config.roomSlug,
-      deviceId: tvDeviceId,
-      currentQueueEntryId: null,
-      playbackPositionMs: 0,
-      health: "ok"
-    }, { origin: tvOrigin });
-    checks.push(heartbeat.response.ok ? pass("runtime", "tv heartbeat", "accepted") : fail("runtime", "tv heartbeat", `HTTP ${heartbeat.response.status}`));
+    checks.push(token ? pass("runtime", "tv bootstrap", "probe returned pairing token") : fail("runtime", "tv bootstrap", "missing pairing token"));
 
     if (token) {
       const auth = await authenticateSmokeController(fetchImpl, config, controllerOrigin);
@@ -136,7 +127,9 @@ export async function runWebDeploySmokeCheck(options, dependencies = {}) {
       checks.push(
         controlSession.response.ok && tvOnline
           ? pass("runtime", "controller sees tv online", "tvPresence.online=true")
-          : fail("runtime", "controller sees tv online", controlSession.response.ok ? "tvPresence.online was not true" : `HTTP ${controlSession.response.status}`)
+          : controlSession.response.ok
+            ? warn("runtime", "controller sees tv online", "no real TV was online during smoke")
+            : fail("runtime", "controller sees tv online", `HTTP ${controlSession.response.status}`)
       );
     }
   }
@@ -376,12 +369,16 @@ function summarize(checks) {
       summary[check.status.toLowerCase()] += 1;
       return summary;
     },
-    { total: 0, pass: 0, fail: 0 }
+    { total: 0, pass: 0, warn: 0, fail: 0 }
   );
 }
 
 function pass(category, name, message) {
   return { category, name, status: "PASS", message };
+}
+
+function warn(category, name, message) {
+  return { category, name, status: "WARN", message };
 }
 
 function fail(category, name, message) {
@@ -393,7 +390,7 @@ function printReport(report) {
   for (const check of report.checks) {
     console.log(`${check.status.padEnd(4)} ${check.category.padEnd(8)} ${check.name} - ${check.message}`);
   }
-  console.log(`Summary: ${report.summary.pass}/${report.summary.total} passed, ${report.summary.fail} failed`);
+  console.log(`Summary: ${report.summary.pass}/${report.summary.total} passed, ${report.summary.warn} warnings, ${report.summary.fail} failed`);
 }
 
 function readOptionValue(argv, index, option) {

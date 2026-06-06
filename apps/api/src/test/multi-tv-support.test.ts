@@ -51,6 +51,46 @@ describe("single TV support", () => {
 
     await server.close();
   });
+
+  it("does not let deployment smoke probes replace the active player", async () => {
+    const server = await createServer(serverConfig);
+
+    const realTv = await bootstrapTv(server, "android-tv-main", "客厅电视");
+    const smokeProbe = await server.inject({
+      method: "POST",
+      url: "/player/bootstrap",
+      payload: {
+        roomSlug: "living-room",
+        deviceId: "smoke-tv-probe",
+        deviceName: "Smoke TV",
+        probeOnly: true,
+        capabilities: {
+          runtime: "web-deploy-smoke"
+        }
+      }
+    });
+
+    expect(realTv.statusCode).toBe(200);
+    expect(smokeProbe.statusCode).toBe(200);
+    expect(smokeProbe.json()).toMatchObject({
+      status: "probed",
+      pairing: {
+        token: expect.any(String)
+      }
+    });
+
+    const snapshot = await createControlSnapshot(server);
+
+    expect(snapshot.tvPresence).toMatchObject({
+      online: true,
+      onlineCount: 1
+    });
+    expect(snapshot.tvPresence.devices).toEqual([
+      expect.objectContaining({ deviceId: "android-tv-main", deviceName: "客厅电视" })
+    ]);
+
+    await server.close();
+  });
 });
 
 async function bootstrapTv(server: Awaited<ReturnType<typeof createServer>>, deviceId: string, deviceName: string) {

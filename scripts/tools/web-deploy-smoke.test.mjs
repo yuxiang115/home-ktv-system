@@ -77,7 +77,10 @@ test("runWebDeploySmokeCheck verifies CORS, TV presence, page reachability, and 
   assert.equal(report.checks.every((check) => check.status === "PASS"), true);
   assert.equal(report.checks.some((check) => check.name === "tv default api base"), true);
   assert.equal(report.checks.some((check) => check.name === "controller default api base"), true);
-  assert.equal(calls.some((call) => call.url.includes("/player/bootstrap")), true);
+  const bootstrapCall = calls.find((call) => call.url.includes("/player/bootstrap"));
+  assert.equal(Boolean(bootstrapCall), true);
+  assert.equal(JSON.parse(bootstrapCall.init.body).probeOnly, true);
+  assert.equal(calls.some((call) => call.url.includes("/player/heartbeat")), false);
   assert.equal(calls.some((call) => call.url.includes("/controller/auth/register")), true);
   assert.equal(calls.some((call) => call.url.includes("/control-sessions")), true);
 });

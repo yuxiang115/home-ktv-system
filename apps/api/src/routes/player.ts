@@ -19,6 +19,7 @@ import type { RoomRepository } from "../modules/rooms/repositories/room-reposito
 import type { ControlSessionRepository } from "../modules/controller/repositories/control-session-repository.js";
 import type { RoomSnapshotBroadcaster } from "../modules/realtime/room-snapshot-broadcaster.js";
 import { buildRoomControlSnapshot } from "../modules/rooms/build-control-snapshot.js";
+import { getOrCreatePairingInfo } from "../modules/rooms/pairing-token-service.js";
 import { buildRoomSnapshot } from "./room-snapshots.js";
 
 const telemetryKinds = new Set<PlayerTelemetryKind>([
@@ -57,6 +58,7 @@ interface BootstrapBody {
   deviceId?: string;
   deviceName?: string;
   appVersion?: string;
+  probeOnly?: boolean;
   capabilities?: Record<string, boolean | string | number>;
 }
 
@@ -101,6 +103,28 @@ export async function registerPlayerRoutes(server: FastifyInstance, dependencies
     const room = await dependencies.repositories.rooms.findBySlug(roomSlug);
     if (!room) {
       await reply.code(404).send({ code: "ROOM_NOT_FOUND" });
+      return;
+    }
+
+    if (isBootstrapProbe(body)) {
+      const pairing = await getOrCreatePairingInfo({
+        room,
+        publicBaseUrl: dependencies.config.publicBaseUrl,
+        repository: dependencies.repositories.pairingTokens,
+        ...(dependencies.config.controllerBaseUrl ? { controllerBaseUrl: dependencies.config.controllerBaseUrl } : {})
+      });
+      const snapshot = await buildRoomSnapshot({
+        roomSlug,
+        config: dependencies.config,
+        repositories: dependencies.repositories,
+        ...(dependencies.mediaGateway ? { mediaGateway: dependencies.mediaGateway } : {})
+      });
+
+      await reply.send({
+        status: "probed",
+        pairing,
+        snapshot
+      });
       return;
     }
 
@@ -399,6 +423,10 @@ function requiredString(value: string | undefined, fieldName: string): string {
   }
 
   return value;
+}
+
+function isBootstrapProbe(body: BootstrapBody): boolean {
+  return body.probeOnly === true && body.capabilities?.runtime === "web-deploy-smoke";
 }
 
 async function broadcastControlSnapshot(dependencies: PlayerRouteDependencies, roomSlug: string): Promise<void> {
