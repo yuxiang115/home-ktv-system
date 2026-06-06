@@ -808,20 +808,20 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
       `WITH bucketed AS (
          SELECT CASE
                   WHEN size_bytes IS NULL THEN '未知'
-                  WHEN size_bytes < 100 * 1024 * 1024 THEN '100MB 以下'
-                  WHEN size_bytes < 300 * 1024 * 1024 THEN '100-300MB'
-                  WHEN size_bytes < 700 * 1024 * 1024 THEN '300-700MB'
-                  WHEN size_bytes < 1024 * 1024 * 1024 THEN '700MB-1GB'
-                  WHEN size_bytes < 2 * 1024 * 1024 * 1024 THEN '1-2GB'
+                  WHEN size_bytes < 104857600::bigint THEN '100MB 以下'
+                  WHEN size_bytes < 314572800::bigint THEN '100-300MB'
+                  WHEN size_bytes < 734003200::bigint THEN '300-700MB'
+                  WHEN size_bytes < 1073741824::bigint THEN '700MB-1GB'
+                  WHEN size_bytes < 2147483648::bigint THEN '1-2GB'
                   ELSE '2GB 以上'
                 END AS size_bucket,
                 CASE
                   WHEN size_bytes IS NULL THEN 0
-                  WHEN size_bytes < 100 * 1024 * 1024 THEN 1
-                  WHEN size_bytes < 300 * 1024 * 1024 THEN 2
-                  WHEN size_bytes < 700 * 1024 * 1024 THEN 3
-                  WHEN size_bytes < 1024 * 1024 * 1024 THEN 4
-                  WHEN size_bytes < 2 * 1024 * 1024 * 1024 THEN 5
+                  WHEN size_bytes < 104857600::bigint THEN 1
+                  WHEN size_bytes < 314572800::bigint THEN 2
+                  WHEN size_bytes < 734003200::bigint THEN 3
+                  WHEN size_bytes < 1073741824::bigint THEN 4
+                  WHEN size_bytes < 2147483648::bigint THEN 5
                   ELSE 6
                 END AS sort_order
          FROM ktv_songs

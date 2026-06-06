@@ -290,6 +290,10 @@ describe("PgKtvIndexReadRepository", () => {
       expect.stringContaining("date_trunc('day', requested_at)"),
       expect.stringContaining("controller_users")
     ]));
+
+    const sizeBucketQuery = db.queries.find((query) => query.text.includes("size_bucket"));
+    expect(sizeBucketQuery?.text).toContain("2147483648::bigint");
+    expect(sizeBucketQuery?.text).not.toContain("2 * 1024 * 1024 * 1024");
   });
 });
 
