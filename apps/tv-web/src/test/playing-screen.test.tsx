@@ -64,6 +64,54 @@ describe("PlayingScreen", () => {
     expect(screen.getByText("阿飞")).toBeTruthy();
   });
 
+  it("keeps the lower-left playback HUD width adaptive with one-line requester text", () => {
+    const requesterName = "龙飞和朋友们一起点的歌";
+    const roomSnapshot = snapshot({
+      currentTarget: {
+        ...snapshot().currentTarget!,
+        currentQueueEntryPreview: {
+          queueEntryId: "queue-current",
+          songTitle: "七里香",
+          artistName: "周杰伦",
+          requestedByName: requesterName,
+          requestedByUserPhone: "13800138000"
+        }
+      }
+    });
+
+    render(
+      <PlayingScreen
+        displayState={deriveTvDisplayState({
+          errorMessage: null,
+          firstPlayBlocked: false,
+          snapshot: roomSnapshot,
+          status: "ready"
+        })}
+        snapshot={roomSnapshot}
+        playbackPositionMs={12_345}
+        durationMs={180_000}
+      />
+    );
+
+    const requester = screen.getByLabelText(`点歌人 ${requesterName}`);
+    const footer = requester.closest("footer");
+    expect(footer).toBeTruthy();
+    if (!footer) {
+      throw new Error("Playback footer not found");
+    }
+    expect(footer.style.left).toBe("14px");
+    expect(footer.style.bottom).toBe("14px");
+    expect(footer.style.padding).toBe("10px 14px 11px");
+    expect(footer.style.gap).toBe("6px");
+    expect(footer.style.width).toBe("max-content");
+    expect(footer.style.maxWidth).toContain("calc(100vw - 28px)");
+    expect(requester.style.width).toBe("100%");
+    expect(screen.getByText(requesterName).style.maxWidth).toBe("5.5em");
+    expect(screen.getByText(requesterName).style.fontSize).toBe("14px");
+    expect(screen.getByText(requesterName).style.whiteSpace).toBe("nowrap");
+    expect(screen.getByText(requesterName).style.textOverflow).toBe("ellipsis");
+  });
+
   it("uses the approved success color for active playback state", () => {
     const roomSnapshot = snapshot();
     render(

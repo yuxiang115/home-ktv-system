@@ -1071,11 +1071,13 @@ function ControlScreen({
                 const undoExpiresAt =
                   entry.undoExpiresAt ??
                   (controller.pendingUndo?.queueEntryId === entry.queueEntryId ? controller.pendingUndo.undoExpiresAt : null);
+                const requesterLabel = queueRequesterLabel(entry, t);
                 return (
                   <article className="queue-row" key={entry.queueEntryId}>
                     <div>
                       <strong>{entry.songTitle}</strong>
                       <p>{entry.artistName}</p>
+                      <span className="queue-requester">{requesterLabel}</span>
                       {undoExpiresAt ? <small>{t("queue.undoUntil", { time: formatTime(undoExpiresAt) })}</small> : null}
                     </div>
                     <div className="row-actions">
@@ -1649,6 +1651,18 @@ function formatTime(value: string): string {
     minute: "2-digit",
     second: "2-digit"
   });
+}
+
+function queueRequesterLabel(
+  entry: Pick<NonNullable<RoomControllerState["snapshot"]>["queue"][number], "requestedByName" | "requestedByUserPhone" | "requestedBy">,
+  t: TFunction
+): string {
+  const requester =
+    entry.requestedByName?.trim() ||
+    entry.requestedByUserPhone?.trim() ||
+    entry.requestedBy?.trim() ||
+    t("queue.unknownRequester");
+  return t("queue.requestedBy", { name: requester });
 }
 
 function formatFileSize(sizeBytes: number | null): string {

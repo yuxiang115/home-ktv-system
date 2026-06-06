@@ -273,7 +273,7 @@ class MainActivity : Activity() {
 
         bottomPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(14), dp(20), dp(15))
+            setPadding(dp(14), dp(10), dp(14), dp(11))
             background = panelBackground(
                 color = Color.argb(150, 0, 0, 0),
                 radius = dp(8).toFloat(),
@@ -287,8 +287,8 @@ class MainActivity : Activity() {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM or Gravity.START,
             ).apply {
-                leftMargin = dp(24)
-                bottomMargin = dp(22)
+                leftMargin = dp(14)
+                bottomMargin = dp(14)
             },
         )
 
@@ -300,63 +300,69 @@ class MainActivity : Activity() {
         bottomPanel.addView(
             requesterRow,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = dp(9)
+                bottomMargin = dp(6)
             },
         )
 
         requesterAvatarText = TextView(this).apply {
-            textSize = 16f
+            textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.rgb(3, 18, 11))
             gravity = Gravity.CENTER
             includeFontPadding = false
             background = roundedBackground(Color.rgb(37, 245, 139), dp(999).toFloat())
         }
-        requesterRow.addView(requesterAvatarText, LinearLayout.LayoutParams(dp(30), dp(30)))
+        requesterRow.addView(requesterAvatarText, LinearLayout.LayoutParams(dp(24), dp(24)))
 
         requesterRow.addView(TextView(this).apply {
             text = "点歌人"
-            textSize = 16f
+            textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.rgb(148, 163, 184))
             includeFontPadding = false
         }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            leftMargin = dp(8)
+            leftMargin = dp(6)
         })
 
         requesterNameText = TextView(this).apply {
-            textSize = 18f
+            textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.rgb(248, 250, 252))
             includeFontPadding = false
-            maxWidth = dp(360)
+            maxWidth = dp(110)
             ellipsize = TextUtils.TruncateAt.END
             setSingleLine(true)
         }
         requesterRow.addView(
             requesterNameText,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                leftMargin = dp(8)
+                leftMargin = dp(6)
             },
         )
 
         progressText = TextView(this).apply {
-            textSize = 32f
+            textSize = 26f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.rgb(248, 250, 252))
             includeFontPadding = false
         }
-        bottomPanel.addView(progressText)
+        bottomPanel.addView(
+            progressText,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT),
+        )
 
         val metaRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(8), 0, 0)
+            setPadding(0, dp(6), 0, 0)
         }
-        bottomPanel.addView(metaRow)
+        bottomPanel.addView(
+            metaRow,
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT),
+        )
 
         vocalModeText = TextView(this).apply {
-            textSize = 18f
+            textSize = 15f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.rgb(34, 211, 238))
             includeFontPadding = false
@@ -364,23 +370,23 @@ class MainActivity : Activity() {
         metaRow.addView(vocalModeText)
 
         audioTrackText = TextView(this).apply {
-            textSize = 18f
+            textSize = 15f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.rgb(203, 213, 225))
             includeFontPadding = false
-            maxWidth = dp(420)
+            maxWidth = dp(620)
             ellipsize = TextUtils.TruncateAt.END
             setSingleLine(true)
         }
         metaRow.addView(
             audioTrackText,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                leftMargin = dp(10)
+                leftMargin = dp(8)
             },
         )
 
         playbackStateText = TextView(this).apply {
-            textSize = 18f
+            textSize = 15f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.rgb(52, 211, 153))
             includeFontPadding = false
@@ -388,7 +394,7 @@ class MainActivity : Activity() {
         metaRow.addView(
             playbackStateText,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                leftMargin = dp(10)
+                leftMargin = dp(8)
             },
         )
 
@@ -409,6 +415,12 @@ class MainActivity : Activity() {
                 topMargin = dp(12)
             },
         )
+
+        root.post {
+            val safePanelWidth = (root.width - dp(28)).coerceAtLeast(dp(280))
+            requesterNameText.maxWidth = minOf(dp(92), (safePanelWidth - dp(108)).coerceAtLeast(dp(72)))
+            audioTrackText.maxWidth = (safePanelWidth - dp(126)).coerceAtLeast(dp(160))
+        }
 
         interactionLayer.bringToFront()
         setContentView(root)

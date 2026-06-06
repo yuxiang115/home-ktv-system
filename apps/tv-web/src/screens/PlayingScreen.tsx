@@ -192,23 +192,26 @@ const styles = {
     background: "rgba(0, 0, 0, 0.5)",
     border: `1px solid ${tvTheme.colors.border}`,
     borderRadius: tvTheme.radii.panel,
-    bottom: 22,
+    bottom: 14,
+    boxSizing: "border-box",
     boxShadow: "0 18px 64px rgba(0, 0, 0, 0.32)",
     color: tvTheme.colors.text,
     display: "grid",
-    gap: 8,
-    left: 24,
-    maxWidth: "min(720px, calc(100vw - 48px))",
+    gap: 6,
+    justifyItems: "start",
+    left: 14,
+    maxWidth: "min(760px, calc(100vw - 28px))",
     minWidth: 0,
-    padding: "14px 20px 15px",
+    padding: "10px 14px 11px",
     position: "absolute",
+    width: "max-content",
     zIndex: 3
   },
   requesterLine: {
     alignItems: "center",
     display: "flex",
-    gap: 8,
-    maxWidth: "min(42vw, 420px)",
+    gap: 6,
+    width: "100%",
     minWidth: 0
   },
   requesterAvatar: {
@@ -219,24 +222,25 @@ const styles = {
     color: "#03120B",
     display: "inline-flex",
     flex: "0 0 auto",
-    fontSize: 17,
+    fontSize: 14,
     fontWeight: 900,
-    height: 30,
+    height: 24,
     justifyContent: "center",
     lineHeight: 1,
-    width: 30
+    width: 24
   },
   requesterLabel: {
     color: tvTheme.colors.textMuted,
     flex: "0 0 auto",
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 800
   },
   requesterName: {
     color: tvTheme.colors.text,
     display: "block",
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: 900,
+    maxWidth: "5.5em",
     minWidth: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -245,7 +249,7 @@ const styles = {
   timeValue: {
     color: tvTheme.colors.text,
     display: "block",
-    fontSize: 32,
+    fontSize: 26,
     fontWeight: 950,
     lineHeight: 1,
     whiteSpace: "nowrap"
@@ -255,12 +259,14 @@ const styles = {
     color: tvTheme.colors.textMuted,
     display: "flex",
     flexWrap: "wrap",
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: 760,
-    gap: 10,
+    gap: 8,
     lineHeight: 1.2,
+    maxWidth: "100%",
     minWidth: 0,
-    overflowWrap: "anywhere"
+    overflowWrap: "anywhere",
+    width: "100%"
   },
   modePill: {
     fontWeight: 900

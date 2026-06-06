@@ -211,6 +211,7 @@ describe("mobile controller runtime", () => {
 
     expect(current).toBeTruthy();
     expect(queue).toBeTruthy();
+    expect(within(queue).getByText("点歌人 阿飞")).toBeTruthy();
   });
 
   it("shows the active TV count when multiple TV players are online", async () => {
