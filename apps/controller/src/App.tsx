@@ -402,7 +402,7 @@ function MyScreen({
 }) {
   const history = controller.songHistory;
   return (
-    <>
+    <div className="my-screen">
       <AccountPanel controller={controller} />
       <section className="panel my-history-panel" aria-label="点歌历史">
         <div className="panel-heading">
@@ -435,7 +435,7 @@ function MyScreen({
           ) : null}
         </div>
       </section>
-    </>
+    </div>
   );
 }
 
@@ -461,7 +461,9 @@ function HistorySongRow({
         <strong>{song.title}</strong>
         <p>{song.artistName || "未知歌手"}</p>
       </div>
-      <span className="my-history-count">点过 {song.requestCount} 次</span>
+      <div className="my-history-row__meta">
+        <span className="my-history-count">点过 {song.requestCount} 次</span>
+      </div>
       <button className="primary-button compact-button" type="button" onClick={addAgain} aria-label={`再点 ${song.title}`}>
         再点
       </button>

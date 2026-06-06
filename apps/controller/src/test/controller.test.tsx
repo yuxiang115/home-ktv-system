@@ -406,6 +406,9 @@ describe("mobile controller runtime", () => {
     expect(screen.getByText("阿飞")).toBeTruthy();
     expect(screen.getByText("13800138000")).toBeTruthy();
     const history = await screen.findByRole("region", { name: "点歌历史" });
+    const myScreen = history.closest(".my-screen");
+    expect(myScreen).toBeTruthy();
+    expect(within(myScreen as HTMLElement).getByRole("region", { name: "我的账号" })).toBeTruthy();
     expect(within(history).getByText("晴天")).toBeTruthy();
     expect(within(history).getByText("周杰伦")).toBeTruthy();
     expect(within(history).getByText("点过 3 次")).toBeTruthy();
