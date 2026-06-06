@@ -541,12 +541,12 @@ input:focus {
 .song-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   min-width: 0;
   border: 1px solid var(--ktv-border);
   border-radius: 8px;
-  padding: 9px;
+  padding: 7px 8px;
   background: rgba(2, 6, 23, 0.34);
 }
 
@@ -576,6 +576,7 @@ input:focus {
 .queue-row p,
 .queue-row small,
 .queue-requester,
+.queue-meta span,
 .song-row strong,
 .song-row p,
 .version-row strong,
@@ -1495,15 +1496,24 @@ input:focus {
 }
 
 .queue-requester {
-  display: inline-flex;
-  max-width: 100%;
-  margin-top: 5px;
-  padding: 3px 7px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 999px;
+  min-width: 0;
   color: var(--ktv-muted);
-  background: rgba(148, 163, 184, 0.1);
   font-weight: 750;
+}
+
+.queue-meta {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  max-width: 100%;
+  color: var(--ktv-muted);
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.queue-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .bottom-tabs {

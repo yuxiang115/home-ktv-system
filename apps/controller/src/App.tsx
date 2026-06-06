@@ -1076,8 +1076,11 @@ function ControlScreen({
                   <article className="queue-row" key={entry.queueEntryId}>
                     <div>
                       <strong>{entry.songTitle}</strong>
-                      <p>{entry.artistName}</p>
-                      <span className="queue-requester">{requesterLabel}</span>
+                      <p className="queue-meta">
+                        <span>{entry.artistName}</span>
+                        <span aria-hidden="true">·</span>
+                        <span className="queue-requester">{requesterLabel}</span>
+                      </p>
                       {undoExpiresAt ? <small>{t("queue.undoUntil", { time: formatTime(undoExpiresAt) })}</small> : null}
                     </div>
                     <div className="row-actions">
