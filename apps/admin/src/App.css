@@ -521,6 +521,21 @@ code {
   height: 100%;
 }
 
+.dashboard-nivo-donut {
+  height: 220px;
+  min-height: 220px;
+}
+
+.dashboard-nivo-bar {
+  height: 260px;
+  min-height: 260px;
+}
+
+.dashboard-nivo-line {
+  height: 280px;
+  min-height: 280px;
+}
+
 .dashboard-chart-legend {
   display: flex;
   flex-wrap: wrap;

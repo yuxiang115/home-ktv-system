@@ -2,25 +2,15 @@ import type {
   AdminDashboardChartPoint,
   AdminDashboardLargestSong,
   AdminDashboardMetric,
+  AdminDashboardRequestTrendPoint,
   AdminDashboardRecentRequest,
   AdminDashboardSongRank,
   AdminDashboardUserRank
 } from "@home-ktv/domain";
 import type { CSSProperties, ReactNode } from "react";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis
-} from "recharts";
+import { ResponsiveBar } from "@nivo/bar";
+import { ResponsiveLine } from "@nivo/line";
+import { ResponsivePie } from "@nivo/pie";
 import { useI18n } from "../i18n.js";
 import { useAdminDashboard } from "./use-admin-dashboard.js";
 
@@ -76,22 +66,7 @@ export function AdminDashboardView() {
 
       <section className="dashboard-chart-grid dashboard-chart-grid--lead">
         <DashboardPanel title={t("dashboard.requestTrend")} subtitle={t("dashboard.last14Days")} span="wide">
-          <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={data.requests.requestTrend} margin={{ top: 10, right: 18, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="requestTrendFill" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stopColor="#29d8ff" stopOpacity={0.45} />
-                  <stop offset="100%" stopColor="#29d8ff" stopOpacity={0.04} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="rgba(122, 202, 255, 0.12)" vertical={false} />
-              <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fill: "#9da9c9", fontSize: 11 }} />
-              <YAxis tickLine={false} axisLine={false} tick={{ fill: "#9da9c9", fontSize: 11 }} />
-              <Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" dataKey="requestCount" stroke="#29d8ff" strokeWidth={3} fill="url(#requestTrendFill)" />
-              <Area type="monotone" dataKey="uniqueRequesterCount" stroke="#ffd166" strokeWidth={2} fill="transparent" />
-            </AreaChart>
-          </ResponsiveContainer>
+          <TrendChart data={data.requests.requestTrend} />
         </DashboardPanel>
 
         <DashboardPanel title={t("dashboard.topSongs")} subtitle={t("dashboard.singingRank")}>
@@ -188,18 +163,30 @@ function DonutChart({ data }: { data: AdminDashboardChartPoint[] }) {
   if (data.length === 0) {
     return <EmptyChart />;
   }
+  const chartData = data.map((item, index) => ({
+    id: item.label,
+    label: item.label,
+    value: item.value,
+    color: chartColor(index)
+  }));
   return (
     <div className="dashboard-donut-wrap">
-      <ResponsiveContainer width="100%" height={220}>
-        <PieChart>
-          <Pie data={data} dataKey="value" nameKey="label" innerRadius={58} outerRadius={88} paddingAngle={3}>
-            {data.map((entry, index) => (
-              <Cell key={entry.label} fill={chartColor(index)} />
-            ))}
-          </Pie>
-          <Tooltip content={<ChartTooltip />} />
-        </PieChart>
-      </ResponsiveContainer>
+      <div className="dashboard-nivo-donut">
+        <ResponsivePie
+          data={chartData}
+          margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
+          innerRadius={0.64}
+          padAngle={1.8}
+          cornerRadius={4}
+          activeOuterRadiusOffset={8}
+          colors={{ datum: "data.color" }}
+          borderWidth={0}
+          enableArcLabels={false}
+          enableArcLinkLabels={false}
+          tooltip={({ datum }) => <ChartTooltip label={String(datum.label)} value={Number(datum.value)} />}
+          theme={nivoTheme}
+        />
+      </div>
       <ChartLegend data={data.slice(0, 6)} />
     </div>
   );
@@ -209,20 +196,112 @@ function HorizontalBarChart({ data }: { data: AdminDashboardChartPoint[] }) {
   if (data.length === 0) {
     return <EmptyChart />;
   }
+  const chartData = data.slice(0, 8).map((item) => ({
+    label: item.label,
+    value: item.value
+  }));
   return (
-    <ResponsiveContainer width="100%" height={260}>
-      <BarChart data={data.slice(0, 8)} layout="vertical" margin={{ top: 4, right: 18, left: 18, bottom: 4 }}>
-        <CartesianGrid stroke="rgba(122, 202, 255, 0.1)" horizontal={false} />
-        <XAxis type="number" hide />
-        <YAxis dataKey="label" type="category" width={76} tickLine={false} axisLine={false} tick={{ fill: "#cbd6f7", fontSize: 11 }} />
-        <Tooltip content={<ChartTooltip />} />
-        <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-          {data.slice(0, 8).map((entry, index) => (
-            <Cell key={entry.label} fill={chartColor(index)} />
-          ))}
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
+    <div className="dashboard-nivo-bar">
+      <ResponsiveBar
+        data={chartData}
+        keys={["value"]}
+        indexBy="label"
+        layout="horizontal"
+        margin={{ top: 4, right: 18, bottom: 18, left: 78 }}
+        padding={0.36}
+        valueScale={{ type: "linear" }}
+        indexScale={{ type: "band", round: true }}
+        colors={({ index }) => chartColor(index)}
+        borderRadius={6}
+        enableGridX={false}
+        enableGridY={false}
+        enableLabel={false}
+        axisTop={null}
+        axisRight={null}
+        axisBottom={null}
+        axisLeft={{
+          tickSize: 0,
+          tickPadding: 8,
+          tickRotation: 0,
+          truncateTickAt: 10
+        }}
+        tooltip={({ data }) => <ChartTooltip label={String(data.label)} value={Number(data.value)} />}
+        theme={nivoTheme}
+      />
+    </div>
+  );
+}
+
+function TrendChart({ data }: { data: AdminDashboardRequestTrendPoint[] }) {
+  if (data.length === 0) {
+    return <EmptyChart />;
+  }
+  const series = [
+    {
+      id: "点歌次数",
+      color: chartColors[0],
+      data: data.map((item) => ({ x: item.date, y: item.requestCount }))
+    },
+    {
+      id: "点歌人数",
+      color: chartColors[1],
+      data: data.map((item) => ({ x: item.date, y: item.uniqueRequesterCount }))
+    }
+  ];
+  return (
+    <div className="dashboard-nivo-line">
+      <ResponsiveLine
+        data={series}
+        margin={{ top: 14, right: 24, bottom: 36, left: 38 }}
+        xScale={{ type: "point" }}
+        yScale={{ type: "linear", min: 0, max: "auto", stacked: false, reverse: false }}
+        curve="monotoneX"
+        colors={{ datum: "color" }}
+        lineWidth={3}
+        pointSize={7}
+        pointColor={{ from: "color" }}
+        pointBorderWidth={2}
+        pointBorderColor="rgba(4, 10, 25, 0.9)"
+        enableArea={true}
+        areaOpacity={0.12}
+        enableSlices="x"
+        useMesh={true}
+        axisTop={null}
+        axisRight={null}
+        axisBottom={{
+          tickSize: 0,
+          tickPadding: 12,
+          format: (value) => formatShortDate(String(value))
+        }}
+        axisLeft={{
+          tickSize: 0,
+          tickPadding: 8,
+          format: (value) => formatInteger(Number(value))
+        }}
+        legends={[
+          {
+            anchor: "top-right",
+            direction: "row",
+            translateY: -6,
+            itemWidth: 82,
+            itemHeight: 14,
+            symbolSize: 8,
+            symbolShape: "circle"
+          }
+        ]}
+        sliceTooltip={({ slice }) => (
+          <div className="dashboard-tooltip">
+            <strong>{String(slice.points[0]?.data.xFormatted ?? "")}</strong>
+            {slice.points.map((point) => (
+              <span key={point.id}>
+                {point.seriesId}: {formatInteger(Number(point.data.yFormatted ?? point.data.y))}
+              </span>
+            ))}
+          </div>
+        )}
+        theme={nivoTheme}
+      />
+    </div>
   );
 }
 
@@ -307,24 +386,13 @@ function EmptyChart() {
   return <div className="dashboard-empty-chart">暂无数据</div>;
 }
 
-function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name?: string; value?: number; payload?: unknown }>; label?: string }) {
-  if (!active || !payload?.length) {
-    return null;
-  }
+function ChartTooltip({ label, value }: { label: string; value: number }) {
   return (
     <div className="dashboard-tooltip">
-      <strong>{label ?? readTooltipLabel(payload[0]?.payload)}</strong>
-      {payload.map((item) => (
-        <span key={`${item.name ?? "value"}-${item.value}`}>
-          {item.name ?? "数量"}: {formatInteger(item.value ?? 0)}
-        </span>
-      ))}
+      <strong>{label}</strong>
+      <span>数量: {formatInteger(value)}</span>
     </div>
   );
-}
-
-function readTooltipLabel(payload: unknown): string {
-  return typeof payload === "object" && payload !== null && "label" in payload ? String(payload.label) : "";
 }
 
 function formatMetricValue(metric: AdminDashboardMetric): string {
@@ -357,6 +425,55 @@ function formatBytes(value: number): string {
   const index = Math.min(units.length - 1, Math.floor(Math.log(value) / Math.log(1024)));
   return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 }).format(value / 1024 ** index)} ${units[index]}`;
 }
+
+function formatShortDate(value: string): string {
+  const [, month, day] = /^(\d{4})-(\d{2})-(\d{2})/u.exec(value) ?? [];
+  return month && day ? `${month}/${day}` : value;
+}
+
+const nivoTheme = {
+  background: "transparent",
+  text: {
+    fill: "#cbd6f7",
+    fontSize: 11,
+    fontWeight: 800
+  },
+  axis: {
+    ticks: {
+      text: {
+        fill: "#9da9c9",
+        fontSize: 11,
+        fontWeight: 800
+      }
+    },
+    legend: {
+      text: {
+        fill: "#cbd6f7",
+        fontSize: 11
+      }
+    }
+  },
+  grid: {
+    line: {
+      stroke: "rgba(122, 202, 255, 0.12)",
+      strokeWidth: 1
+    }
+  },
+  legends: {
+    text: {
+      fill: "#cbd6f7",
+      fontSize: 11,
+      fontWeight: 800
+    }
+  },
+  tooltip: {
+    container: {
+      background: "transparent",
+      boxShadow: "none",
+      padding: 0
+    }
+  }
+} as const;
 
 function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
