@@ -271,6 +271,9 @@ describe("PgKtvIndexReadRepository", () => {
     expect(dashboard.catalog.parseStrategies).toEqual(expect.arrayContaining([{ label: "filename", value: 34385 }]));
     expect(dashboard.catalog.technicalStatus).toEqual(expect.arrayContaining([{ label: "failed", value: 2 }]));
     expect(dashboard.catalog.audioTrackDistribution).toEqual(expect.arrayContaining([{ label: "1 条音轨", value: 12 }]));
+    expect(dashboard.catalog.audioCodecDistribution).toEqual(expect.arrayContaining([{ label: "aac", value: 520 }]));
+    expect(dashboard.catalog.videoCodecDistribution).toEqual(expect.arrayContaining([{ label: "h264", value: 260 }]));
+    expect(dashboard.catalog.videoResolutionDistribution).toEqual(expect.arrayContaining([{ label: "1920x1080", value: 180 }]));
     expect(dashboard.requests).toMatchObject({
       totalQueueEntries: 240,
       totalSongRequests: 340,
@@ -286,6 +289,9 @@ describe("PgKtvIndexReadRepository", () => {
       expect.stringContaining("sum(s.size_bytes) FILTER"),
       expect.stringContaining("CASE"),
       expect.stringContaining("GROUP BY extension"),
+      expect.stringContaining("jsonb_array_elements(audio_tracks)"),
+      expect.stringContaining("videoCodec"),
+      expect.stringContaining("resolution_labels"),
       expect.stringContaining("requested_by_user_phone"),
       expect.stringContaining("request_trend_buckets"),
       expect.stringContaining("date_trunc('day', requested_at)"),
@@ -469,6 +475,18 @@ class ScriptedKtvIndexDb implements QueryExecutor {
 
     if (text.includes("GROUP BY extension")) {
       return { rows: [{ label: ".mkv", count: "300" }] as TRow[] };
+    }
+
+    if (text.includes("jsonb_array_elements(audio_tracks)")) {
+      return { rows: [{ label: "aac", count: "520" }] as TRow[] };
+    }
+
+    if (text.includes("videoCodec")) {
+      return { rows: [{ label: "h264", count: "260" }] as TRow[] };
+    }
+
+    if (text.includes("resolution_labels")) {
+      return { rows: [{ label: "1920x1080", count: "180" }] as TRow[] };
     }
 
     if (text.includes("ORDER BY s.size_bytes DESC")) {

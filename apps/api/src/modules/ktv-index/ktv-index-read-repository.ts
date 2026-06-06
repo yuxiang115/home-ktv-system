@@ -461,6 +461,9 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
       parseStrategies,
       technicalStatusCounts,
       audioTrackDistribution,
+      audioCodecDistribution,
+      videoCodecDistribution,
+      videoResolutionDistribution,
       confidence,
       sizeBuckets,
       extensionDistribution,
@@ -479,6 +482,9 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
       this.getParseStrategies(),
       this.getTechnicalStatusCounts(),
       this.getAudioTrackDistribution(),
+      this.getAudioCodecDistribution(),
+      this.getVideoCodecDistribution(),
+      this.getVideoResolutionDistribution(),
       this.getConfidenceSummary(),
       this.getSizeBuckets(),
       this.getExtensionDistribution(),
@@ -541,7 +547,10 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
         audioTrackDistribution: audioTrackDistribution.map((row) => ({
           label: `${row.audioTrackCount} 条音轨`,
           value: row.count
-        }))
+        })),
+        audioCodecDistribution,
+        videoCodecDistribution,
+        videoResolutionDistribution
       },
       requests: {
         totalQueueEntries: counts.queueEntryCount,
@@ -1129,6 +1138,71 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
     }));
   }
 
+  private async getAudioCodecDistribution(): Promise<AdminDashboardChartPoint[]> {
+    const result = await this.db.query<DashboardLabelCountRow>(
+      `WITH track_arrays AS (
+         SELECT coalesce(technical_metadata->'mediaInfoSummary'->'audioTracks', technical_metadata->'audioTracks') AS audio_tracks
+         FROM ktv_songs
+         WHERE missing_at IS NULL
+       ),
+       audio_codecs AS (
+         SELECT coalesce(nullif(lower(trim(track->>'codec')), ''), 'unknown') AS label
+         FROM track_arrays
+         CROSS JOIN LATERAL jsonb_array_elements(audio_tracks) AS track
+         WHERE jsonb_typeof(audio_tracks) = 'array'
+       )
+       SELECT label, count(*)::int AS count
+       FROM audio_codecs
+       GROUP BY label
+       ORDER BY count DESC, label ASC
+       LIMIT 12`
+    );
+    return mapLabelCountRows(result.rows);
+  }
+
+  private async getVideoCodecDistribution(): Promise<AdminDashboardChartPoint[]> {
+    const result = await this.db.query<DashboardLabelCountRow>(
+      `WITH video_codecs AS (
+         SELECT coalesce(nullif(lower(trim(coalesce(
+                  technical_metadata->'mediaInfoSummary'->>'videoCodec',
+                  technical_metadata->>'videoCodec'
+                ))), ''), 'unknown') AS label
+         FROM ktv_songs
+         WHERE missing_at IS NULL
+       )
+       SELECT label, count(*)::int AS count
+       FROM video_codecs
+       GROUP BY label
+       ORDER BY count DESC, label ASC
+       LIMIT 12`
+    );
+    return mapLabelCountRows(result.rows);
+  }
+
+  private async getVideoResolutionDistribution(): Promise<AdminDashboardChartPoint[]> {
+    const result = await this.db.query<DashboardLabelCountRow>(
+      `WITH resolutions AS (
+         SELECT coalesce(technical_metadata->'mediaInfoSummary'->'resolution', technical_metadata->'resolution') AS resolution
+         FROM ktv_songs
+         WHERE missing_at IS NULL
+       ),
+       resolution_labels AS (
+         SELECT CASE
+                  WHEN jsonb_typeof(resolution) IS DISTINCT FROM 'object' THEN 'unknown'
+                  WHEN nullif(resolution->>'width', '') IS NULL OR nullif(resolution->>'height', '') IS NULL THEN 'unknown'
+                  ELSE concat(resolution->>'width', 'x', resolution->>'height')
+                END AS label
+         FROM resolutions
+       )
+       SELECT label, count(*)::int AS count
+       FROM resolution_labels
+       GROUP BY label
+       ORDER BY count DESC, label ASC
+       LIMIT 12`
+    );
+    return mapLabelCountRows(result.rows);
+  }
+
   private async getConfidenceSummary(): Promise<{ lowConfidenceCount: number; minParseConfidence: number | null }> {
     const result = await this.db.query<ConfidenceRow>(
       `SELECT count(*) FILTER (WHERE parse_confidence < 0.75)::int AS low_confidence_count,
@@ -1278,7 +1352,10 @@ function createEmptyAdminDashboard(tables: KtvIndexTableAvailability[]): AdminDa
       topStyles: [],
       parseStrategies: [],
       technicalStatus: [],
-      audioTrackDistribution: []
+      audioTrackDistribution: [],
+      audioCodecDistribution: [],
+      videoCodecDistribution: [],
+      videoResolutionDistribution: []
     },
     requests: {
       totalQueueEntries: 0,

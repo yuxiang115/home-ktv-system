@@ -43,6 +43,10 @@ describe("NAS library admin workspace", () => {
     expect(screen.getByText("总歌曲数")).toBeTruthy();
     expect(screen.getByText("31,893")).toBeTruthy();
     expect(screen.getByText("唱榜 Top 10")).toBeTruthy();
+    expect(screen.getByText("音频格式")).toBeTruthy();
+    expect(screen.getByText("视频格式")).toBeTruthy();
+    expect(screen.getByText("视频分辨率")).toBeTruthy();
+    expect(screen.queryByText("队列状态")).toBeNull();
     expect(screen.getByRole("button", { name: "7日" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "30天" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "3个月" })).toBeTruthy();
@@ -278,7 +282,10 @@ function createAdminDashboard(): AdminDashboardResponse {
       topStyles: [{ label: "流行", value: 600 }],
       parseStrategies: [{ label: "filename", value: 34385 }],
       technicalStatus: [{ label: "probed", value: 280 }],
-      audioTrackDistribution: [{ label: "2 条音轨", value: 260 }]
+      audioTrackDistribution: [{ label: "2 条音轨", value: 260 }],
+      audioCodecDistribution: [{ label: "aac", value: 520 }],
+      videoCodecDistribution: [{ label: "h264", value: 260 }],
+      videoResolutionDistribution: [{ label: "1920x1080", value: 180 }]
     },
     requests: {
       totalQueueEntries: 240,

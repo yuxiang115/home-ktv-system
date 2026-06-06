@@ -560,6 +560,9 @@ export interface AdminDashboardResponse {
     parseStrategies: AdminDashboardChartPoint[];
     technicalStatus: AdminDashboardChartPoint[];
     audioTrackDistribution: AdminDashboardChartPoint[];
+    audioCodecDistribution: AdminDashboardChartPoint[];
+    videoCodecDistribution: AdminDashboardChartPoint[];
+    videoResolutionDistribution: AdminDashboardChartPoint[];
   };
   requests: {
     totalQueueEntries: number;

@@ -91,6 +91,15 @@ export function AdminDashboardView() {
         <DashboardPanel title={t("dashboard.audioTracks")} subtitle={t("dashboard.switchReadiness")}>
           <DonutChart data={data.catalog.audioTrackDistribution} />
         </DashboardPanel>
+        <DashboardPanel title={t("dashboard.audioCodecs")} subtitle={t("dashboard.byAudioTracks")}>
+          <DonutChart data={data.catalog.audioCodecDistribution} />
+        </DashboardPanel>
+        <DashboardPanel title={t("dashboard.videoCodecs")} subtitle={t("dashboard.byFiles")}>
+          <DonutChart data={data.catalog.videoCodecDistribution} />
+        </DashboardPanel>
+        <DashboardPanel title={t("dashboard.videoResolutions")} subtitle={t("dashboard.byFiles")}>
+          <DonutChart data={data.catalog.videoResolutionDistribution} />
+        </DashboardPanel>
       </section>
 
       <section className="dashboard-chart-grid dashboard-chart-grid--catalog">
@@ -108,9 +117,6 @@ export function AdminDashboardView() {
         </DashboardPanel>
         <DashboardPanel title={t("dashboard.requesters")} subtitle={t("dashboard.userRank")}>
           <RequesterRank requesters={data.requests.topRequesters} />
-        </DashboardPanel>
-        <DashboardPanel title={t("dashboard.requestStatus")} subtitle={t("dashboard.queueHistory")}>
-          <DonutChart data={data.requests.statusDistribution} />
         </DashboardPanel>
       </section>
 

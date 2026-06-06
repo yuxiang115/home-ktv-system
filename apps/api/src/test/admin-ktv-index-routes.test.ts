@@ -187,7 +187,10 @@ function createDashboardFixture(): AdminDashboardResponse {
       topStyles: [{ label: "流行", value: 600 }],
       parseStrategies: [{ label: "filename", value: 31893 }],
       technicalStatus: [{ label: "probed", value: 280 }],
-      audioTrackDistribution: [{ label: "2 条音轨", value: 260 }]
+      audioTrackDistribution: [{ label: "2 条音轨", value: 260 }],
+      audioCodecDistribution: [{ label: "aac", value: 520 }],
+      videoCodecDistribution: [{ label: "h264", value: 260 }],
+      videoResolutionDistribution: [{ label: "1920x1080", value: 180 }]
     },
     requests: {
       totalQueueEntries: 240,

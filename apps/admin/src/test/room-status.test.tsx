@@ -231,7 +231,10 @@ function createAdminDashboard() {
       topStyles: [],
       parseStrategies: [],
       technicalStatus: [],
-      audioTrackDistribution: []
+      audioTrackDistribution: [],
+      audioCodecDistribution: [],
+      videoCodecDistribution: [],
+      videoResolutionDistribution: []
     },
     requests: {
       totalQueueEntries: 0,
