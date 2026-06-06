@@ -9,6 +9,7 @@ import {
   deleteQueueEntry,
   getOrCreateDeviceId,
   promoteQueueEntry,
+  shuffleQueue,
   setVolume,
   skipCurrent,
   switchVocalMode,
@@ -83,6 +84,7 @@ describe("mobile controller API client", () => {
     await deleteQueueEntry({ ...base, queueEntryId: "queue-1" });
     await undoDeleteQueueEntry({ ...base, queueEntryId: "queue-1" });
     await promoteQueueEntry({ ...base, queueEntryId: "queue-2" });
+    await shuffleQueue(base);
     await skipCurrent({ ...base, confirmSkip: true });
     await switchVocalMode({ ...base, playbackPositionMs: 1234 });
     await setVolume({ ...base, volumePercent: 65 });
@@ -92,6 +94,7 @@ describe("mobile controller API client", () => {
       "/rooms/living-room/commands/delete-queue-entry",
       "/rooms/living-room/commands/undo-delete-queue-entry",
       "/rooms/living-room/commands/promote-queue-entry",
+      "/rooms/living-room/commands/shuffle-queue",
       "/rooms/living-room/commands/skip-current",
       "/rooms/living-room/commands/switch-vocal-mode",
       "/rooms/living-room/commands/set-volume"
@@ -900,6 +903,29 @@ describe("mobile controller runtime", () => {
 
     await user.click(screen.getByRole("button", { name: "切歌" }));
     expect(screen.getByRole("button", { name: "确认" }).className).toContain("danger-button");
+  });
+
+  it("shuffles the playback queue from the queue panel", async () => {
+    const user = userEvent.setup();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot({ queueLength: 3 })))],
+      commandResponses: {
+        "/rooms/living-room/commands/shuffle-queue": json({
+          status: "accepted",
+          snapshot: roomSnapshot({ queueLength: 3, sessionVersion: 2 })
+        })
+      }
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    await openControlTab();
+    const queue = await screen.findByRole("region", { name: "播放队列" });
+    await user.click(within(queue).getByRole("button", { name: "打乱" }));
+    await flush();
+
+    expect(requests.some((request) => request.url === "/rooms/living-room/commands/shuffle-queue")).toBe(true);
   });
 
   it("deletes immediately and shows undo only from server undoExpiresAt", async () => {

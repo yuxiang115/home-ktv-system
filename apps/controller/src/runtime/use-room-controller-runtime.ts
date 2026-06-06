@@ -25,6 +25,7 @@ import {
   searchSongs,
   sendRoomInteraction,
   setVolume,
+  shuffleQueue,
   skipCurrent,
   switchVocalMode,
   updateControllerUserProfile,
@@ -78,6 +79,7 @@ export interface RoomControllerState {
   confirmDuplicateAdd(): Promise<void>;
   deleteQueueEntry(queueEntryId: string): Promise<void>;
   promoteQueueEntry(queueEntryId: string): Promise<void>;
+  shuffleQueue(): Promise<void>;
   requestAddSongVersion(songId: string, assetId: string, title: string, queueState: SongSearchQueueState): boolean;
   requestAddNasAsset(assetId: string, title: string, queueState: SongSearchNasQueueState): boolean;
   sendInteraction(kind: RoomInteractionKind, message: string): Promise<void>;
@@ -667,6 +669,9 @@ export function useRoomControllerRuntime(): RoomControllerState {
     },
     promoteQueueEntry: async (queueEntryId) => {
       await runCommand((input) => promoteQueueEntry({ ...input, queueEntryId }));
+    },
+    shuffleQueue: async () => {
+      await runCommand((input) => shuffleQueue(input));
     },
     requestAddSongVersion: (songId, assetId, title, queueState) => {
       if (queueState === "queued") {

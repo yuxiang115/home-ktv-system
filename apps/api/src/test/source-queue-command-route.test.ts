@@ -125,11 +125,67 @@ describe("source-aware queue command route", () => {
     expect(response.json()).toEqual({ code: "INVALID_QUEUE_SOURCE", message: null });
     await server.close();
   });
+
+  it("shuffles the playback queue by interleaving different requesters", async () => {
+    const queueEntries = [
+      createQueueEntry({ id: "current", songId: "song-current", assetId: "asset-current", status: "playing", queuePosition: 1, requester: "user-a" }),
+      createQueueEntry({ id: "a-1", songId: "song-a-1", assetId: "asset-a-1", queuePosition: 2, requester: "user-a" }),
+      createQueueEntry({ id: "a-2", songId: "song-a-2", assetId: "asset-a-2", queuePosition: 3, requester: "user-a" }),
+      createQueueEntry({ id: "b-1", songId: "song-b-1", assetId: "asset-b-1", queuePosition: 4, requester: "user-b" }),
+      createQueueEntry({ id: "b-2", songId: "song-b-2", assetId: "asset-b-2", queuePosition: 5, requester: "user-b" }),
+      createQueueEntry({ id: "c-1", songId: "song-c-1", assetId: "asset-c-1", queuePosition: 6, requester: "user-c" })
+    ];
+    const playableMedia = queueEntries.map((entry) =>
+      createPlayableMediaAsset({
+        songId: entry.songId,
+        assetId: entry.assetId,
+        title: entry.id,
+        artistName: `artist-${entry.requestedBy}`
+      })
+    );
+    const server = await createControlCommandServer({
+      loggedInUser: createControllerUser(),
+      playableMedia,
+      queueEntries
+    });
+
+    const response = await server.inject({
+      method: "POST",
+      url: "/rooms/living-room/commands/shuffle-queue",
+      headers: { cookie: "ktv_control_session=control-session-1; ktv_controller_auth=auth-token" },
+      payload: {
+        commandId: "command-shuffle-route",
+        sessionVersion: 1,
+        deviceId: "phone-1"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: "accepted",
+      commandId: "command-shuffle-route",
+      snapshot: {
+        queue: [
+          { queueEntryId: "current" },
+          { queueEntryId: "a-1" },
+          { queueEntryId: "b-1" },
+          { queueEntryId: "c-1" },
+          { queueEntryId: "a-2" },
+          { queueEntryId: "b-2" }
+        ]
+      }
+    });
+    await server.close();
+  });
 });
 
-async function createControlCommandServer(input: { loggedInUser?: { phone: string; displayName: string }; playableMedia: readonly PlayableMediaAsset[] }) {
+async function createControlCommandServer(input: {
+  loggedInUser?: { phone: string; displayName: string };
+  playableMedia: readonly PlayableMediaAsset[];
+  queueEntries?: readonly QueueEntry[];
+}) {
   const room = createRoom();
-  const queueEntries = new InMemoryQueueEntryRepository();
+  const queueEntries = new InMemoryQueueEntryRepository(input.queueEntries ?? []);
   const playableMedia = new FakePlayableMediaRepository(input.playableMedia);
   const server = Fastify();
   const mediaGateway: Pick<MediaGateway, "createPlaybackUrl"> = {
@@ -410,5 +466,39 @@ function createPlayableMediaAsset(overrides: Partial<PlayableMediaAsset> = {}): 
       requiresAudioTrackSelection: true
     },
     ...overrides
+  };
+}
+
+function createQueueEntry(input: {
+  id: string;
+  songId: string;
+  assetId: string;
+  queuePosition: number;
+  requester: string;
+  status?: QueueEntry["status"];
+}): QueueEntry {
+  return {
+    id: input.id,
+    roomId: "living-room",
+    source: { sourceType: "nas", songId: input.songId, assetId: input.assetId },
+    songId: input.songId,
+    assetId: input.assetId,
+    requestedBy: input.requester,
+    requestedByUserPhone: input.requester,
+    requestedByName: input.requester,
+    queuePosition: input.queuePosition,
+    status: input.status ?? "queued",
+    priority: 0,
+    playbackOptions: {
+      preferredVocalMode: "instrumental",
+      pitchSemitones: 0,
+      requireReadyAsset: true
+    },
+    requestedAt: now.toISOString(),
+    startedAt: input.status === "playing" ? now.toISOString() : null,
+    endedAt: null,
+    removedAt: null,
+    removedByControlSessionId: null,
+    undoExpiresAt: null
   };
 }

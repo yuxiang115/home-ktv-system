@@ -102,6 +102,13 @@ export async function registerControlCommandRoutes(
     }
   );
 
+  server.post<{ Params: { roomSlug: string }; Body: BaseCommandBody }>(
+    "/rooms/:roomSlug/commands/shuffle-queue",
+    async (request, reply) => {
+      await handleCommand(request, reply, dependencies, "shuffle-queue", {});
+    }
+  );
+
   server.post<{ Params: { roomSlug: string }; Body: SkipCurrentBody }>(
     "/rooms/:roomSlug/commands/skip-current",
     async (request, reply) => {

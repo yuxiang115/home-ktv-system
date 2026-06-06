@@ -225,6 +225,10 @@ export async function promoteQueueEntry(input: CommandBaseInput & { queueEntryId
   return sendCommand(input, "promote-queue-entry", { queueEntryId: input.queueEntryId });
 }
 
+export async function shuffleQueue(input: CommandBaseInput) {
+  return sendCommand(input, "shuffle-queue", {});
+}
+
 export async function skipCurrent(input: CommandBaseInput & { confirmSkip: boolean }) {
   return sendCommand(input, "skip-current", { confirmSkip: input.confirmSkip });
 }

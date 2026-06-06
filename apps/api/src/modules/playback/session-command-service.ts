@@ -12,7 +12,7 @@ import type {
 } from "@home-ktv/domain";
 import type { ControlSessionInfo, RoomControlSnapshot } from "@home-ktv/player-contracts";
 import type { PlaybackNotice } from "@home-ktv/player-contracts";
-import { SESSION_VERSION_CONFLICT, promoteAfterCurrent } from "@home-ktv/session-engine";
+import { SESSION_VERSION_CONFLICT, interleaveQueueByRequester, promoteAfterCurrent } from "@home-ktv/session-engine";
 import { serializeControlSessionCookie, touchControlSession } from "../controller/control-session-service.js";
 import type { ControlSnapshotRepositories } from "../rooms/build-control-snapshot.js";
 import { buildRoomControlSnapshot } from "../rooms/build-control-snapshot.js";
@@ -546,6 +546,8 @@ async function executeMutatingCommand(
       return undoDeleteQueueEntry(input, context);
     case "promote-queue-entry":
       return promoteQueueEntry(input, context);
+    case "shuffle-queue":
+      return shuffleQueue(input, context);
     case "skip-current":
       if (input.payload.confirmSkip !== true) {
         return rejected(input.commandId, input.sessionVersion, "SKIP_CONFIRMATION_REQUIRED");
@@ -700,6 +702,27 @@ async function promoteQueueEntry(
   const reordered = currentQueueEntryId
     ? promoteAfterCurrent(effectiveQueue, target.id, currentQueueEntryId)
     : moveEntryToFront(effectiveQueue, target.id);
+  await input.repositories.queueEntries.renumberQueue(
+    context.room.id,
+    reordered.map((entry) => entry.id)
+  );
+
+  const snapshot = await finishAcceptedCommand(input, context);
+  return {
+    status: "accepted",
+    commandId: input.commandId,
+    sessionVersion: snapshot.sessionVersion,
+    snapshot: snapshot.snapshot,
+    controlSessionCookie: snapshot.controlSessionCookie
+  };
+}
+
+async function shuffleQueue(
+  input: ExecuteRoomCommandInput,
+  context: QueueMutationContext
+): Promise<CommandExecutionResult> {
+  const effectiveQueue = await input.repositories.queueEntries.listEffectiveQueue(context.room.id);
+  const reordered = interleaveQueueByRequester(effectiveQueue, context.session.currentQueueEntryId);
   await input.repositories.queueEntries.renumberQueue(
     context.room.id,
     reordered.map((entry) => entry.id)

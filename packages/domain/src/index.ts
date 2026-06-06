@@ -45,6 +45,7 @@ export type ControlCommandType =
   | "delete-queue-entry"
   | "undo-delete-queue-entry"
   | "promote-queue-entry"
+  | "shuffle-queue"
   | "skip-current"
   | "switch-vocal-mode"
   | "set-volume"

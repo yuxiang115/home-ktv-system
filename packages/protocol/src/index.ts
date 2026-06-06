@@ -19,6 +19,7 @@ export const controllerCommandNames = {
   deleteQueueEntry: "controller.command.delete_queue_entry",
   undoDeleteQueueEntry: "controller.command.undo_delete_queue_entry",
   promoteQueueEntry: "controller.command.promote_queue_entry",
+  shuffleQueue: "controller.command.shuffle_queue",
   skipCurrent: "controller.command.skip_current",
   switchVocalMode: "controller.command.switch_vocal_mode",
   setVolume: "controller.command.set_volume"
@@ -47,6 +48,7 @@ export const protocolMessageNames = {
   "controller.command.delete_queue_entry": "controller.command.delete_queue_entry",
   "controller.command.undo_delete_queue_entry": "controller.command.undo_delete_queue_entry",
   "controller.command.promote_queue_entry": "controller.command.promote_queue_entry",
+  "controller.command.shuffle_queue": "controller.command.shuffle_queue",
   "controller.command.skip_current": "controller.command.skip_current",
   "controller.command.switch_vocal_mode": "controller.command.switch_vocal_mode",
   "controller.command.set_volume": "controller.command.set_volume",

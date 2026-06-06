@@ -78,6 +78,51 @@ export function promoteAfterCurrent(
   return reordered;
 }
 
+export function interleaveQueueByRequester(
+  queue: readonly QueueEntry[],
+  currentQueueEntryId: string | null = null
+): QueueEntry[] {
+  const currentIndex = currentQueueEntryId
+    ? queue.findIndex((entry) => entry.id === currentQueueEntryId)
+    : queue.findIndex((entry) => entry.status === "playing");
+  const prefix = currentIndex >= 0 ? queue.slice(0, currentIndex + 1) : [];
+  const candidates = currentIndex >= 0 ? queue.slice(currentIndex + 1) : [...queue];
+  const groups = new Map<string, QueueEntry[]>();
+  const groupOrder: string[] = [];
+  const locked: QueueEntry[] = [];
+
+  for (const entry of candidates) {
+    if (!isPromotableQueueStatus(entry.status)) {
+      locked.push(entry);
+      continue;
+    }
+
+    const requesterKey = requesterIdentity(entry);
+    if (!groups.has(requesterKey)) {
+      groups.set(requesterKey, []);
+      groupOrder.push(requesterKey);
+    }
+    groups.get(requesterKey)?.push(entry);
+  }
+
+  const interleaved: QueueEntry[] = [];
+  let hasRemaining = true;
+  while (hasRemaining) {
+    hasRemaining = false;
+    for (const requesterKey of groupOrder) {
+      const group = groups.get(requesterKey);
+      const next = group?.shift();
+      if (!next) {
+        continue;
+      }
+      interleaved.push(next);
+      hasRemaining = true;
+    }
+  }
+
+  return [...prefix, ...interleaved, ...locked];
+}
+
 export function reduceSessionEngine(state: SessionEngineState, _command: SessionEngineCommand): SessionEngineState {
   return state;
 }
@@ -95,4 +140,8 @@ function isEffectiveQueueStatus(status: QueueEntryStatus): boolean {
 
 function isPromotableQueueStatus(status: QueueEntryStatus): boolean {
   return status === "queued" || status === "preparing" || status === "loading";
+}
+
+function requesterIdentity(entry: QueueEntry): string {
+  return entry.requestedByUserPhone?.trim() || entry.requestedByName?.trim() || entry.requestedBy.trim() || "unknown";
 }

@@ -1063,7 +1063,17 @@ function ControlScreen({
       </section>
 
       <section className="panel" aria-label={t("queue.aria")}>
-        <h2>{t("queue.title")}</h2>
+        <div className="panel-heading">
+          <h2>{t("queue.title")}</h2>
+          <button
+            className="secondary-button compact-button"
+            type="button"
+            disabled={(snapshot?.queue.length ?? 0) < 2}
+            onClick={() => void controller.shuffleQueue()}
+          >
+            {t("button.shuffle")}
+          </button>
+        </div>
         <div className="queue-list">
           {snapshot?.queue.length || optimisticQueueAdds.length ? (
             <>

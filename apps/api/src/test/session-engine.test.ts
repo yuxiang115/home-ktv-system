@@ -8,6 +8,7 @@ import {
 import {
   SESSION_VERSION_CONFLICT,
   effectiveQueue,
+  interleaveQueueByRequester,
   promoteAfterCurrent
 } from "@home-ktv/session-engine";
 import { schemaSql, type QueueEntryRow } from "../db/schema.js";
@@ -42,6 +43,7 @@ describe("session engine contracts", () => {
       "controller.command.undo_delete_queue_entry"
     );
     expect(controllerCommandNames.promoteQueueEntry).toBe("controller.command.promote_queue_entry");
+    expect(controllerCommandNames.shuffleQueue).toBe("controller.command.shuffle_queue");
     expect(controllerCommandNames.skipCurrent).toBe("controller.command.skip_current");
     expect(controllerCommandNames.switchVocalMode).toBe("controller.command.switch_vocal_mode");
     expect(controllerCommandNames.setVolume).toBe("controller.command.set_volume");
@@ -49,7 +51,32 @@ describe("session engine contracts", () => {
     expect(protocolMessageNames["controller.command.add_queue_entry"]).toBe(
       "controller.command.add_queue_entry"
     );
+    expect(protocolMessageNames["controller.command.shuffle_queue"]).toBe("controller.command.shuffle_queue");
     expect(protocolMessageNames["controller.command.set_volume"]).toBe("controller.command.set_volume");
+  });
+
+  it("interleaveQueueByRequester keeps the current entry and alternates requesters", () => {
+    const queue: QueueEntry[] = [
+      queueEntry("current", 1, "playing", null, null, "user-a"),
+      queueEntry("a-1", 2, "queued", null, null, "user-a"),
+      queueEntry("a-2", 3, "queued", null, null, "user-a"),
+      queueEntry("b-1", 4, "queued", null, null, "user-b"),
+      queueEntry("b-2", 5, "queued", null, null, "user-b"),
+      queueEntry("c-1", 6, "queued", null, null, "user-c"),
+      queueEntry("removed", 7, "removed", "2026-05-01T10:02:00.000Z", "2026-05-01T10:03:30.000Z", "user-b")
+    ];
+
+    const shuffled = interleaveQueueByRequester(queue, "current");
+
+    expect(shuffled.map((entry) => entry.id)).toEqual([
+      "current",
+      "a-1",
+      "b-1",
+      "c-1",
+      "a-2",
+      "b-2",
+      "removed"
+    ]);
   });
 
   it("promoteAfterCurrent places the selected queued entry after the current entry", () => {
@@ -90,14 +117,17 @@ function queueEntry(
   queuePosition: number,
   status: QueueEntryStatus,
   removedAt: string | null = null,
-  undoExpiresAt: string | null = removedAt ? "2026-05-01T10:01:10.000Z" : null
+  undoExpiresAt: string | null = removedAt ? "2026-05-01T10:01:10.000Z" : null,
+  requestedBy = "phone-a"
 ): QueueEntry {
   return {
     id,
     roomId: "living-room",
     songId: `song-${id}`,
     assetId: `asset-${id}`,
-    requestedBy: "phone-a",
+    requestedBy,
+    requestedByUserPhone: requestedBy,
+    requestedByName: requestedBy,
     queuePosition,
     status,
     priority: 0,
