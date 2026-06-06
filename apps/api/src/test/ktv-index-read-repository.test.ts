@@ -253,8 +253,8 @@ describe("PgKtvIndexReadRepository", () => {
     expect(dashboard.storage).toMatchObject({
       totalBytes: 9876543210,
       sizeBuckets: [
-        { label: "100MB 以下", value: 8 },
-        { label: "100-300MB", value: 120 }
+        { label: "50MB 以下", value: 8 },
+        { label: "50-100MB", value: 120 }
       ],
       extensionDistribution: [{ label: ".mkv", value: 300 }],
       largestSongs: [
@@ -287,12 +287,13 @@ describe("PgKtvIndexReadRepository", () => {
       expect.stringContaining("CASE"),
       expect.stringContaining("GROUP BY extension"),
       expect.stringContaining("requested_by_user_phone"),
+      expect.stringContaining("request_trend_buckets"),
       expect.stringContaining("date_trunc('day', requested_at)"),
       expect.stringContaining("controller_users")
     ]));
 
     const sizeBucketQuery = db.queries.find((query) => query.text.includes("size_bucket"));
-    expect(sizeBucketQuery?.text).toContain("2147483648::bigint");
+    expect(sizeBucketQuery?.text).toContain("524288000::bigint");
     expect(sizeBucketQuery?.text).not.toContain("2 * 1024 * 1024 * 1024");
   });
 });
@@ -459,9 +460,9 @@ class ScriptedKtvIndexDb implements QueryExecutor {
 
     if (text.includes("CASE") && text.includes("size_bucket")) {
       return {
-        rows: [
-          { label: "100MB 以下", count: "8" },
-          { label: "100-300MB", count: "120" }
+          rows: [
+          { label: "50MB 以下", count: "8" },
+          { label: "50-100MB", count: "120" }
         ] as TRow[]
       };
     }
@@ -493,7 +494,7 @@ class ScriptedKtvIndexDb implements QueryExecutor {
       return { rows: [{ label: "played", count: "180" }] as TRow[] };
     }
 
-    if (text.includes("date_trunc('day', requested_at)")) {
+    if (text.includes("request_trend_buckets")) {
       return {
         rows: [
           {

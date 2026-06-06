@@ -499,6 +499,8 @@ export interface AdminDashboardRequestTrendPoint {
   uniqueRequesterCount: number;
 }
 
+export type AdminDashboardTrendRange = "7d" | "30d" | "3m" | "1y";
+
 export interface AdminDashboardSongRank {
   songId: SongId;
   title: string;

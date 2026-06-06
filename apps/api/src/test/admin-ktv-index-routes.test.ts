@@ -56,11 +56,11 @@ describe("admin KTV index routes", () => {
 
     const response = await server.inject({
       method: "GET",
-      url: "/admin/ktv-index/dashboard"
+      url: "/admin/ktv-index/dashboard?trendRange=3m"
     });
 
     expect(response.statusCode).toBe(200);
-    expect(ktvIndex.getAdminDashboard).toHaveBeenCalledWith();
+    expect(ktvIndex.getAdminDashboard).toHaveBeenCalledWith({ trendRange: "3m" });
     const body = response.json();
     expect(body).toMatchObject({
       generatedAt: "2026-06-06T08:00:00.000Z",
@@ -169,7 +169,7 @@ function createDashboardFixture(): AdminDashboardResponse {
     },
     storage: {
       totalBytes: 987654321,
-      sizeBuckets: [{ label: "100-300MB", value: 120 }],
+      sizeBuckets: [{ label: "50-100MB", value: 120 }],
       extensionDistribution: [{ label: ".mkv", value: 300 }],
       largestSongs: [
         {

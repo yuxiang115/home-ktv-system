@@ -5,6 +5,7 @@ import type {
   AdminDashboardRequestTrendPoint,
   AdminDashboardResponse,
   AdminDashboardSongRank,
+  AdminDashboardTrendRange,
   AdminDashboardUserRank,
   KtvIndexDiagnosticsPreviewResult,
   KtvIndexDiagnosticsResponse,
@@ -66,6 +67,10 @@ export interface GetKtvIndexDiagnosticsInput {
   deterministicSample?: boolean;
 }
 
+export interface GetAdminDashboardInput {
+  trendRange?: AdminDashboardTrendRange;
+}
+
 export interface KtvIndexReadRepository {
   searchIndexedSongs(input: SearchKtvIndexedSongsInput): Promise<SongSearchIndexedResult[]>;
   listDiscoveryArtists?(): Promise<KtvIndexDiscoveryArtistSummary[]>;
@@ -73,7 +78,7 @@ export interface KtvIndexReadRepository {
   listIndexedSongsByArtist?(input: ListKtvIndexedSongsByArtistInput): Promise<SongSearchIndexedResult[]>;
   listIndexedSongsByGenre?(input: ListKtvIndexedSongsByGenreInput): Promise<SongSearchIndexedResult[]>;
   getDiagnostics(input?: GetKtvIndexDiagnosticsInput): Promise<KtvIndexDiagnosticsResponse>;
-  getAdminDashboard(): Promise<AdminDashboardResponse>;
+  getAdminDashboard(input?: GetAdminDashboardInput): Promise<AdminDashboardResponse>;
 }
 
 export interface KtvIndexReadRepositoryOptions {
@@ -202,6 +207,13 @@ interface DashboardTrendRow {
   unique_requester_count: number | string;
 }
 
+interface RequestTrendConfig {
+  grain: "day" | "week" | "month";
+  lookbackInterval: string;
+  stepInterval: string;
+  dateFormat: string;
+}
+
 interface DashboardSongRankRow {
   song_id: string;
   title: string;
@@ -229,6 +241,33 @@ interface DashboardRecentRequestRow {
 }
 
 const untaggedDiscoveryGenre = "未打标签";
+
+const requestTrendConfigs: Record<AdminDashboardTrendRange, RequestTrendConfig> = {
+  "7d": {
+    grain: "day",
+    lookbackInterval: "6 days",
+    stepInterval: "1 day",
+    dateFormat: "YYYY-MM-DD"
+  },
+  "30d": {
+    grain: "day",
+    lookbackInterval: "29 days",
+    stepInterval: "1 day",
+    dateFormat: "YYYY-MM-DD"
+  },
+  "3m": {
+    grain: "week",
+    lookbackInterval: "3 months",
+    stepInterval: "1 week",
+    dateFormat: "YYYY-MM-DD"
+  },
+  "1y": {
+    grain: "month",
+    lookbackInterval: "11 months",
+    stepInterval: "1 month",
+    dateFormat: "YYYY-MM"
+  }
+};
 
 export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
   constructor(
@@ -408,7 +447,8 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
     };
   }
 
-  async getAdminDashboard(): Promise<AdminDashboardResponse> {
+  async getAdminDashboard(input: GetAdminDashboardInput = {}): Promise<AdminDashboardResponse> {
+    const trendRange = normalizeDashboardTrendRange(input.trendRange);
     const tables = await this.getTableAvailability();
     const emptyDashboard = createEmptyAdminDashboard(tables);
     if (!tables.every((table) => table.exists)) {
@@ -446,7 +486,7 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
       this.getDashboardTopArtists(),
       this.getTopStyles(),
       this.getRequestStatusDistribution(),
-      this.getRequestTrend(),
+      this.getRequestTrend(trendRange),
       this.getTopRequestedSongs(),
       this.getTopRequestedArtists(),
       this.getTopRequesters(),
@@ -808,20 +848,20 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
       `WITH bucketed AS (
          SELECT CASE
                   WHEN size_bytes IS NULL THEN '未知'
-                  WHEN size_bytes < 104857600::bigint THEN '100MB 以下'
-                  WHEN size_bytes < 314572800::bigint THEN '100-300MB'
-                  WHEN size_bytes < 734003200::bigint THEN '300-700MB'
-                  WHEN size_bytes < 1073741824::bigint THEN '700MB-1GB'
-                  WHEN size_bytes < 2147483648::bigint THEN '1-2GB'
-                  ELSE '2GB 以上'
+                  WHEN size_bytes < 52428800::bigint THEN '50MB 以下'
+                  WHEN size_bytes < 104857600::bigint THEN '50-100MB'
+                  WHEN size_bytes < 209715200::bigint THEN '100-200MB'
+                  WHEN size_bytes < 314572800::bigint THEN '200-300MB'
+                  WHEN size_bytes < 524288000::bigint THEN '300-500MB'
+                  ELSE '500MB 以上'
                 END AS size_bucket,
                 CASE
                   WHEN size_bytes IS NULL THEN 0
-                  WHEN size_bytes < 104857600::bigint THEN 1
-                  WHEN size_bytes < 314572800::bigint THEN 2
-                  WHEN size_bytes < 734003200::bigint THEN 3
-                  WHEN size_bytes < 1073741824::bigint THEN 4
-                  WHEN size_bytes < 2147483648::bigint THEN 5
+                  WHEN size_bytes < 52428800::bigint THEN 1
+                  WHEN size_bytes < 104857600::bigint THEN 2
+                  WHEN size_bytes < 209715200::bigint THEN 3
+                  WHEN size_bytes < 314572800::bigint THEN 4
+                  WHEN size_bytes < 524288000::bigint THEN 5
                   ELSE 6
                 END AS sort_order
          FROM ktv_songs
@@ -873,29 +913,24 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
 
   private async getDashboardTopArtists(): Promise<AdminDashboardChartPoint[]> {
     const artists = await this.listDiscoveryArtists();
-    return artists.slice(0, 12).map((artist) => ({
-      label: artist.artistName,
-      value: artist.songCount
-    }));
+    return withOtherBucket(
+      artists.map((artist) => ({
+        label: artist.artistName,
+        value: artist.songCount
+      })),
+      50
+    );
   }
 
   private async getTopStyles(): Promise<AdminDashboardChartPoint[]> {
-    const result = await this.db.query<DashboardLabelCountRow>(
-      `WITH style_tag_catalog AS (
-         SELECT s.id AS song_id,
-                tag.tag_name
-         FROM ktv_songs s
-         CROSS JOIN LATERAL unnest(s.style_tags) AS tag(tag_name)
-         WHERE s.missing_at IS NULL AND length(trim(tag.tag_name)) > 0
-       )
-       SELECT tag_name AS label,
-              count(DISTINCT song_id)::int AS count
-       FROM style_tag_catalog
-       GROUP BY tag_name
-       ORDER BY count DESC, label ASC
-       LIMIT 12`
+    const rows = await this.listDiscoveryGenres();
+    return withOtherBucket(
+      rows.map((genre) => ({
+        label: genre.genre,
+        value: genre.songCount
+      })),
+      20
     );
-    return mapLabelCountRows(result.rows);
   }
 
   private async getRequestStatusDistribution(): Promise<AdminDashboardChartPoint[]> {
@@ -908,15 +943,30 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
     return mapLabelCountRows(result.rows);
   }
 
-  private async getRequestTrend(): Promise<AdminDashboardRequestTrendPoint[]> {
+  private async getRequestTrend(trendRange: AdminDashboardTrendRange): Promise<AdminDashboardRequestTrendPoint[]> {
+    const config = requestTrendConfigs[trendRange] ?? requestTrendConfigs["30d"];
     const result = await this.db.query<DashboardTrendRow>(
-      `SELECT to_char(date_trunc('day', requested_at), 'YYYY-MM-DD') AS date,
-              count(*)::int AS request_count,
-              count(DISTINCT coalesce(requested_by_user_phone, requested_by, requested_by_name, 'unknown'))::int AS unique_requester_count
-       FROM queue_entries
-       WHERE requested_at >= current_date - interval '13 days'
-       GROUP BY date_trunc('day', requested_at)
-       ORDER BY date ASC`
+      `WITH request_trend_buckets AS (
+         SELECT generate_series(
+           date_trunc('${config.grain}', current_date - interval '${config.lookbackInterval}'),
+           date_trunc('${config.grain}', current_date),
+           interval '${config.stepInterval}'
+         ) AS bucket_start
+       ),
+       request_trend_counts AS (
+         SELECT date_trunc('${config.grain}', requested_at) AS bucket_start,
+                count(*)::int AS request_count,
+                count(DISTINCT coalesce(requested_by_user_phone, requested_by, requested_by_name, 'unknown'))::int AS unique_requester_count
+         FROM queue_entries
+         WHERE requested_at >= date_trunc('${config.grain}', current_date - interval '${config.lookbackInterval}')
+         GROUP BY date_trunc('${config.grain}', requested_at)
+       )
+       SELECT to_char(b.bucket_start, '${config.dateFormat}') AS date,
+              coalesce(c.request_count, 0)::int AS request_count,
+              coalesce(c.unique_requester_count, 0)::int AS unique_requester_count
+       FROM request_trend_buckets b
+       LEFT JOIN request_trend_counts c ON c.bucket_start = b.bucket_start
+       ORDER BY b.bucket_start ASC`
     );
     return result.rows.map((row) => ({
       date: row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date),
@@ -1248,6 +1298,16 @@ function mapLabelCountRows(rows: readonly DashboardLabelCountRow[]): AdminDashbo
     label: row.label ?? "unknown",
     value: toNumber(row.count)
   }));
+}
+
+function withOtherBucket(points: readonly AdminDashboardChartPoint[], topCount: number): AdminDashboardChartPoint[] {
+  const top = points.slice(0, topCount);
+  const otherValue = points.slice(topCount).reduce((sum, point) => sum + point.value, 0);
+  return otherValue > 0 ? [...top, { label: "其它", value: otherValue }] : top;
+}
+
+function normalizeDashboardTrendRange(value: AdminDashboardTrendRange | undefined): AdminDashboardTrendRange {
+  return value && value in requestTrendConfigs ? value : "30d";
 }
 
 function discoverySongPageLimit(value: number | undefined): number {

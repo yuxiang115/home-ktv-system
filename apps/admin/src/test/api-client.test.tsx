@@ -34,12 +34,12 @@ describe("admin api client", () => {
 
     await refreshRoomStatus("living-room");
     await refreshPairingToken("living-room");
-    await fetchAdminDashboard();
+    await fetchAdminDashboard({ trendRange: "3m" });
 
     expect(requests).toEqual([
       { url: "/admin/rooms/living-room", method: "GET" },
       { url: "/admin/rooms/living-room/pairing-token/refresh", method: "POST" },
-      { url: "/admin/ktv-index/dashboard", method: "GET" }
+      { url: "/admin/ktv-index/dashboard?trendRange=3m", method: "GET" }
     ]);
   });
 });

@@ -5,16 +5,18 @@ import type {
   AdminDashboardRequestTrendPoint,
   AdminDashboardRecentRequest,
   AdminDashboardSongRank,
+  AdminDashboardTrendRange,
   AdminDashboardUserRank
 } from "@home-ktv/domain";
 import type { CSSProperties, ReactNode } from "react";
-import { ResponsiveBar } from "@nivo/bar";
 import { ResponsiveLine } from "@nivo/line";
 import { ResponsivePie } from "@nivo/pie";
+import { useState } from "react";
 import { useI18n } from "../i18n.js";
 import { useAdminDashboard } from "./use-admin-dashboard.js";
 
 const chartColors = ["#29d8ff", "#ffd166", "#6cff9d", "#ff4d7a", "#9b8cff", "#ff8bd2", "#72f0ff", "#f7a55a"];
+const trendRanges = ["7d", "30d", "3m", "1y"] as const satisfies readonly AdminDashboardTrendRange[];
 
 function chartColor(index: number): string {
   return chartColors[index % chartColors.length] ?? chartColors[0]!;
@@ -22,7 +24,8 @@ function chartColor(index: number): string {
 
 export function AdminDashboardView() {
   const { t } = useI18n();
-  const dashboard = useAdminDashboard();
+  const [trendRange, setTrendRange] = useState<AdminDashboardTrendRange>("30d");
+  const dashboard = useAdminDashboard(trendRange);
   const data = dashboard.data;
 
   if (dashboard.isLoading) {
@@ -64,37 +67,44 @@ export function AdminDashboardView() {
         ))}
       </section>
 
-      <section className="dashboard-chart-grid dashboard-chart-grid--lead">
-        <DashboardPanel title={t("dashboard.requestTrend")} subtitle={t("dashboard.last14Days")} span="wide">
-          <TrendChart data={data.requests.requestTrend} />
-        </DashboardPanel>
-
-        <DashboardPanel title={t("dashboard.topSongs")} subtitle={t("dashboard.singingRank")}>
-          <RankedSongs songs={data.requests.topSongs} />
+      <section className="dashboard-chart-grid dashboard-chart-grid--trend">
+        <DashboardPanel
+          title={t("dashboard.requestTrend")}
+          subtitle={t(`dashboard.range.${trendRange}`)}
+          span="full"
+          actions={<TrendRangeTabs selectedRange={trendRange} onSelect={setTrendRange} />}
+        >
+          <TrendChart data={data.requests.requestTrend} trendRange={trendRange} />
         </DashboardPanel>
       </section>
 
-      <section className="dashboard-chart-grid">
+      <section className="dashboard-chart-grid dashboard-chart-grid--distributions">
         <DashboardPanel title={t("dashboard.sizeDistribution")} subtitle={formatBytes(data.storage.totalBytes)}>
           <DonutChart data={data.storage.sizeBuckets} />
         </DashboardPanel>
         <DashboardPanel title={t("dashboard.extensionDistribution")} subtitle={t("dashboard.byFiles")}>
-          <HorizontalBarChart data={data.storage.extensionDistribution} />
+          <DonutChart data={data.storage.extensionDistribution} />
         </DashboardPanel>
-        <DashboardPanel title={t("dashboard.topArtists")} subtitle={t("dashboard.bySongs")}>
-          <HorizontalBarChart data={data.catalog.topArtists} />
-        </DashboardPanel>
-        <DashboardPanel title={t("dashboard.topStyles")} subtitle={t("dashboard.byTags")}>
-          <HorizontalBarChart data={data.catalog.topStyles} />
-        </DashboardPanel>
-      </section>
-
-      <section className="dashboard-chart-grid">
         <DashboardPanel title={t("dashboard.technicalStatus")} subtitle={t("dashboard.mediaHealth")}>
           <DonutChart data={data.catalog.technicalStatus} />
         </DashboardPanel>
         <DashboardPanel title={t("dashboard.audioTracks")} subtitle={t("dashboard.switchReadiness")}>
-          <HorizontalBarChart data={data.catalog.audioTrackDistribution} />
+          <DonutChart data={data.catalog.audioTrackDistribution} />
+        </DashboardPanel>
+      </section>
+
+      <section className="dashboard-chart-grid dashboard-chart-grid--catalog">
+        <DashboardPanel title={t("dashboard.topArtists")} subtitle={t("dashboard.topArtistsDistribution")} span="wide">
+          <DonutChart data={data.catalog.topArtists} variant="large" />
+        </DashboardPanel>
+        <DashboardPanel title={t("dashboard.topStyles")} subtitle={t("dashboard.topStylesDistribution")} span="wide">
+          <DonutChart data={data.catalog.topStyles} variant="large" />
+        </DashboardPanel>
+      </section>
+
+      <section className="dashboard-chart-grid dashboard-chart-grid--rankings">
+        <DashboardPanel title={t("dashboard.topSongs")} subtitle={t("dashboard.singingRank")}>
+          <RankedSongs songs={data.requests.topSongs} />
         </DashboardPanel>
         <DashboardPanel title={t("dashboard.requesters")} subtitle={t("dashboard.userRank")}>
           <RequesterRank requesters={data.requests.topRequesters} />
@@ -130,23 +140,57 @@ function DashboardPanel({
   title,
   subtitle,
   span,
+  actions,
   children
 }: {
   title: string;
   subtitle: string;
-  span?: "wide";
+  span?: "wide" | "full";
+  actions?: ReactNode;
   children: ReactNode;
 }) {
+  const className =
+    span === "full"
+      ? "dashboard-panel dashboard-panel--full"
+      : span === "wide"
+        ? "dashboard-panel dashboard-panel--wide"
+        : "dashboard-panel";
   return (
-    <section className={span === "wide" ? "dashboard-panel dashboard-panel--wide" : "dashboard-panel"}>
+    <section className={className}>
       <header>
         <div>
           <h2>{title}</h2>
           <p>{subtitle}</p>
         </div>
+        {actions}
       </header>
       <div className="dashboard-panel-body">{children}</div>
     </section>
+  );
+}
+
+function TrendRangeTabs({
+  selectedRange,
+  onSelect
+}: {
+  selectedRange: AdminDashboardTrendRange;
+  onSelect: (range: AdminDashboardTrendRange) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="dashboard-range-tabs" role="group" aria-label={t("dashboard.trendRange")}>
+      {trendRanges.map((range) => (
+        <button
+          key={range}
+          type="button"
+          className={range === selectedRange ? "is-active" : ""}
+          aria-pressed={range === selectedRange}
+          onClick={() => onSelect(range)}
+        >
+          {t(`dashboard.rangeLabel.${range}`)}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -159,10 +203,11 @@ function HealthItem({ label, value, tone = "normal" }: { label: string; value: s
   );
 }
 
-function DonutChart({ data }: { data: AdminDashboardChartPoint[] }) {
+function DonutChart({ data, variant = "normal" }: { data: AdminDashboardChartPoint[]; variant?: "normal" | "large" }) {
   if (data.length === 0) {
     return <EmptyChart />;
   }
+  const total = data.reduce((sum, item) => sum + item.value, 0);
   const chartData = data.map((item, index) => ({
     id: item.label,
     label: item.label,
@@ -170,72 +215,44 @@ function DonutChart({ data }: { data: AdminDashboardChartPoint[] }) {
     color: chartColor(index)
   }));
   return (
-    <div className="dashboard-donut-wrap">
+    <div className={variant === "large" ? "dashboard-donut-wrap dashboard-donut-wrap--large" : "dashboard-donut-wrap"}>
       <div className="dashboard-nivo-donut">
         <ResponsivePie
           data={chartData}
-          margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
-          innerRadius={0.64}
-          padAngle={1.8}
+          margin={{ top: 12, right: 12, bottom: 12, left: 12 }}
+          innerRadius={variant === "large" ? 0.54 : 0.62}
+          padAngle={variant === "large" ? 1.2 : 1.8}
           cornerRadius={4}
           activeOuterRadiusOffset={8}
           colors={{ datum: "data.color" }}
           borderWidth={0}
           enableArcLabels={false}
           enableArcLinkLabels={false}
-          tooltip={({ datum }) => <ChartTooltip label={String(datum.label)} value={Number(datum.value)} />}
+          tooltip={({ datum }) => (
+            <ChartTooltip label={String(datum.label)} value={Number(datum.value)} suffix={formatShare(Number(datum.value), total)} />
+          )}
           theme={nivoTheme}
         />
       </div>
-      <ChartLegend data={data.slice(0, 6)} />
+      <ChartLegend data={data} total={total} compact={variant !== "large"} />
     </div>
   );
 }
 
-function HorizontalBarChart({ data }: { data: AdminDashboardChartPoint[] }) {
+function TrendChart({
+  data,
+  trendRange
+}: {
+  data: AdminDashboardRequestTrendPoint[];
+  trendRange: AdminDashboardTrendRange;
+}) {
   if (data.length === 0) {
     return <EmptyChart />;
   }
-  const chartData = data.slice(0, 8).map((item) => ({
-    label: item.label,
-    value: item.value
-  }));
-  return (
-    <div className="dashboard-nivo-bar">
-      <ResponsiveBar
-        data={chartData}
-        keys={["value"]}
-        indexBy="label"
-        layout="horizontal"
-        margin={{ top: 4, right: 18, bottom: 18, left: 78 }}
-        padding={0.36}
-        valueScale={{ type: "linear" }}
-        indexScale={{ type: "band", round: true }}
-        colors={({ index }) => chartColor(index)}
-        borderRadius={6}
-        enableGridX={false}
-        enableGridY={false}
-        enableLabel={false}
-        axisTop={null}
-        axisRight={null}
-        axisBottom={null}
-        axisLeft={{
-          tickSize: 0,
-          tickPadding: 8,
-          tickRotation: 0,
-          truncateTickAt: 10
-        }}
-        tooltip={({ data }) => <ChartTooltip label={String(data.label)} value={Number(data.value)} />}
-        theme={nivoTheme}
-      />
-    </div>
+  const tickValues = selectTrendTickValues(
+    data.map((item) => item.date),
+    trendRange
   );
-}
-
-function TrendChart({ data }: { data: AdminDashboardRequestTrendPoint[] }) {
-  if (data.length === 0) {
-    return <EmptyChart />;
-  }
   const series = [
     {
       id: "点歌次数",
@@ -252,15 +269,16 @@ function TrendChart({ data }: { data: AdminDashboardRequestTrendPoint[] }) {
     <div className="dashboard-nivo-line">
       <ResponsiveLine
         data={series}
-        margin={{ top: 14, right: 24, bottom: 36, left: 38 }}
+        margin={{ top: 14, right: 24, bottom: 50, left: 38 }}
         xScale={{ type: "point" }}
         yScale={{ type: "linear", min: 0, max: "auto", stacked: false, reverse: false }}
         curve="monotoneX"
         colors={{ datum: "color" }}
         lineWidth={3}
-        pointSize={7}
+        enablePoints={false}
+        pointSize={0}
         pointColor={{ from: "color" }}
-        pointBorderWidth={2}
+        pointBorderWidth={0}
         pointBorderColor="rgba(4, 10, 25, 0.9)"
         enableArea={true}
         areaOpacity={0.12}
@@ -270,7 +288,8 @@ function TrendChart({ data }: { data: AdminDashboardRequestTrendPoint[] }) {
         axisRight={null}
         axisBottom={{
           tickSize: 0,
-          tickPadding: 12,
+          tickPadding: 10,
+          tickValues,
           format: (value) => formatShortDate(String(value))
         }}
         axisLeft={{
@@ -369,13 +388,24 @@ function RecentRequests({ requests }: { requests: AdminDashboardRecentRequest[] 
   );
 }
 
-function ChartLegend({ data }: { data: AdminDashboardChartPoint[] }) {
+function ChartLegend({
+  data,
+  total,
+  compact = false
+}: {
+  data: AdminDashboardChartPoint[];
+  total: number;
+  compact?: boolean;
+}) {
+  const displayData = compact ? data.slice(0, 8) : data;
   return (
-    <div className="dashboard-chart-legend">
-      {data.map((item, index) => (
+    <div className={compact ? "dashboard-chart-legend dashboard-chart-legend--compact" : "dashboard-chart-legend"}>
+      {displayData.map((item, index) => (
         <span key={item.label}>
           <i style={{ background: chartColor(index) }} />
-          {item.label}
+          <strong>{item.label}</strong>
+          <em>{formatInteger(item.value)}</em>
+          <small>{formatShare(item.value, total)}</small>
         </span>
       ))}
     </div>
@@ -386,11 +416,11 @@ function EmptyChart() {
   return <div className="dashboard-empty-chart">暂无数据</div>;
 }
 
-function ChartTooltip({ label, value }: { label: string; value: number }) {
+function ChartTooltip({ label, value, suffix }: { label: string; value: number; suffix?: string }) {
   return (
     <div className="dashboard-tooltip">
       <strong>{label}</strong>
-      <span>数量: {formatInteger(value)}</span>
+      <span>数量: {formatInteger(value)}{suffix ? ` · ${suffix}` : ""}</span>
     </div>
   );
 }
@@ -417,6 +447,13 @@ function formatPercent(value: number): string {
   return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value)}%`;
 }
 
+function formatShare(value: number, total: number): string {
+  if (total <= 0) {
+    return "0%";
+  }
+  return `${new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 }).format((value / total) * 100)}%`;
+}
+
 function formatBytes(value: number): string {
   if (value <= 0) {
     return "0 B";
@@ -427,8 +464,27 @@ function formatBytes(value: number): string {
 }
 
 function formatShortDate(value: string): string {
+  const [, yearMonth] = /^(\d{4})-(\d{2})$/u.exec(value) ?? [];
+  if (yearMonth) {
+    return value.replace("-", "/");
+  }
   const [, month, day] = /^(\d{4})-(\d{2})-(\d{2})/u.exec(value) ?? [];
   return month && day ? `${month}/${day}` : value;
+}
+
+function selectTrendTickValues(dates: readonly string[], trendRange: AdminDashboardTrendRange): string[] {
+  if (trendRange === "7d" || trendRange === "1y") {
+    return [...dates];
+  }
+
+  const targetCount = trendRange === "3m" ? 7 : 6;
+  const step = Math.max(1, Math.ceil(dates.length / targetCount));
+  const ticks = dates.filter((_, index) => index % step === 0);
+  const last = dates.at(-1);
+  if (last && !ticks.includes(last)) {
+    ticks.push(last);
+  }
+  return ticks;
 }
 
 const nivoTheme = {

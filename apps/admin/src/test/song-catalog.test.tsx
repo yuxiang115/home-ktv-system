@@ -39,10 +39,16 @@ describe("NAS library admin workspace", () => {
     expect(screen.queryByRole("button", { name: "导入" })).toBeNull();
     expect(screen.queryByText("正式歌曲")).toBeNull();
 
-    await waitFor(() => expect(requests.some((request) => request.url === "/admin/ktv-index/dashboard")).toBe(true));
+    await waitFor(() => expect(requests.some((request) => request.url === "/admin/ktv-index/dashboard?trendRange=30d")).toBe(true));
     expect(screen.getByText("总歌曲数")).toBeTruthy();
     expect(screen.getByText("31,893")).toBeTruthy();
     expect(screen.getByText("唱榜 Top 10")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "7日" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "30天" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "3个月" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "近一年" })).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "3个月" }));
+    await waitFor(() => expect(requests.some((request) => request.url === "/admin/ktv-index/dashboard?trendRange=3m")).toBe(true));
     expect(screen.getAllByText("阿飞").length).toBeGreaterThan(0);
     expect(requests.some((request) => request.url.startsWith("/admin/ktv-index/diagnostics"))).toBe(false);
     expect(requests.some((request) => request.url.startsWith("/admin/catalog/"))).toBe(false);
@@ -248,8 +254,12 @@ function createAdminDashboard(): AdminDashboardResponse {
     storage: {
       totalBytes: 9876543210,
       sizeBuckets: [
-        { label: "100MB 以下", value: 8 },
-        { label: "100-300MB", value: 120 }
+        { label: "50MB 以下", value: 8 },
+        { label: "50-100MB", value: 120 },
+        { label: "100-200MB", value: 60 },
+        { label: "200-300MB", value: 30 },
+        { label: "300-500MB", value: 12 },
+        { label: "500MB 以上", value: 4 }
       ],
       extensionDistribution: [{ label: ".mkv", value: 300 }],
       largestSongs: [

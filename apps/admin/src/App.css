@@ -469,8 +469,14 @@ code {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.dashboard-chart-grid--lead {
-  grid-template-columns: minmax(0, 2fr) minmax(320px, 0.9fr);
+.dashboard-chart-grid--trend,
+.dashboard-chart-grid--catalog {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.dashboard-chart-grid--distributions,
+.dashboard-chart-grid--rankings {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .dashboard-panel {
@@ -489,10 +495,15 @@ code {
   grid-column: span 2;
 }
 
+.dashboard-panel--full {
+  grid-column: 1 / -1;
+}
+
 .dashboard-panel header {
   align-items: start;
   border-bottom: 1px solid rgba(122, 202, 255, 0.12);
   display: flex;
+  gap: 12px;
   justify-content: space-between;
   margin: -2px 0 12px;
   padding-bottom: 12px;
@@ -511,14 +522,62 @@ code {
   margin: 0;
 }
 
+.dashboard-range-tabs {
+  align-items: center;
+  background: rgba(4, 10, 25, 0.56);
+  border: 1px solid rgba(122, 202, 255, 0.18);
+  border-radius: 999px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 3px;
+}
+
+.dashboard-range-tabs button {
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: #9da9c9;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  min-height: 26px;
+  padding: 0 10px;
+  transition: background 180ms ease, color 180ms ease, box-shadow 180ms ease;
+  white-space: nowrap;
+}
+
+.dashboard-range-tabs button:hover,
+.dashboard-range-tabs button:focus-visible {
+  color: var(--text);
+}
+
+.dashboard-range-tabs button:focus-visible {
+  outline: 2px solid rgba(41, 216, 255, 0.72);
+  outline-offset: 2px;
+}
+
+.dashboard-range-tabs button.is-active {
+  background: linear-gradient(135deg, rgba(41, 216, 255, 0.24), rgba(255, 209, 102, 0.16));
+  box-shadow: inset 0 0 0 1px rgba(122, 202, 255, 0.34);
+  color: #eef5ff;
+}
+
 .dashboard-panel-body {
   min-height: 0;
 }
 
 .dashboard-donut-wrap {
   display: grid;
+  gap: 10px;
   grid-template-rows: minmax(0, 1fr) auto;
   height: 100%;
+}
+
+.dashboard-donut-wrap--large {
+  grid-template-columns: minmax(280px, 1fr) minmax(220px, 0.8fr);
+  grid-template-rows: 1fr;
 }
 
 .dashboard-nivo-donut {
@@ -526,9 +585,9 @@ code {
   min-height: 220px;
 }
 
-.dashboard-nivo-bar {
-  height: 260px;
-  min-height: 260px;
+.dashboard-donut-wrap--large .dashboard-nivo-donut {
+  height: 312px;
+  min-height: 312px;
 }
 
 .dashboard-nivo-line {
@@ -537,18 +596,40 @@ code {
 }
 
 .dashboard-chart-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  align-content: start;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-height: 312px;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .dashboard-chart-legend span {
   align-items: center;
+  background: rgba(255, 255, 255, 0.028);
+  border: 1px solid rgba(122, 202, 255, 0.08);
+  border-radius: 7px;
   color: #cbd6f7;
-  display: inline-flex;
+  display: grid;
   font-size: 11px;
   font-weight: 800;
   gap: 6px;
+  grid-template-columns: 8px minmax(0, 1fr) auto auto;
+  min-height: 28px;
+  padding: 5px 7px;
+}
+
+.dashboard-chart-legend--compact {
+  display: flex;
+  flex-wrap: wrap;
+  max-height: none;
+}
+
+.dashboard-chart-legend--compact span {
+  display: inline-grid;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .dashboard-chart-legend i {
@@ -556,6 +637,19 @@ code {
   display: inline-block;
   height: 8px;
   width: 8px;
+}
+
+.dashboard-chart-legend strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-chart-legend em,
+.dashboard-chart-legend small {
+  color: var(--muted);
+  font-style: normal;
+  white-space: nowrap;
 }
 
 .dashboard-rank-list {
@@ -1882,8 +1976,7 @@ code {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .dashboard-hero,
-  .dashboard-chart-grid--lead {
+  .dashboard-hero {
     grid-template-columns: 1fr;
   }
 
@@ -1894,6 +1987,13 @@ code {
   .dashboard-chart-grid,
   .dashboard-table-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-chart-grid--trend,
+  .dashboard-chart-grid--catalog,
+  .dashboard-chart-grid--distributions,
+  .dashboard-chart-grid--rankings {
+    grid-template-columns: 1fr;
   }
 
   .admin-header-beam {
@@ -1977,7 +2077,10 @@ code {
 
   .dashboard-metrics,
   .dashboard-chart-grid,
-  .dashboard-chart-grid--lead,
+  .dashboard-chart-grid--trend,
+  .dashboard-chart-grid--catalog,
+  .dashboard-chart-grid--distributions,
+  .dashboard-chart-grid--rankings,
   .dashboard-table-grid {
     grid-template-columns: 1fr;
   }
@@ -1986,8 +2089,31 @@ code {
     grid-column: auto;
   }
 
+  .dashboard-panel--full {
+    grid-column: auto;
+  }
+
   .dashboard-panel {
     min-height: 300px;
+  }
+
+  .dashboard-donut-wrap--large {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .dashboard-chart-legend {
+    grid-template-columns: 1fr;
+    max-height: 220px;
+  }
+
+  .dashboard-panel header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dashboard-range-tabs {
+    align-self: flex-start;
   }
 
   .dashboard-data-table div {

@@ -1,3 +1,4 @@
+import type { AdminDashboardTrendRange } from "@home-ktv/domain";
 import type { FastifyInstance } from "fastify";
 import type { KtvIndexReadRepository } from "../modules/ktv-index/ktv-index-read-repository.js";
 
@@ -10,6 +11,12 @@ interface DiagnosticsQuery {
   sampleSize?: string | number;
   sampleTimeoutMs?: string | number;
 }
+
+interface DashboardQuery {
+  trendRange?: string;
+}
+
+const dashboardTrendRanges = new Set<AdminDashboardTrendRange>(["7d", "30d", "3m", "1y"]);
 
 export async function registerAdminKtvIndexRoutes(
   server: FastifyInstance,
@@ -30,12 +37,20 @@ export async function registerAdminKtvIndexRoutes(
     );
   });
 
-  server.get("/admin/ktv-index/dashboard", async (_request, reply) => {
-    await reply.send(await dependencies.ktvIndex.getAdminDashboard());
+  server.get<{ Querystring: DashboardQuery }>("/admin/ktv-index/dashboard", async (request, reply) => {
+    await reply.send(
+      await dependencies.ktvIndex.getAdminDashboard({
+        trendRange: parseDashboardTrendRange(request.query.trendRange)
+      })
+    );
   });
 }
 
 function parseBoundedNumber(value: string | number | undefined, fallback: number, min: number, max: number): number {
   const parsed = typeof value === "number" ? value : Number.parseInt(value ?? "", 10);
   return Math.min(max, Math.max(min, parsed || fallback));
+}
+
+function parseDashboardTrendRange(value: string | undefined): AdminDashboardTrendRange {
+  return dashboardTrendRanges.has(value as AdminDashboardTrendRange) ? (value as AdminDashboardTrendRange) : "30d";
 }
