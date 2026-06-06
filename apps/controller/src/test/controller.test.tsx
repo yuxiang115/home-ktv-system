@@ -214,6 +214,7 @@ describe("mobile controller runtime", () => {
     const requester = within(queue).getByText("点歌人 阿飞");
     expect(requester).toBeTruthy();
     expect(requester.closest(".queue-meta")).toBeTruthy();
+    expect(requester.className).toContain("queue-requester--tone-");
   });
 
   it("shows the active TV count when multiple TV players are online", async () => {

@@ -1496,9 +1496,50 @@ input:focus {
 }
 
 .queue-requester {
+  display: inline-flex;
   min-width: 0;
-  color: var(--ktv-muted);
+  padding: 2px 7px;
+  border: 1px solid var(--queue-requester-border, rgba(148, 163, 184, 0.18));
+  border-radius: 999px;
+  color: var(--queue-requester-text, var(--ktv-muted));
+  background: var(--queue-requester-bg, rgba(148, 163, 184, 0.1));
   font-weight: 750;
+}
+
+.queue-requester--tone-1 {
+  --queue-requester-bg: rgba(37, 245, 139, 0.12);
+  --queue-requester-border: rgba(37, 245, 139, 0.28);
+  --queue-requester-text: #86efac;
+}
+
+.queue-requester--tone-2 {
+  --queue-requester-bg: rgba(34, 211, 238, 0.13);
+  --queue-requester-border: rgba(34, 211, 238, 0.3);
+  --queue-requester-text: #67e8f9;
+}
+
+.queue-requester--tone-3 {
+  --queue-requester-bg: rgba(251, 191, 36, 0.13);
+  --queue-requester-border: rgba(251, 191, 36, 0.3);
+  --queue-requester-text: #fde68a;
+}
+
+.queue-requester--tone-4 {
+  --queue-requester-bg: rgba(129, 140, 248, 0.15);
+  --queue-requester-border: rgba(129, 140, 248, 0.32);
+  --queue-requester-text: #c4b5fd;
+}
+
+.queue-requester--tone-5 {
+  --queue-requester-bg: rgba(244, 114, 182, 0.13);
+  --queue-requester-border: rgba(244, 114, 182, 0.28);
+  --queue-requester-text: #f9a8d4;
+}
+
+.queue-requester--tone-6 {
+  --queue-requester-bg: rgba(251, 113, 133, 0.12);
+  --queue-requester-border: rgba(251, 113, 133, 0.28);
+  --queue-requester-text: #fda4af;
 }
 
 .queue-meta {

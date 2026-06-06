@@ -1072,6 +1072,7 @@ function ControlScreen({
                   entry.undoExpiresAt ??
                   (controller.pendingUndo?.queueEntryId === entry.queueEntryId ? controller.pendingUndo.undoExpiresAt : null);
                 const requesterLabel = queueRequesterLabel(entry, t);
+                const requesterToneClass = queueRequesterToneClass(entry);
                 return (
                   <article className="queue-row" key={entry.queueEntryId}>
                     <div>
@@ -1079,7 +1080,7 @@ function ControlScreen({
                       <p className="queue-meta">
                         <span>{entry.artistName}</span>
                         <span aria-hidden="true">·</span>
-                        <span className="queue-requester">{requesterLabel}</span>
+                        <span className={`queue-requester ${requesterToneClass}`}>{requesterLabel}</span>
                       </p>
                       {undoExpiresAt ? <small>{t("queue.undoUntil", { time: formatTime(undoExpiresAt) })}</small> : null}
                     </div>
@@ -1666,6 +1667,17 @@ function queueRequesterLabel(
     entry.requestedBy?.trim() ||
     t("queue.unknownRequester");
   return t("queue.requestedBy", { name: requester });
+}
+
+function queueRequesterToneClass(
+  entry: Pick<NonNullable<RoomControllerState["snapshot"]>["queue"][number], "requestedByName" | "requestedByUserPhone" | "requestedBy">
+): string {
+  const key = entry.requestedByUserPhone?.trim() || entry.requestedByName?.trim() || entry.requestedBy?.trim() || "unknown";
+  let hash = 0;
+  for (const char of key) {
+    hash = (hash * 31 + char.charCodeAt(0)) % 6;
+  }
+  return `queue-requester--tone-${hash + 1}`;
 }
 
 function formatFileSize(sizeBytes: number | null): string {
