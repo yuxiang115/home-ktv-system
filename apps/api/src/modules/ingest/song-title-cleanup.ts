@@ -1,3 +1,5 @@
+import { VARIETY_SHOW_NAMES } from "./variety-show-metadata.js";
+
 export interface SongTitleCleanupInput {
   title: string;
 }
@@ -57,6 +59,13 @@ export function cleanSongTitle(input: SongTitleCleanupInput): SongTitleCleanupRe
       continue;
     }
 
+    const varietyShowStripped = stripTrailingVarietyShowTitle(title);
+    if (varietyShowStripped !== title) {
+      title = varietyShowStripped;
+      reasons.add("variety-show-suffix");
+      continue;
+    }
+
     title = title.replace(TRAILING_DISPLAY_WORD_PATTERN, "").trim();
     if (title !== previous) {
       reasons.add("display-word");
@@ -90,6 +99,20 @@ function stripTrailingBracketDetail(value: string): string {
   return prefix;
 }
 
+function stripTrailingVarietyShowTitle(value: string): string {
+  for (const showName of VARIETY_SHOW_NAMES) {
+    const suffixPattern = new RegExp(
+      `${escapeRegExp(showName)}(?:\\d+|第.+季|[一二三四五六七八九十]+强|\\d+强)?$`,
+      "u"
+    );
+    const stripped = value.replace(suffixPattern, "").trim();
+    if (stripped !== value && stripped.length >= 2) {
+      return stripped;
+    }
+  }
+  return value;
+}
+
 function stripTrailingCategory(value: string): string {
   const match = value.match(TRAILING_CATEGORY_PATTERN);
   if (!match?.[0]) {
@@ -108,4 +131,8 @@ function stripTrailingCategory(value: string): string {
   }
 
   return value;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }

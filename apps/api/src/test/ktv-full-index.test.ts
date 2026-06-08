@@ -112,6 +112,11 @@ describe("KTV full index importer", () => {
         normalizedTitle: "以父之名"
       },
       {
+        relativePath: "综艺精选/魏雪漫-我是真的爱你中国好声音第三季-国语-流行歌曲.mkv",
+        title: "我是真的爱你",
+        normalizedTitle: "我是真的爱你"
+      },
+      {
         relativePath: "综合专辑 9300首1.4T/K歌排行/90后/汪苏泷-不够成熟[2]-国语-流行.mpg",
         title: "不够成熟",
         normalizedTitle: "不够成熟"
