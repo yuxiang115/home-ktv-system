@@ -137,6 +137,16 @@ describe("KTV full index importer", () => {
         normalizedTitle: "她来听我的演唱会"
       },
       {
+        relativePath: "国语-知名歌星专辑 11000首850G/刘欢85/刘欢-沧海一声笑^好汉歌-国语-流行.mpg",
+        title: "沧海一声笑^好汉歌",
+        normalizedTitle: "沧海一声笑^好汉歌"
+      },
+      {
+        relativePath: "1080P全高清MPG2026年更新（更新中）/03月mpg1080/林志炫-断了线 + 回家 (我是歌手第一季)[1080P]-国语-流行.mpg",
+        title: "断了线 + 回家",
+        normalizedTitle: "断了线+回家"
+      },
+      {
         relativePath: "综合专辑 9300首1.4T/K歌排行/90后/汪苏泷-不够成熟[2]-国语-流行.mpg",
         title: "不够成熟",
         normalizedTitle: "不够成熟"

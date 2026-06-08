@@ -6,7 +6,7 @@ const traditionalToSimplified = OpenCC.Converter({ from: "t", to: "cn" });
 export function normalizeSearchText(value: string): string {
   return traditionalToSimplified(value.normalize("NFKC"))
     .toLowerCase()
-    .replace(/[^\p{Letter}\p{Number}]+/gu, "");
+    .replace(/[^\p{Letter}\p{Number}+^]+/gu, "");
 }
 
 export function buildPinyinSearchKeys(value: string): { pinyin: string; initials: string } {
