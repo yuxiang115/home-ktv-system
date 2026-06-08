@@ -14,7 +14,7 @@ const DISPLAY_MARKER_PATTERN = /\s*(?:[\[【][^\]【】]*(?:720|1080|高清|HD|P
 const VERSION_MARKER_PATTERN = /\s*[\(（][^()（）]*(?:粤语版|国语版|DJ[^()（）]*版|现场版|烟嗓版|ai修复版|DJ)[^()（）]*[\)）]\s*$/iu;
 const CHINESE_SUBTITLE_PATTERN = /\s*[\(（][\p{Script=Han}\s，、。！？!?]+[\)）]\s*$/u;
 const TRAILING_BRACKET_DETAIL_PATTERN = /^(.{2,}?)\s*[\(（\[【〖].*$/u;
-const TRAILING_DISPLAY_WORD_PATTERN = /\s*[-－—–]\s*(?:演唱会|现场|Live|MTV)\s*$/iu;
+const TRAILING_DISPLAY_WORD_PATTERN = /\s*[-－—–]?\s*(?:演唱会|现场|Live|MTV)\s*$/iu;
 const TRAILING_CATEGORY_PATTERN = /(流行|怀旧|合唱|戏曲|歌曲|dj)$/iu;
 const EXACT_TITLE_FIXES = new Map<string, string>([
   ["如果这就是爱情", "这就是爱情"]
