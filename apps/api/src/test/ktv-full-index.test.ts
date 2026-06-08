@@ -127,6 +127,11 @@ describe("KTV full index importer", () => {
         normalizedTitle: "再回首"
       },
       {
+        relativePath: "综艺精选/巴图-她来听我的演唱会(跨界歌王)-国语-流行.mkv",
+        title: "她来听我的演唱会",
+        normalizedTitle: "她来听我的演唱会"
+      },
+      {
         relativePath: "综合专辑 9300首1.4T/K歌排行/90后/汪苏泷-不够成熟[2]-国语-流行.mpg",
         title: "不够成熟",
         normalizedTitle: "不够成熟"
