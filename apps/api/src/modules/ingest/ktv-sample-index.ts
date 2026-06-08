@@ -190,6 +190,7 @@ const KTV_ROOT_FOLDER_PROFILES: Record<string, KtvRootFolderProfile> = {
   "2024": "strict_dash_tail_or_loose_tail",
   "2025": "strict_dash_tail_or_parenthesized_language_or_loose_tail",
   "1080P全高清MPG2026年更新（更新中）": "strict_dash_tail",
+  "合唱歌曲": "strict_dash_tail",
   "国语-知名歌星专辑 11000首850G": "strict_dash_tail",
   "本店2026年更新MPG720超清（更新中）": "strict_dash_tail",
   "流行歌曲": "strict_dash_tail",
@@ -197,6 +198,7 @@ const KTV_ROOT_FOLDER_PROFILES: Record<string, KtvRootFolderProfile> = {
   "流行精选": "strict_dash_tail",
   "经典老歌(1.2万首450G)": "strict_dash_tail",
   "综合专辑 9300首1.4T": "strict_dash_tail_strip_variety_markers",
+  "综艺精选": "strict_dash_tail",
   "网络热歌(有新歌加入)": "strict_dash_tail",
   "酷狗排行TOP": "strict_dash_tail"
 };

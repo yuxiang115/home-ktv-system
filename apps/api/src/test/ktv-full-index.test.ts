@@ -146,6 +146,34 @@ describe("KTV full index importer", () => {
     }
   });
 
+  it("parses new top-level import folders with filename metadata", () => {
+    const cases = [
+      {
+        relativePath: "合唱歌曲/一阳_益佳-明明很用心-国语-情歌对唱.mkv",
+        title: "明明很用心",
+        artists: ["一阳", "益佳"]
+      },
+      {
+        relativePath: "综艺精选/邓紫棋-喜欢你(盖世英雄)-粤语-流行.mkv",
+        title: "喜欢你",
+        artists: ["邓紫棋"]
+      }
+    ] as const;
+
+    for (const testCase of cases) {
+      const draft = buildKtvIndexAssetDraft({
+        sourcePath: `/mnt/nas/KTV歌曲/${testCase.relativePath}`,
+        relativePath: testCase.relativePath,
+        sizeBytes: 123,
+        mtimeMs: 456
+      });
+
+      expect(draft.title).toBe(testCase.title);
+      expect(draft.normalizedTitle).toBe(testCase.title);
+      expect(draft.artistNames).toEqual(testCase.artists);
+    }
+  });
+
   it("does not treat variety show names as artists when splitting filename artist text", () => {
     const cases = [
       {

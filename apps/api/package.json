@@ -15,6 +15,7 @@
     "import:songs": "tsx src/scripts/ktv-song-import.ts",
     "probe:ktv-index": "tsx src/scripts/ktv-index-probe.ts",
     "clean:variety-show-metadata": "tsx src/scripts/clean-variety-show-metadata.ts",
+    "repair:ktv-song-metadata": "tsx src/scripts/repair-ktv-song-metadata.ts",
     "covers:songs": "python3 ../../scripts/tools/fetch_song_covers.py fetch",
     "covers:coverage": "python3 ../../scripts/tools/fetch_song_covers.py coverage",
     "covers:status": "python3 ../../scripts/tools/fetch_song_covers.py status",
