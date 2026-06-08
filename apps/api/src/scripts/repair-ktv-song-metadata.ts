@@ -21,7 +21,7 @@ interface KtvSongMetadataRow {
   size_bytes: number | null;
   mtime_ms: number | null;
   parse_strategy: string;
-  parse_confidence: number;
+  parse_confidence: number | string;
 }
 
 interface DbClient extends QueryExecutor {
@@ -197,7 +197,7 @@ export function buildRepairPlan(
       previousNormalizedPrimaryArtistName: row.normalized_primary_artist_name,
       previousArtistNames: row.artist_names ?? [],
       previousParseStrategy: row.parse_strategy,
-      previousParseConfidence: row.parse_confidence
+      previousParseConfidence: Number(row.parse_confidence)
     };
 
     if (hasMetadataChange(item)) {
@@ -304,7 +304,7 @@ function hasMetadataChange(item: RepairPlanItem): boolean {
     || item.normalizedPrimaryArtistName !== item.previousNormalizedPrimaryArtistName
     || item.artistNames.join("\u0000") !== item.previousArtistNames.join("\u0000")
     || item.parseStrategy !== item.previousParseStrategy
-    || item.parseConfidence !== item.previousParseConfidence;
+    || Math.abs(item.parseConfidence - item.previousParseConfidence) > 0.0005;
 }
 
 function createPgClient(databaseUrl: string): DbClient {
