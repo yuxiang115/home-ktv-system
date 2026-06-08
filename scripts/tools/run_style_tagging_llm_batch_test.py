@@ -39,7 +39,14 @@ class RunStyleTaggingLlmBatchTest(unittest.TestCase):
 
         result = runner.parse_batch_response('{"results":[{"id":"1","tags":["华语","流行","不存在","华语"]}]}', prompt_songs)
 
-        self.assertEqual(result, {"1": ["华语", "流行"]})
+        self.assertEqual(result, {"1": ["流行"]})
+
+    def test_batch_response_rejects_removed_tags(self):
+        prompt_songs = [{"id": "1", "title": "七里香", "artistName": "周杰伦"}]
+
+        result = runner.parse_batch_response('{"results":[{"id":"1","tags":["国语","华语流行","内地","流行"]}]}', prompt_songs)
+
+        self.assertEqual(result, {"1": ["流行"]})
 
     def test_sql_literal_escapes_single_quotes(self):
         self.assertEqual(runner.sql_literal("A'B"), "'A''B'")
