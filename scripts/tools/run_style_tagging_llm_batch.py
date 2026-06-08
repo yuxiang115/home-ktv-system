@@ -20,12 +20,6 @@ DEFAULT_CONFIDENCE = 0.72
 
 KTV_STYLE_TAXONOMY = [
     {
-        "id": "language-region",
-        "name": "语种地区",
-        "sortOrder": 10,
-        "tags": ["粤语", "闽南语", "客家语", "英语", "日语", "韩语", "港台", "港乐", "台语"],
-    },
-    {
         "id": "core-genre",
         "name": "核心曲风",
         "sortOrder": 20,
@@ -64,7 +58,8 @@ KTV_STYLE_TAXONOMY = [
             "越剧",
             "儿歌",
             "童谣",
-            "宗教/佛乐",
+            "宗教",
+            "佛乐",
         ],
     },
     {
@@ -86,9 +81,10 @@ KTV_STYLE_TAXONOMY = [
             "怀旧",
             "亲情",
             "友情",
-            "友情/兄弟",
+            "兄弟",
             "爱国",
-            "红歌/革命歌曲",
+            "红歌",
+            "革命歌曲",
             "军旅",
             "思乡",
             "校园",
@@ -117,15 +113,18 @@ KTV_STYLE_TAXONOMY = [
             "飙歌",
             "广场舞",
             "车载",
-            "运动/节奏",
+            "运动",
+            "节奏",
             "酒吧",
             "晚会",
             "春晚",
             "生日歌",
-            "喜庆/节日",
+            "喜庆",
+            "节日",
             "婚礼歌曲",
             "影视金曲",
-            "动漫/ACG",
+            "动漫",
+            "ACG",
         ],
     },
     {
@@ -133,9 +132,11 @@ KTV_STYLE_TAXONOMY = [
         "name": "年代版本",
         "sortOrder": 50,
         "tags": [
-            "50/60年代",
-            "70/80年代",
-            "80/90年代",
+            "50年代",
+            "60年代",
+            "70年代",
+            "80年代",
+            "90年代",
             "70后",
             "80后",
             "90后",
@@ -143,7 +144,8 @@ KTV_STYLE_TAXONOMY = [
             "00年代",
             "10年代",
             "20年代",
-            "现场/演唱会",
+            "现场",
+            "演唱会",
             "Live",
             "DJ版",
             "翻唱",
@@ -155,6 +157,31 @@ KTV_STYLE_TAXONOMY = [
 
 ALLOWED_TAGS = frozenset(tag for group in KTV_STYLE_TAXONOMY for tag in group["tags"])
 TAG_GROUP_BY_TAG = {tag: group["name"] for group in KTV_STYLE_TAXONOMY for tag in group["tags"]}
+TAG_ALIASES = {
+    "国语": [],
+    "华语": [],
+    "内地": [],
+    "粤语": [],
+    "闽南语": [],
+    "客家语": [],
+    "英语": [],
+    "日语": [],
+    "韩语": [],
+    "港台": [],
+    "港乐": [],
+    "台语": [],
+    "华语流行": ["流行"],
+    "宗教/佛乐": ["宗教", "佛乐"],
+    "友情/兄弟": ["友情", "兄弟"],
+    "红歌/革命歌曲": ["红歌", "革命歌曲"],
+    "运动/节奏": ["运动", "节奏"],
+    "喜庆/节日": ["喜庆", "节日"],
+    "动漫/ACG": ["动漫", "ACG"],
+    "50/60年代": ["50年代", "60年代"],
+    "70/80年代": ["70年代", "80年代"],
+    "80/90年代": ["80年代", "90年代"],
+    "现场/演唱会": ["现场", "演唱会"],
+}
 
 
 def main(argv=None):
@@ -452,13 +479,14 @@ def normalize_tags(raw_tags, max_tags=6):
     for raw_tag in raw_tags:
         if not isinstance(raw_tag, str):
             continue
-        tag = raw_tag.strip()
-        if tag not in ALLOWED_TAGS or tag in seen:
-            continue
-        seen.add(tag)
-        tags.append(tag)
-        if len(tags) >= max_tags:
-            break
+        raw_tag = raw_tag.strip()
+        for tag in TAG_ALIASES.get(raw_tag, [raw_tag]):
+            if tag not in ALLOWED_TAGS or tag in seen:
+                continue
+            seen.add(tag)
+            tags.append(tag)
+            if len(tags) >= max_tags:
+                return tags
     return tags
 
 

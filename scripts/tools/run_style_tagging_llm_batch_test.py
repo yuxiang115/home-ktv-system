@@ -48,6 +48,31 @@ class RunStyleTaggingLlmBatchTest(unittest.TestCase):
 
         self.assertEqual(result, {"1": ["流行"]})
 
+    def test_batch_response_removes_language_region_tags(self):
+        prompt_songs = [{"id": "1", "title": "喜欢你", "artistName": "Beyond"}]
+
+        result = runner.parse_batch_response(
+            '{"results":[{"id":"1","tags":["粤语","港台","港乐","摇滚"]}]}',
+            prompt_songs,
+        )
+
+        self.assertEqual(result, {"1": ["摇滚"]})
+
+    def test_batch_response_splits_legacy_slash_tags(self):
+        prompt_songs = [{"id": "1", "title": "朋友", "artistName": "周华健"}]
+
+        result = runner.parse_batch_response(
+            '{"results":[{"id":"1","tags":["友情/兄弟","红歌/革命歌曲","现场/演唱会","动漫/ACG"]}]}',
+            prompt_songs,
+            max_tags=6,
+        )
+
+        self.assertEqual(result, {"1": ["友情", "兄弟", "红歌", "革命歌曲", "现场", "演唱会"]})
+
+    def test_taxonomy_has_no_language_region_or_slash_tags(self):
+        self.assertNotIn("语种地区", [group["name"] for group in runner.KTV_STYLE_TAXONOMY])
+        self.assertFalse([tag for tag in runner.ALLOWED_TAGS if "/" in tag])
+
     def test_sql_literal_escapes_single_quotes(self):
         self.assertEqual(runner.sql_literal("A'B"), "'A''B'")
 
