@@ -258,10 +258,37 @@ function parseStrictDashTailKtvFilenameWithOptions(
 ): FilenameMetadataDraft | null {
   const normalizedStem = normalizeDashSeparators(stem);
   const parts = normalizedStem.split("-").map((part) => part.trim()).filter(Boolean);
+  const languageIndex = findRightmostLanguageMarkerIndex(parts);
 
-  if (parts.length >= 4 && isKtvLanguageMarker(parts[parts.length - 2])) {
+  if (languageIndex >= 2 && languageIndex < parts.length - 1) {
     const artistName = parts[0];
-    const title = parts.slice(1, -2).join("-").trim();
+    const title = parts.slice(1, languageIndex).join("-").trim();
+    const category = parts.at(-1)?.trim();
+    if (artistName && title && category) {
+      return {
+        artistName,
+        title: stripTrailingTitleMarker(title, options.trailingTitleMarkerMode),
+        genre: [normalizeCategory(category)]
+      };
+    }
+  }
+
+  if (languageIndex >= 3 && languageIndex === parts.length - 1) {
+    const artistName = parts[0];
+    const title = parts.slice(1, languageIndex - 1).join("-").trim();
+    const category = parts.at(languageIndex - 1)?.trim();
+    if (artistName && title && category) {
+      return {
+        artistName,
+        title: stripTrailingTitleMarker(title, options.trailingTitleMarkerMode),
+        genre: [normalizeCategory(category)]
+      };
+    }
+  }
+
+  if (parts.length >= 3) {
+    const artistName = parts[0];
+    const title = parts.slice(1, -1).join("-").trim();
     const category = parts.at(-1)?.trim();
     if (artistName && title && category) {
       return {
@@ -379,6 +406,15 @@ function isKtvLanguageMarker(value: string | undefined): boolean {
   return Boolean(value) && KTV_LANGUAGE_MARKERS.has(normalizeTailMarker(value ?? "") as KtvLanguageMarker);
 }
 
+function findRightmostLanguageMarkerIndex(parts: readonly string[]): number {
+  for (let index = parts.length - 1; index >= 0; index -= 1) {
+    if (isKtvLanguageMarker(parts[index])) {
+      return index;
+    }
+  }
+  return -1;
+}
+
 type KtvLanguageMarker = typeof KTV_LANGUAGE_MARKERS extends Set<infer TValue> ? TValue : never;
 
 const KTV_LANGUAGE_MARKERS = new Set([
@@ -398,6 +434,7 @@ const KTV_LANGUAGE_MARKERS = new Set([
   "英语",
   "日语",
   "韩语",
+  "法语",
   "舞曲",
   "外语",
   "其他",
