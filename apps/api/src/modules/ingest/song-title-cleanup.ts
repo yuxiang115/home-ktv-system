@@ -106,7 +106,7 @@ function stripTrailingVarietyShowTitle(value: string): string {
       "u"
     );
     const stripped = value.replace(suffixPattern, "").trim();
-    if (stripped !== value && stripped.length >= 2) {
+    if (stripped !== value && stripped.length >= 1) {
       return stripped;
     }
   }

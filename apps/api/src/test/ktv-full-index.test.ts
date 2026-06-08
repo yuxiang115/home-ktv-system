@@ -117,6 +117,11 @@ describe("KTV full index importer", () => {
         normalizedTitle: "我是真的爱你"
       },
       {
+        relativePath: "综艺精选/中国好声音16强学员-火中国好声音第三季-国语-流行歌曲.mkv",
+        title: "火",
+        normalizedTitle: "火"
+      },
+      {
         relativePath: "综艺精选/张丹丹-爱是一颗幸福的子弹 LIVE中国好声音第三季-国语-流行歌曲.mkv",
         title: "爱是一颗幸福的子弹",
         normalizedTitle: "爱是一颗幸福的子弹"
