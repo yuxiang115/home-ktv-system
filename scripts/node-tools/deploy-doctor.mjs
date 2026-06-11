@@ -430,7 +430,7 @@ function printReport(report) {
 function printUsage() {
   console.log(
     [
-      "Usage: node scripts/tools/deploy-doctor.mjs [options]",
+      "Usage: node scripts/node-tools/deploy-doctor.mjs [options]",
       "",
       "Options:",
       "  --mode docker|source       Deployment mode, default: docker",

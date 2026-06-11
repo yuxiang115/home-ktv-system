@@ -556,7 +556,7 @@ function printUsage(error = false) {
 
 async function runDoctor() {
   await runForeground("node", [
-    "scripts/tools/deploy-doctor.mjs",
+    "scripts/node-tools/deploy-doctor.mjs",
     "--mode",
     "source",
     "--env-file",
@@ -567,7 +567,7 @@ async function runDoctor() {
 }
 
 async function runSmoke() {
-  await runForeground("node", ["scripts/tools/web-deploy-smoke.mjs"], buildRuntimeConfig().env);
+  await runForeground("node", ["scripts/node-tools/web-deploy-smoke.mjs"], buildRuntimeConfig().env);
 }
 
 function writeHeader(logPath, service) {

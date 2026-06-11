@@ -216,7 +216,7 @@ async function inspectBrowserCapabilities() {
     };
   }
 
-  const match = /\{.*\}/u.exec(result.stdout);
+  const match = /\{"matroska":.*?\}/u.exec(result.stdout);
   if (!match) {
     return {
       canPlayTypes: { "video/x-matroska": "", "video/mpeg": "" },
