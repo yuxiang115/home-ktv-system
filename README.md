@@ -2,7 +2,7 @@
   <img src="docs/assets/readme/home-ktv-banner.webp" alt="HomeKTV System banner" width="960">
 </p>
 
-# HomeKTV System
+# HomeKTV 家庭 KTV 系统
 
 > A self-hosted home karaoke system for real family use: Android TV playback, mobile song requests, admin operations, NAS music library indexing, and one-command deployment.
 
@@ -30,7 +30,7 @@ HomeKTV 是一套面向家庭 KTV 场景的完整自托管点歌系统。它把 
   </tr>
 </table>
 
-## More Screenshots
+## 更多截图
 
 <p align="center">
   <img src="docs/assets/screenshots/web-tv.webp" alt="HomeKTV Web TV pairing screen" width="620"><br>
@@ -52,7 +52,7 @@ HomeKTV 是一套面向家庭 KTV 场景的完整自托管点歌系统。它把 
   </tr>
 </table>
 
-## What You Get
+## 核心能力
 
 HomeKTV 的目标不是只做一个播放器，而是把家庭 KTV 真正会遇到的链路一次打通：
 
@@ -64,26 +64,26 @@ HomeKTV 的目标不是只做一个播放器，而是把家庭 KTV 真正会遇�
 - **两种部署方式**：Docker Compose 快速体验，源码部署适合长期服务器运行。
 - **曲库整理工具**：热歌榜单、歌单热度、封面抓取、缩略图、风格标签和大曲库清理工具都在同一仓库里。
 
-## Who It Is For
+## 适合谁
 
 - 家里有 NAS 或硬盘 KTV MV 资源，想搭一套自己可控的点歌系统。
 - 想用 Android TV / 电视盒子做正式播放端，而不是依赖浏览器兼容性。
 - 想让手机成为点歌台，家人和朋友扫码即可点歌。
 - 想长期维护曲库、封面、标签、热门歌曲和部署状态。
 
-## Architecture
+## 技术架构
 
 <p align="center">
-  <img src="docs/assets/diagrams/system-architecture.svg" alt="HomeKTV system architecture" width="900">
+  <img src="docs/assets/diagrams/system-architecture.svg" alt="HomeKTV 技术架构图" width="900">
 </p>
 
 <p align="center">
-  <img src="docs/assets/diagrams/request-flow.svg" alt="HomeKTV request and playback flow" width="900">
+  <img src="docs/assets/diagrams/request-flow.svg" alt="HomeKTV 点歌播放链路图" width="900">
 </p>
 
 HomeKTV 是一个 pnpm monorepo：API 负责房间状态、点歌队列、媒体网关和曲库索引；Controller、Admin 和 Web TV 是前端应用；Android TV 是正式播放客户端；共享协议和领域模型放在 `packages/`。
 
-## Quick Start
+## 快速开始
 
 新手建议先用 Docker Compose 跑通服务，再安装 Android TV APK。没有真实曲库也能启动服务；要搜索和播放真实歌曲，需要把 NAS 曲库路径配置到 `.env`。
 
@@ -191,7 +191,7 @@ pnpm build
 
 本地开发说明见 [本地开发部署](docs/deployment-local.md)。
 
-## Android TV
+## Android TV 播放端
 
 正式播放体验以 Android TV + libVLC 为准。Web TV 主要用于开发调试，浏览器对老 KTV 编码的兼容性不能代表真实电视端能力。
 
@@ -221,7 +221,7 @@ adb shell am start -W \
 
 更多说明见 [Android TV 文档](clients/android-tv/README.md)。
 
-## Library Maintenance
+## 曲库维护
 
 真实曲库维护集中在 API 和 `scripts/tools`：
 
@@ -241,7 +241,7 @@ pnpm hot-songs:update
 
 详细流程见 [真实曲库索引](docs/KTV-FULL-INDEX.md)、[歌曲封面缓存](docs/runbooks/song-cover-fetching.md) 和 [工具脚本说明](scripts/tools/README.md)。
 
-## Project Structure
+## 项目结构
 
 ```text
 home-ktv-system/
@@ -259,7 +259,7 @@ home-ktv-system/
 └── runtime/                 # 源码部署运行时目录，生成产物不入库
 ```
 
-## Documentation
+## 文档导航
 
 - [文档总入口](docs/README.md)
 - [当前架构](docs/KTV-ARCHITECTURE.md)
@@ -270,7 +270,7 @@ home-ktv-system/
 - [部署脚本入口](deploy/README.md)
 - [Android TV](clients/android-tv/README.md)
 
-## Product Boundaries
+## 产品边界
 
 - Admin 暂不做登录鉴权，访问边界交给部署网络、反向代理和域名暴露范围。
 - 公网媒体流暂不做 token 或签名 URL。
@@ -278,7 +278,7 @@ home-ktv-system/
 - 真实曲库走全自动索引和入库，Admin 用于查看、诊断和管理资源。
 - Android TV APK 当前由本地手动打包后覆盖安装。
 
-## Why HomeKTV
+## 为什么做 HomeKTV
 
 很多家庭 KTV 项目停留在播放器或歌单工具。HomeKTV 的目标是把真实家庭使用链路做完整：NAS 曲库、电视播放、手机点歌、后台管理、部署脚本和曲库维护工具都放在同一个仓库里。
 

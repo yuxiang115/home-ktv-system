@@ -1,129 +1,150 @@
 <svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
-  <title id="title">HomeKTV system architecture</title>
-  <desc id="desc">Architecture diagram for HomeKTV showing mobile controller, admin console, Android TV, API, PostgreSQL, NAS media and deployment scripts.</desc>
+  <title id="title">HomeKTV 技术架构图</title>
+  <desc id="desc">HomeKTV 的中文技术架构图，展示使用入口、核心 API 服务、数据资源、部署工具和媒体播放链路。</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="720" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#0F172A"/>
-      <stop offset="0.55" stop-color="#172033"/>
-      <stop offset="1" stop-color="#111827"/>
+      <stop stop-color="#07111F"/>
+      <stop offset="0.52" stop-color="#10243A"/>
+      <stop offset="1" stop-color="#132018"/>
     </linearGradient>
-    <linearGradient id="cardBlue" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#38BDF8"/>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#22D3EE"/>
       <stop offset="1" stop-color="#2563EB"/>
     </linearGradient>
-    <linearGradient id="cardGreen" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
       <stop stop-color="#34D399"/>
       <stop offset="1" stop-color="#059669"/>
     </linearGradient>
-    <linearGradient id="cardAmber" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
       <stop stop-color="#FBBF24"/>
       <stop offset="1" stop-color="#F97316"/>
     </linearGradient>
-    <linearGradient id="cardRose" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#FB7185"/>
+    <linearGradient id="pink" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#F472B6"/>
       <stop offset="1" stop-color="#E11D48"/>
     </linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#020617" flood-opacity="0.30"/>
+    <filter id="shadow" x="-18%" y="-18%" width="136%" height="136%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#020617" flood-opacity="0.34"/>
     </filter>
     <marker id="arrow" markerWidth="14" markerHeight="14" refX="11" refY="7" orient="auto" markerUnits="strokeWidth">
-      <path d="M2 2L12 7L2 12" stroke="#93C5FD" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M2 2L12 7L2 12" stroke="#9FD7FF" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
     </marker>
     <style>
-      .title { font: 700 40px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #F8FAFC; }
-      .subtitle { font: 500 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #CBD5E1; }
-      .label { font: 700 20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #F8FAFC; }
-      .small { font: 500 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #DCE7F5; }
-      .tiny { font: 500 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #AFC2D8; }
-      .section { font: 700 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #BFE3FF; letter-spacing: 1px; }
-      .box { fill: rgba(15, 23, 42, 0.78); stroke: rgba(148, 163, 184, 0.28); stroke-width: 1; }
-      .line { stroke: #93C5FD; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrow); }
-      .softline { stroke: #64748B; stroke-width: 1.5; stroke-dasharray: 6 7; stroke-linecap: round; }
+      .font { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", sans-serif; }
+      .title { font-size: 40px; font-weight: 800; fill: #F8FAFC; }
+      .subtitle { font-size: 18px; font-weight: 500; fill: #C9D7E8; }
+      .section { font-size: 18px; font-weight: 800; fill: #AEE7FF; letter-spacing: 1px; }
+      .label { font-size: 21px; font-weight: 800; fill: #F8FAFC; }
+      .small { font-size: 14px; font-weight: 500; fill: #DDE9F7; }
+      .tiny { font-size: 12px; font-weight: 500; fill: #ADC0D6; }
+      .panel { fill: #0B1526; fill-opacity: 0.72; stroke: #94A3B8; stroke-opacity: 0.20; stroke-width: 1.2; }
+      .card { fill: #101C30; fill-opacity: 0.92; stroke: #9FB7D5; stroke-opacity: 0.22; stroke-width: 1.2; }
+      .hub { fill: #13243D; fill-opacity: 0.96; stroke: #67E8F9; stroke-opacity: 0.55; stroke-width: 1.6; }
+      .line { stroke: #9FD7FF; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrow); }
+      .soft { stroke: #64748B; stroke-width: 1.5; stroke-dasharray: 7 8; stroke-linecap: round; }
     </style>
   </defs>
 
-  <rect width="1200" height="720" rx="32" fill="url(#bg)"/>
-  <circle cx="980" cy="115" r="170" fill="#2563EB" opacity="0.12"/>
-  <circle cx="185" cy="645" r="190" fill="#10B981" opacity="0.10"/>
-  <circle cx="670" cy="360" r="260" fill="#F59E0B" opacity="0.06"/>
+  <rect width="1200" height="720" rx="34" fill="url(#bg)"/>
+  <circle cx="1010" cy="110" r="190" fill="#38BDF8" opacity="0.10"/>
+  <circle cx="172" cy="638" r="220" fill="#34D399" opacity="0.10"/>
+  <circle cx="654" cy="362" r="250" fill="#F59E0B" opacity="0.06"/>
 
-  <text x="70" y="78" class="title">HomeKTV System Architecture</text>
-  <text x="72" y="112" class="subtitle">Self-hosted KTV: NAS media, Android TV playback, mobile song request, admin console and one-command deployment.</text>
+  <text x="64" y="76" class="font title">HomeKTV 技术架构</text>
+  <text x="66" y="112" class="font subtitle">手机点歌、电视播放、后台管理、NAS 曲库、API 服务和部署脚本构成的一体化家庭 KTV 系统。</text>
 
-  <rect x="54" y="148" width="1092" height="520" rx="28" fill="rgba(15,23,42,0.42)" stroke="rgba(148,163,184,0.18)"/>
-  <text x="86" y="190" class="section">CLIENTS</text>
-  <text x="493" y="190" class="section">BACKEND</text>
-  <text x="830" y="190" class="section">DATA &amp; MEDIA</text>
+  <rect x="52" y="150" width="1096" height="512" rx="30" class="panel"/>
+
+  <text x="86" y="196" class="font section">使用入口</text>
+  <text x="474" y="196" class="font section">核心服务</text>
+  <text x="828" y="196" class="font section">数据与资源</text>
 
   <g filter="url(#shadow)">
-    <rect x="86" y="226" width="250" height="96" rx="18" class="box"/>
-    <rect x="108" y="249" width="50" height="50" rx="14" fill="url(#cardBlue)"/>
-    <path d="M131 263C141 263 149 271 149 281C149 291 141 299 131 299C121 299 113 291 113 281C113 271 121 263 131 263Z" fill="white" opacity="0.94"/>
-    <path d="M122 281H140M131 272V290" stroke="#2563EB" stroke-width="4" stroke-linecap="round"/>
-    <text x="176" y="266" class="label">Mobile Controller</text>
-    <text x="176" y="292" class="small">扫码点歌 / 队列 / 音量</text>
+    <rect x="84" y="226" width="266" height="82" rx="18" class="card"/>
+    <rect x="106" y="247" width="42" height="42" rx="13" fill="url(#blue)"/>
+    <text x="118" y="277" class="font label">控</text>
+    <text x="166" y="258" class="font label">手机控制端</text>
+    <text x="166" y="284" class="font small">扫码点歌 / 队列 / 音量</text>
   </g>
 
   <g filter="url(#shadow)">
-    <rect x="86" y="358" width="250" height="96" rx="18" class="box"/>
-    <rect x="108" y="381" width="50" height="50" rx="14" fill="url(#cardAmber)"/>
-    <rect x="119" y="393" width="28" height="24" rx="4" fill="white" opacity="0.94"/>
-    <path d="M124 423H142" stroke="white" stroke-width="4" stroke-linecap="round"/>
-    <text x="176" y="398" class="label">Admin Console</text>
-    <text x="176" y="424" class="small">曲库管理 / 诊断 / 任务</text>
+    <rect x="84" y="328" width="266" height="82" rx="18" class="card"/>
+    <rect x="106" y="349" width="42" height="42" rx="13" fill="url(#green)"/>
+    <text x="118" y="379" class="font label">播</text>
+    <text x="166" y="360" class="font label">Android TV 播放端</text>
+    <text x="166" y="386" class="font small">libVLC 播放真实 MV</text>
   </g>
 
   <g filter="url(#shadow)">
-    <rect x="86" y="490" width="250" height="96" rx="18" class="box"/>
-    <rect x="108" y="513" width="50" height="50" rx="14" fill="url(#cardGreen)"/>
-    <rect x="118" y="526" width="30" height="20" rx="3" fill="white" opacity="0.94"/>
-    <path d="M126 557H140M133 546V557" stroke="white" stroke-width="4" stroke-linecap="round"/>
-    <text x="176" y="530" class="label">Android TV</text>
-    <text x="176" y="556" class="small">libVLC 播放真实 MV</text>
+    <rect x="84" y="430" width="266" height="82" rx="18" class="card"/>
+    <rect x="106" y="451" width="42" height="42" rx="13" fill="url(#amber)"/>
+    <text x="118" y="481" class="font label">调</text>
+    <text x="166" y="462" class="font label">Web TV 调试端</text>
+    <text x="166" y="488" class="font small">浏览器调试 / 扫码配对</text>
   </g>
 
   <g filter="url(#shadow)">
-    <rect x="430" y="292" width="300" height="214" rx="26" fill="rgba(21,31,51,0.92)" stroke="rgba(147,197,253,0.55)" stroke-width="1.5"/>
-    <rect x="466" y="332" width="70" height="70" rx="20" fill="url(#cardBlue)"/>
-    <path d="M490 353H512M490 371H522M490 389H506" stroke="white" stroke-width="5" stroke-linecap="round"/>
-    <text x="558" y="356" class="label">HomeKTV API</text>
-    <text x="558" y="384" class="small">房间状态 / 播放队列</text>
-    <text x="558" y="410" class="small">媒体网关 / TV 心跳</text>
-    <path d="M466 444H694" stroke="rgba(148,163,184,0.25)"/>
-    <text x="466" y="474" class="tiny">Fastify + PostgreSQL + HTTP Range media streaming</text>
+    <rect x="84" y="532" width="266" height="82" rx="18" class="card"/>
+    <rect x="106" y="553" width="42" height="42" rx="13" fill="url(#pink)"/>
+    <text x="118" y="583" class="font label">管</text>
+    <text x="166" y="564" class="font label">Admin 后台</text>
+    <text x="166" y="590" class="font small">曲库总览 / 搜索预览 / 房间状态</text>
   </g>
 
   <g filter="url(#shadow)">
-    <rect x="832" y="226" width="250" height="96" rx="18" class="box"/>
-    <rect x="854" y="249" width="50" height="50" rx="14" fill="url(#cardRose)"/>
-    <ellipse cx="879" cy="264" rx="18" ry="8" fill="white" opacity="0.94"/>
-    <path d="M861 264V286C861 291 869 295 879 295C889 295 897 291 897 286V264" stroke="white" stroke-width="4"/>
-    <text x="922" y="266" class="label">PostgreSQL</text>
-    <text x="922" y="292" class="small">歌曲 / 队列 / 状态</text>
+    <rect x="438" y="258" width="312" height="252" rx="28" class="hub"/>
+    <rect x="474" y="296" width="70" height="70" rx="22" fill="url(#blue)"/>
+    <text x="494" y="342" class="font title" style="font-size:30px">API</text>
+    <text x="566" y="320" class="font label">HomeKTV API 服务</text>
+    <text x="566" y="350" class="font small">房间状态、播放队列、控制命令</text>
+    <text x="566" y="376" class="font small">媒体网关、TV 心跳、控制端会话</text>
+    <path d="M474 412H714" stroke="#94A3B8" stroke-opacity="0.25"/>
+    <text x="474" y="444" class="font tiny">Fastify API + PostgreSQL + HTTP Range 媒体流</text>
+    <text x="474" y="470" class="font tiny">共享协议和领域模型放在 packages/ 中复用</text>
   </g>
 
   <g filter="url(#shadow)">
-    <rect x="832" y="358" width="250" height="96" rx="18" class="box"/>
-    <rect x="854" y="381" width="50" height="50" rx="14" fill="url(#cardGreen)"/>
-    <path d="M867 397H891M867 411H891M867 425H881" stroke="white" stroke-width="5" stroke-linecap="round"/>
-    <text x="922" y="398" class="label">NAS Library</text>
-    <text x="922" y="424" class="small">MKV / MPG / MPEG</text>
+    <rect x="832" y="226" width="266" height="82" rx="18" class="card"/>
+    <rect x="854" y="247" width="42" height="42" rx="13" fill="url(#pink)"/>
+    <text x="866" y="277" class="font label">库</text>
+    <text x="914" y="258" class="font label">PostgreSQL</text>
+    <text x="914" y="284" class="font small">歌曲、队列、房间、用户会话</text>
   </g>
 
   <g filter="url(#shadow)">
-    <rect x="832" y="490" width="250" height="96" rx="18" class="box"/>
-    <rect x="854" y="513" width="50" height="50" rx="14" fill="url(#cardAmber)"/>
-    <path d="M864 539H894M879 524V554" stroke="white" stroke-width="5" stroke-linecap="round"/>
-    <text x="922" y="530" class="label">Deploy Scripts</text>
-    <text x="922" y="556" class="small">source / docker / doctor</text>
+    <rect x="832" y="328" width="266" height="82" rx="18" class="card"/>
+    <rect x="854" y="349" width="42" height="42" rx="13" fill="url(#green)"/>
+    <text x="866" y="379" class="font label">媒</text>
+    <text x="914" y="360" class="font label">NAS KTV MV 曲库</text>
+    <text x="914" y="386" class="font small">MKV / MPG / MPEG 等真实资源</text>
   </g>
 
-  <path class="line" d="M336 274C374 274 385 320 430 340"/>
-  <path class="line" d="M336 406C375 406 390 400 430 399"/>
-  <path class="line" d="M336 538C381 538 392 467 430 446"/>
-  <path class="line" d="M730 344C773 318 789 288 832 274"/>
-  <path class="line" d="M730 399H832"/>
-  <path class="line" d="M730 454C772 478 789 524 832 538"/>
-  <path class="softline" d="M955 454C918 604 458 628 211 586"/>
-  <text x="476" y="630" class="tiny">Android TV receives playback targets, then streams media through API with HTTP Range support.</text>
+  <g filter="url(#shadow)">
+    <rect x="832" y="430" width="266" height="82" rx="18" class="card"/>
+    <rect x="854" y="451" width="42" height="42" rx="13" fill="url(#amber)"/>
+    <text x="866" y="481" class="font label">图</text>
+    <text x="914" y="462" class="font label">封面与缩略图缓存</text>
+    <text x="914" y="488" class="font small">封面抓取、缩略图、媒体缓存</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="832" y="532" width="266" height="82" rx="18" class="card"/>
+    <rect x="854" y="553" width="42" height="42" rx="13" fill="url(#blue)"/>
+    <text x="866" y="583" class="font label">署</text>
+    <text x="914" y="564" class="font label">部署与维护脚本</text>
+    <text x="914" y="590" class="font small">Docker / Source / doctor / smoke</text>
+  </g>
+
+  <path class="line" d="M350 267C386 267 404 301 438 319"/>
+  <path class="line" d="M350 369C390 369 406 371 438 371"/>
+  <path class="line" d="M350 471C388 471 404 430 438 410"/>
+  <path class="line" d="M350 573C396 573 408 492 438 463"/>
+
+  <path class="line" d="M750 319C784 299 798 268 832 267"/>
+  <path class="line" d="M750 371H832"/>
+  <path class="line" d="M750 410C787 426 800 465 832 471"/>
+  <path class="line" d="M750 463C782 520 800 572 832 573"/>
+
+  <path class="soft" d="M964 410C922 632 473 650 213 614"/>
+  <text x="450" y="646" class="font tiny">播放端通过 API 获取播放目标，媒体文件由 API 从 NAS 读取并以 Range 流形式提供给 libVLC。</text>
 </svg>
