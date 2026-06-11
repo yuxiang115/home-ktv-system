@@ -18,34 +18,37 @@ HomeKTV 是一套面向家庭 KTV 场景的完整自托管点歌系统。它把 
 如果你有一批 KTV MV、家庭 NAS、电视盒子或 Android TV，HomeKTV 可以帮你把“播放器 + 歌单 + 临时脚本”整理成一套可部署、可维护、可长期使用的家庭 KTV 系统。
 
 <p align="center">
-  <img src="docs/assets/screenshots/android-tv.webp" alt="HomeKTV Android TV playing karaoke lyrics" width="760">
+  <img src="docs/assets/screenshots/android-tv.webp" alt="HomeKTV Android TV playing karaoke lyrics" width="760"><br>
+  <sub>Android TV 正式播放端</sub>
 </p>
 
 <table>
   <tr>
-    <td align="center" width="33%"><img src="docs/assets/screenshots/controller-home.webp" alt="HomeKTV controller home and song request page" width="230"></td>
-    <td align="center" width="33%"><img src="docs/assets/screenshots/controller-remote.webp" alt="HomeKTV controller remote page" width="230"></td>
-    <td align="center" width="33%"><img src="docs/assets/screenshots/controller-profile.webp" alt="HomeKTV controller profile and request history" width="230"></td>
+    <td align="center" width="33%"><img src="docs/assets/screenshots/controller-home.webp" alt="HomeKTV controller home and song request page" width="230"><br><sub>手机控制端：首页点歌</sub></td>
+    <td align="center" width="33%"><img src="docs/assets/screenshots/controller-remote.webp" alt="HomeKTV controller remote page" width="230"><br><sub>手机控制端：播放控制</sub></td>
+    <td align="center" width="33%"><img src="docs/assets/screenshots/controller-profile.webp" alt="HomeKTV controller profile and request history" width="230"><br><sub>手机控制端：我的点歌</sub></td>
   </tr>
 </table>
 
 ## More Screenshots
 
 <p align="center">
-  <img src="docs/assets/screenshots/web-tv.webp" alt="HomeKTV Web TV pairing screen" width="760">
+  <img src="docs/assets/screenshots/web-tv.webp" alt="HomeKTV Web TV pairing screen" width="620"><br>
+  <sub>Web TV 调试端：扫码配对</sub>
 </p>
 
 <p align="center">
-  <img src="docs/assets/screenshots/admin-dashboard.webp" alt="HomeKTV admin dashboard with library analytics" width="720">
+  <img src="docs/assets/screenshots/admin-dashboard.webp" alt="HomeKTV admin dashboard with library analytics" width="520"><br>
+  <sub>Admin 后台：首页曲库总览</sub>
 </p>
 
 <table>
   <tr>
-    <td align="center" width="50%"><img src="docs/assets/screenshots/admin-search-preview.webp" alt="HomeKTV admin search preview" width="440"></td>
-    <td align="center" width="50%"><img src="docs/assets/screenshots/admin-room-status.webp" alt="HomeKTV admin room status" width="440"></td>
+    <td align="center" width="50%"><img src="docs/assets/screenshots/admin-search-preview.webp" alt="HomeKTV admin search preview" width="440"><br><sub>Admin 后台：搜索预览</sub></td>
+    <td align="center" width="50%"><img src="docs/assets/screenshots/admin-room-status.webp" alt="HomeKTV admin room status" width="440"><br><sub>Admin 后台：房间状态</sub></td>
   </tr>
   <tr>
-    <td align="center" colspan="2"><img src="docs/assets/screenshots/database-browser.webp" alt="HomeKTV PostgreSQL song library table" width="760"></td>
+    <td align="center" colspan="2"><img src="docs/assets/screenshots/database-browser.webp" alt="HomeKTV PostgreSQL song library table" width="760"><br><sub>PostgreSQL 曲库数据表</sub></td>
   </tr>
 </table>
 
