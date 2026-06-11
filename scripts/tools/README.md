@@ -23,6 +23,7 @@
 | `merge_music_scores.py` | 合并热门歌曲、全部榜单、歌单三份积分产物，按歌曲名+歌手去重，输出总分表。 | `python3 scripts/tools/merge_music_scores.py merge --hot-input <dir> --chart-input <dir> --playlist-input <dir>` |
 | `delete_uncovered_songs.py` | 根据待删 CSV 执行删歌，删除数据库记录、封面缓存和 NAS 媒体文件；支持 `plan` 和 `apply`。 | `python3 scripts/tools/delete_uncovered_songs.py plan --input runtime/.../delete-uncovered-songs.csv` |
 | `run_style_tagging_llm_batch.py` | 离线批量给歌曲补风格标签，先生成 JSONL，再导入 `ktv_songs.style_tags`。 | `pnpm ktv:tags:llm-batch:py -- ...` |
+| `android_app_icon_pipeline.py` | 从生成图候选中裁切 Android TV 应用图标，重建透明圆角，生成 launcher WebP 和 TV banner PNG，并执行 TinyPNG 类压缩。 | `python3 scripts/tools/android_app_icon_pipeline.py --candidate 1` |
 | `ui-visual-check.mjs` | 控制端和 Admin 的 Chrome 截图检查。 | `pnpm ui:visual-check` |
 | `tv-visual-check.mjs` | Web TV 的 Chrome 截图检查。 | `pnpm tv:visual-check` |
 | `real-mv-playback-risk-spike.mjs` | 真实 MV 播放兼容性调研，输出 Markdown 风险报告。 | `pnpm real-mv:risk-spike -- ...` |
@@ -45,9 +46,42 @@
 | `merge_music_scores_test.py` | 三份积分 CSV 的路径解析、归一化去重、分数合并和本地输出写入。 |
 | `delete_uncovered_songs_test.py` | 待删 CSV 读取、路径转换、删除 SQL 模板和 dry-run 报告输出。 |
 | `run_style_tagging_llm_batch_test.py` | LLM 标签批处理的短 ID prompt、返回校验、标签过滤和导入 SQL。 |
+| `android_app_icon_pipeline_test.py` | Android TV 应用图标生成脚本的候选裁切、输出文件和尺寸契约。 |
 | `ui-visual-check.test.mjs` | 控制端视觉截图 URL 的 pairing token 刷新和错误处理。 |
 | `real-mv-playback-risk-spike.test.mjs` | MV 播放风险报告的 controlled/local sample 输出。 |
 | `source-deployment-docs.test.mjs` | 源码部署文档、部署 wrapper、Vite preview 端口和旧 Docker app 停止策略。 |
+
+## android_app_icon_pipeline.py
+
+`android_app_icon_pipeline.py` 用于把 AI 生成的应用图标候选图整理成 Android TV 可直接使用的资源。脚本本身用 Python 编写，图像处理依赖 Pillow；如果本机安装了 `cwebp`、`pngquant`、`oxipng`，会自动做有损 WebP、PNG 调色板量化和 PNG 二次优化，效果接近 TinyPNG 的本地处理流程。
+
+核心逻辑：
+
+1. 默认读取仓库归档源图；如果传入横排候选图，则按编号裁出指定图标。
+2. 缩放成 1024x1024 源图，并重建真正透明的圆角 alpha。
+3. 生成 Android launcher 所需的 48/72/96/144/192 WebP。
+4. 生成 Android TV banner 使用的 432x243 PNG。
+5. 保存压缩后的源图到 `docs/assets/app-icons/home-ktv-app-icon-source.png`，方便后续追溯。
+
+首次使用建议安装依赖：
+
+```bash
+python3 -m pip install --user Pillow
+brew install webp pngquant oxipng
+```
+
+常用命令：
+
+```bash
+python3 scripts/tools/android_app_icon_pipeline.py --candidate 1
+python3 scripts/tools/android_app_icon_pipeline.py --source /path/to/generated-sheet.png --candidate 1 --webp-quality 78
+```
+
+相关测试：
+
+```bash
+python3 -m unittest scripts.tools.android_app_icon_pipeline_test
+```
 
 ## deploy-doctor.mjs
 
