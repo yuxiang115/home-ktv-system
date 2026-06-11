@@ -88,7 +88,8 @@
     <rect x="106" y="553" width="42" height="42" rx="13" fill="url(#pink)"/>
     <text x="118" y="583" class="font label">管</text>
     <text x="166" y="564" class="font label">Admin 后台</text>
-    <text x="166" y="590" class="font small">曲库总览 / 搜索预览 / 房间状态</text>
+    <text x="166" y="586" class="font small">曲库总览 / 搜索预览</text>
+    <text x="166" y="606" class="font small">房间状态 / 系统诊断</text>
   </g>
 
   <g filter="url(#shadow)">
@@ -99,8 +100,8 @@
     <text x="566" y="350" class="font small">房间状态、播放队列、控制命令</text>
     <text x="566" y="376" class="font small">媒体网关、TV 心跳、控制端会话</text>
     <path d="M474 412H714" stroke="#94A3B8" stroke-opacity="0.25"/>
-    <text x="474" y="444" class="font tiny">Fastify API + PostgreSQL + HTTP Range 媒体流</text>
-    <text x="474" y="470" class="font tiny">共享协议和领域模型放在 packages/ 中复用</text>
+    <text x="474" y="444" class="font tiny">Fastify API + PostgreSQL</text>
+    <text x="474" y="470" class="font tiny">HTTP Range 媒体流 / packages 共享模型</text>
   </g>
 
   <g filter="url(#shadow)">
@@ -132,7 +133,8 @@
     <rect x="854" y="553" width="42" height="42" rx="13" fill="url(#blue)"/>
     <text x="866" y="583" class="font label">署</text>
     <text x="914" y="564" class="font label">部署与维护脚本</text>
-    <text x="914" y="590" class="font small">Docker / Source / doctor / smoke</text>
+    <text x="914" y="586" class="font small">Docker / Source 部署</text>
+    <text x="914" y="606" class="font small">doctor / smoke 自检</text>
   </g>
 
   <path class="line" d="M350 267C386 267 404 301 438 319"/>
