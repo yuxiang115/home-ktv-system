@@ -1,6 +1,10 @@
+<p align="center">
+  <img src="docs/assets/readme/home-ktv-banner.webp" alt="HomeKTV System banner" width="960">
+</p>
+
 # HomeKTV System
 
-> A self-hosted home karaoke system: Android TV playback, mobile song request, admin console, real NAS music library indexing, and one-command deployment.
+> A self-hosted home karaoke system for real family use: Android TV playback, mobile song requests, admin operations, NAS music library indexing, and one-command deployment.
 
 <p>
   <a href="docs/deployment.md"><img alt="Deploy" src="https://img.shields.io/badge/deploy-source%20%7C%20docker-2563eb"></a>
@@ -9,33 +13,42 @@
   <a href="package.json"><img alt="pnpm" src="https://img.shields.io/badge/pnpm-10.x-f59e0b"></a>
 </p>
 
-HomeKTV 是一个面向家庭 KTV 场景的完整点歌系统。它把 NAS 里的真实 KTV MV 曲库接入数据库，电视端负责播放，手机扫码点歌，后台负责曲库和运行状态管理。
+HomeKTV 是一套面向家庭 KTV 场景的完整自托管点歌系统。它把 NAS 里的真实 KTV MV 曲库接入数据库，用 Android TV 播放，用手机扫码点歌，用 Admin 后台管理曲库、队列和运行状态。
 
-如果你有一批 KTV MV、家庭 NAS、电视盒子或 Android TV，这个项目可以帮你搭一套自己的家庭 KTV。
+如果你有一批 KTV MV、家庭 NAS、电视盒子或 Android TV，HomeKTV 可以帮你把“播放器 + 歌单 + 临时脚本”整理成一套可部署、可维护、可长期使用的家庭 KTV 系统。
 
 <p align="center">
-  <img src="docs/assets/screenshots/android-tv.jpg" alt="HomeKTV Android TV" width="720">
+  <img src="docs/assets/screenshots/android-tv.webp" alt="HomeKTV Android TV playing karaoke lyrics" width="760">
 </p>
 
 <table>
   <tr>
-    <td align="center" width="50%"><img src="docs/assets/screenshots/controller-home.jpg" alt="HomeKTV controller home" width="240"></td>
-    <td align="center" width="50%"><img src="docs/assets/screenshots/controller-now-playing.jpg" alt="HomeKTV controller now playing" width="240"></td>
+    <td align="center" width="33%"><img src="docs/assets/screenshots/controller-home.webp" alt="HomeKTV controller home and song request page" width="230"></td>
+    <td align="center" width="33%"><img src="docs/assets/screenshots/controller-remote.webp" alt="HomeKTV controller remote page" width="230"></td>
+    <td align="center" width="33%"><img src="docs/assets/screenshots/controller-profile.webp" alt="HomeKTV controller profile and request history" width="230"></td>
   </tr>
 </table>
 
-## Features
+## What You Get
 
-- Android TV 正式播放端，使用 libVLC 播放真实 KTV MV。
-- 手机扫码控制器，支持搜索、点歌、顶歌、切歌、原唱/伴唱切换和音量控制。
-- Admin 后台，查看房间、队列、曲库、封面、标签、候选任务和系统诊断。
-- 真实 NAS 曲库索引，支持批量扫描、技术探测、封面缓存和风格标签补全。
-- 单文件双音轨模型，适配常见 KTV 原唱/伴唱资源。
-- Web TV 调试端，方便本地开发和 UI 调试。
-- 源码部署和 Docker Compose 部署两套入口，脚本内置 doctor、smoke、日志和状态检查。
-- 热歌榜单、用户歌单、曲库热度评分等 Python/Node 工具，用于大曲库清理和整理。
+HomeKTV 的目标不是只做一个播放器，而是把家庭 KTV 真正会遇到的链路一次打通：
 
-## How It Works
+- **Android TV 正式播放端**：使用 libVLC 播放真实 KTV MV，支持房间注册、心跳、播放队列和电视端二维码。
+- **手机扫码点歌控制器**：搜索、点歌、顶歌、切歌、原唱/伴唱、音量控制、播放队列和个人点歌历史。
+- **Admin 后台**：查看房间、队列、曲库、封面、标签、候选任务、索引状态和系统诊断。
+- **真实 NAS 曲库索引**：批量扫描 KTV MV，技术探测媒体文件，缓存封面，补全风格标签。
+- **双音轨 KTV 模型**：适配常见单文件原唱/伴唱资源，服务端保存音轨和媒体元数据。
+- **两种部署方式**：Docker Compose 快速体验，源码部署适合长期服务器运行。
+- **曲库整理工具**：热歌榜单、歌单热度、封面抓取、缩略图、风格标签和大曲库清理工具都在同一仓库里。
+
+## Who It Is For
+
+- 家里有 NAS 或硬盘 KTV MV 资源，想搭一套自己可控的点歌系统。
+- 想用 Android TV / 电视盒子做正式播放端，而不是依赖浏览器兼容性。
+- 想让手机成为点歌台，家人和朋友扫码即可点歌。
+- 想长期维护曲库、封面、标签、热门歌曲和部署状态。
+
+## Architecture
 
 <p align="center">
   <img src="docs/assets/diagrams/system-architecture.svg" alt="HomeKTV system architecture" width="900">
@@ -45,9 +58,11 @@ HomeKTV 是一个面向家庭 KTV 场景的完整点歌系统。它把 NAS 里�
   <img src="docs/assets/diagrams/request-flow.svg" alt="HomeKTV request and playback flow" width="900">
 </p>
 
+HomeKTV 是一个 pnpm monorepo：API 负责房间状态、点歌队列、媒体网关和曲库索引；Controller、Admin 和 Web TV 是前端应用；Android TV 是正式播放客户端；共享协议和领域模型放在 `packages/`。
+
 ## Quick Start
 
-本项目是 monorepo，包含 API、Admin、Controller、Web TV、Android TV 和共享包。新手建议先用 Docker Compose 跑通服务，再安装 Android TV APK。
+新手建议先用 Docker Compose 跑通服务，再安装 Android TV APK。没有真实曲库也能启动服务；要搜索和播放真实歌曲，需要把 NAS 曲库路径配置到 `.env`。
 
 ### 1. 准备环境
 
@@ -58,7 +73,7 @@ Docker 部署: Git, Docker, Docker Compose
 Android TV: Android Platform Tools / adb
 ```
 
-只想先体验 Web 和后台，可以先不装 Android 工具。没有真实曲库也能启动服务；要搜索和播放真实歌曲，需要把 NAS 曲库路径配置到 `.env`。真实电视播放需要 Android TV APK。
+只想先体验 Web 和后台，可以先不装 Android 工具。真实电视播放需要 Android TV APK。
 
 ### 2. Docker Compose 一键启动
 

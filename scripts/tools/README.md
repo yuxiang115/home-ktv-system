@@ -24,6 +24,7 @@
 | `delete_uncovered_songs.py` | 根据待删 CSV 执行删歌，删除数据库记录、封面缓存和 NAS 媒体文件；支持 `plan` 和 `apply`。 | `python3 scripts/tools/delete_uncovered_songs.py plan --input runtime/.../delete-uncovered-songs.csv` |
 | `run_style_tagging_llm_batch.py` | 离线批量给歌曲补风格标签，先生成 JSONL，再导入 `ktv_songs.style_tags`。 | `pnpm ktv:tags:llm-batch:py -- ...` |
 | `android_app_icon_pipeline.py` | 从生成图候选中裁切 Android TV 应用图标，重建透明圆角，生成 launcher WebP 和 TV banner PNG，并执行 TinyPNG 类压缩。 | `python3 scripts/tools/android_app_icon_pipeline.py --candidate 1` |
+| `prepare_readme_assets.py` | 生成 README 横幅，并把 README 截图缩放为有损 WebP；复用 app icon 流水线里的 WebP 压缩。 | `python3 scripts/tools/prepare_readme_assets.py` |
 | `ui-visual-check.mjs` | 控制端和 Admin 的 Chrome 截图检查。 | `pnpm ui:visual-check` |
 | `tv-visual-check.mjs` | Web TV 的 Chrome 截图检查。 | `pnpm tv:visual-check` |
 | `real-mv-playback-risk-spike.mjs` | 真实 MV 播放兼容性调研，输出 Markdown 风险报告。 | `pnpm real-mv:risk-spike -- ...` |
@@ -81,6 +82,19 @@ python3 scripts/tools/android_app_icon_pipeline.py --source /path/to/generated-s
 
 ```bash
 python3 -m unittest scripts.tools.android_app_icon_pipeline_test
+```
+
+## prepare_readme_assets.py
+
+`prepare_readme_assets.py` 用于更新仓库首页 README 的展示资产。它默认读取 `docs/assets/app-icons/home-ktv-app-icon-source.png` 和 `/Users/shaolongfei/Downloads/截图` 下的截图，输出 README 横幅和 WebP 截图到 `docs/assets/readme/`、`docs/assets/screenshots/`。
+
+脚本复用 `android_app_icon_pipeline.py` 里的 `save_webp_optimized`，因此本机安装 `cwebp` 时会自动走有损 WebP 压缩。
+
+常用命令：
+
+```bash
+python3 scripts/tools/prepare_readme_assets.py
+python3 scripts/tools/prepare_readme_assets.py --screenshot-source /path/to/screenshots --webp-quality 82
 ```
 
 ## deploy-doctor.mjs
