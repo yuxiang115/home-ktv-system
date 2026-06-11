@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_NETEASE_BASE_URL = "http://127.0.0.1:4300"
 DEFAULT_PROVIDERS = ["netease", "cloud", "tencent", "kugou", "kuwo", "spotify"]
 DEFAULT_IMAGE_SIZE = 300

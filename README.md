@@ -223,14 +223,14 @@ adb shell am start -W \
 
 ## 曲库维护
 
-真实曲库维护集中在 API 和 `scripts/tools`：
+真实曲库维护集中在 API 和 `scripts/`：
 
 ```bash
 bash deploy/source/ktv.sh probe-index -- --limit 300 --concurrency 2
 bash deploy/source/ktv.sh cover-status
 bash deploy/source/ktv.sh fetch-covers -- --limit 300
 bash deploy/source/ktv.sh cover-coverage -- --limit 100
-python3 scripts/tools/run_style_tagging_llm_batch.py status --env-file deploy/source/.env --output runtime/tagging/llm/llm-style-tags.jsonl
+python3 scripts/run_style_tagging_llm_batch.py status --env-file deploy/source/.env --output runtime/tagging/llm/llm-style-tags.jsonl
 ```
 
 热门歌曲和歌单热度工具：
@@ -239,7 +239,7 @@ python3 scripts/tools/run_style_tagging_llm_batch.py status --env-file deploy/so
 pnpm hot-songs:update
 ```
 
-详细流程见 [真实曲库索引](docs/KTV-FULL-INDEX.md)、[歌曲封面缓存](docs/runbooks/song-cover-fetching.md) 和 [工具脚本说明](scripts/tools/README.md)。
+详细流程见 [真实曲库索引](docs/KTV-FULL-INDEX.md)、[歌曲封面缓存](docs/runbooks/song-cover-fetching.md) 和 [工具脚本说明](scripts/README.md)。
 
 ## 项目结构
 

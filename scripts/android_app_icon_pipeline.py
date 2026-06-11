@@ -19,7 +19,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 GENERATED_CANDIDATE_SHEET = Path(
     "/Users/shaolongfei/.codex/generated_images/"
     "019e8b70-9013-75b0-a643-ee3cf806dbfc/"

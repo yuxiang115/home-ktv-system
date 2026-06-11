@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const LOG_DIR = process.env.KTV_LOG_DIR?.trim() || path.join(ROOT_DIR, "logs", "dev");
 const PID_DIR = path.join(LOG_DIR, "pids");
 const ROOM_SLUG = process.env.TV_ROOM_SLUG?.trim() || "living-room";

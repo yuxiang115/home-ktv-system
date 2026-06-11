@@ -6,8 +6,8 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = REPO_ROOT / "scripts/tools/android_app_icon_pipeline.py"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = REPO_ROOT / "scripts/android_app_icon_pipeline.py"
 class AndroidAppIconPipelineTest(unittest.TestCase):
     def test_exports_launcher_icons_and_tv_banner(self):
         with tempfile.TemporaryDirectory() as temp_dir:

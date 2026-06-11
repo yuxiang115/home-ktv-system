@@ -18,7 +18,7 @@ The tool only needs song title and artist. It does not write to the HomeKTV data
 
 ## Architecture
 
-The tool is a single Python script under `scripts/tools/` with four layers:
+The tool is a single Python script under `scripts/` with four layers:
 
 1. Source discovery
    - Discover all chart ids and names per platform.

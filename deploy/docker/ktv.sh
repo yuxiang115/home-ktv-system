@@ -91,7 +91,7 @@ case "${command}" in
     ;;
   doctor)
     ensure_env
-    node "${ROOT_DIR}/scripts/node-tools/deploy-doctor.mjs" \
+    node "${ROOT_DIR}/scripts/deploy-doctor.mjs" \
       --mode docker \
       --env-file "${ENV_FILE}" \
       --service-status-cmd "docker compose --env-file '${ENV_FILE}' -f '${COMPOSE_FILE}' ps"

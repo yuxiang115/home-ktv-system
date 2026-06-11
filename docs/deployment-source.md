@@ -59,10 +59,10 @@ bash deploy/source/ktv.sh probe-index -- --limit 300 --concurrency 2
 bash deploy/source/ktv.sh cover-status
 bash deploy/source/ktv.sh cover-coverage -- --limit 100
 bash deploy/source/ktv.sh fetch-covers -- --limit 300
-python3 scripts/tools/run_style_tagging_llm_batch.py status --env-file deploy/source/.env --output runtime/tagging/llm/llm-style-tags.jsonl
-python3 scripts/tools/run_style_tagging_llm_batch.py run --env-file deploy/source/.env --max-existing-tags 1 --batch-size 30 --output runtime/tagging/llm/llm-style-tags.jsonl
-python3 scripts/tools/run_style_tagging_llm_batch.py import --env-file deploy/source/.env --output runtime/tagging/llm/llm-style-tags.jsonl --dry-run
-python3 scripts/tools/run_style_tagging_llm_batch.py import --env-file deploy/source/.env --output runtime/tagging/llm/llm-style-tags.jsonl --apply
+python3 scripts/run_style_tagging_llm_batch.py status --env-file deploy/source/.env --output runtime/tagging/llm/llm-style-tags.jsonl
+python3 scripts/run_style_tagging_llm_batch.py run --env-file deploy/source/.env --max-existing-tags 1 --batch-size 30 --output runtime/tagging/llm/llm-style-tags.jsonl
+python3 scripts/run_style_tagging_llm_batch.py import --env-file deploy/source/.env --output runtime/tagging/llm/llm-style-tags.jsonl --dry-run
+python3 scripts/run_style_tagging_llm_batch.py import --env-file deploy/source/.env --output runtime/tagging/llm/llm-style-tags.jsonl --apply
 bash deploy/source/ktv.sh stop
 ```
 

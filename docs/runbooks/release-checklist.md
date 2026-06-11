@@ -14,8 +14,8 @@ pnpm build
 如果只改了部署脚本或文档，可以至少运行：
 
 ```bash
-node --test scripts/node-tools/deploy-doctor.test.mjs
-python3 scripts/tools/repo_hygiene_check_test.py
+node --test scripts/deploy-doctor.test.mjs
+python3 scripts/repo_hygiene_check_test.py
 pnpm deploy:doctor -- --mode docker --env-file deploy/env/server.env.example --skip-network
 ```
 

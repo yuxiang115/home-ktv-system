@@ -9,18 +9,18 @@ from repo_hygiene_check import is_high_risk_path, normalize_status_path, parse_a
 
 class RepoHygieneCheckTest(unittest.TestCase):
     def test_parse_porcelain_status_splits_tracked_and_untracked(self) -> None:
-        entries = parse_porcelain_status(" M README.md\n?? scripts/tools/new_tool.py\nR  old.py -> new.py\n")
+        entries = parse_porcelain_status(" M README.md\n?? scripts/new_tool.py\nR  old.py -> new.py\n")
 
         self.assertEqual(entries[0].code, " M")
         self.assertEqual(entries[0].kind, "tracked")
         self.assertEqual(entries[0].path, "README.md")
         self.assertEqual(entries[1].kind, "untracked")
-        self.assertEqual(entries[1].path, "scripts/tools/new_tool.py")
+        self.assertEqual(entries[1].path, "scripts/new_tool.py")
         self.assertEqual(entries[2].path, "new.py")
 
     def test_high_risk_paths_match_source_and_config_files(self) -> None:
         self.assertTrue(is_high_risk_path("apps/api/src/index.ts"))
-        self.assertTrue(is_high_risk_path("scripts/tools/repo_hygiene_check.py"))
+        self.assertTrue(is_high_risk_path("scripts/repo_hygiene_check.py"))
         self.assertTrue(is_high_risk_path("package.json"))
         self.assertFalse(is_high_risk_path("runtime/output.json"))
         self.assertFalse(is_high_risk_path("logs/dev.log"))

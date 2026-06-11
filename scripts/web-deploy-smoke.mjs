@@ -403,7 +403,7 @@ function readOptionValue(argv, index, option) {
 
 function printUsage() {
   console.log(`Usage:
-  node scripts/node-tools/web-deploy-smoke.mjs \\
+  node scripts/web-deploy-smoke.mjs \\
     --api-base-url http://127.0.0.1:4002 \\
     --controller-base-url http://127.0.0.1:4276 \\
     --tv-web-base-url http://127.0.0.1:4273 \\

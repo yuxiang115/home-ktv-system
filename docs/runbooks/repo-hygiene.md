@@ -67,8 +67,8 @@ pnpm repo:hygiene -- --fail-on-dirty
 - `apps/api/src/modules/ktv-index/`
 - `apps/api/src/routes/song-search.ts`
 - `apps/api/src/routes/song-discovery.ts`
-- `scripts/tools/fetch_song_covers.py`
-- `scripts/tools/run_style_tagging_llm_batch.py`
+- `scripts/fetch_song_covers.py`
+- `scripts/run_style_tagging_llm_batch.py`
 - `docs/KTV-FULL-INDEX.md`
 - `docs/runbooks/song-cover-fetching.md`
 
@@ -79,6 +79,6 @@ pnpm repo:hygiene -- --fail-on-dirty
 ```bash
 pnpm -F @home-ktv/api exec vitest run src/test/ktv-full-index.test.ts src/test/ktv-index-read-repository.test.ts src/test/song-search-routes.test.ts src/test/song-discovery-routes.test.ts
 pnpm -F @home-ktv/api typecheck
-python3 scripts/tools/fetch_song_covers_test.py
-python3 scripts/tools/run_style_tagging_llm_batch_test.py
+python3 scripts/fetch_song_covers_test.py
+python3 scripts/run_style_tagging_llm_batch_test.py
 ```

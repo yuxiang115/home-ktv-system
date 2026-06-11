@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_ROOT = ROOT_DIR / "runtime" / "chart-scores"
 DEFAULT_NETEASE_BASE_URL = "http://127.0.0.1:4300"
 DEFAULT_PLATFORMS = ["netease", "qq", "kugou", "kuwo", "migu"]

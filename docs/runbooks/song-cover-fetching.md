@@ -26,7 +26,7 @@ curl 'http://127.0.0.1:4300/cloudsearch?keywords=刀郎%20冲动的惩罚&type=1
 单首歌封面探测：
 
 ```bash
-python3 scripts/tools/fetch_song_covers.py probe 冲动的惩罚 刀郎 --providers netease --netease-base-url http://127.0.0.1:4300
+python3 scripts/fetch_song_covers.py probe 冲动的惩罚 刀郎 --providers netease --netease-base-url http://127.0.0.1:4300
 ```
 
 `probe` 子命令只查询并输出候选封面 URL，不写数据库；需要确认图片可下载时传 `--download`。正式批量缓存同样由 `fetch_song_covers.py` 负责，当前默认 provider 已包含 `netease`。
@@ -36,8 +36,8 @@ python3 scripts/tools/fetch_song_covers.py probe 冲动的惩罚 刀郎 --provid
 核心代码：
 
 ```text
-scripts/tools/fetch_song_covers.py
-scripts/tools/fetch_song_covers_test.py
+scripts/fetch_song_covers.py
+scripts/fetch_song_covers_test.py
 apps/api/src/routes/media.ts
 apps/api/src/modules/covers/song-cover-repository.ts
 ```
@@ -144,7 +144,7 @@ song-covers.jsonl.state.json
 bash deploy/source/ktv.sh cover-status
 bash deploy/source/ktv.sh cover-coverage -- --limit 100 --concurrency 4 --delay-ms 200
 bash deploy/source/ktv.sh fetch-covers -- --limit 300 --concurrency 4 --delay-ms 200
-python3 scripts/tools/fetch_song_covers.py probe 夜之光 花姐 --providers netease,cloud --netease-base-url http://127.0.0.1:4300
+python3 scripts/fetch_song_covers.py probe 夜之光 花姐 --providers netease,cloud --netease-base-url http://127.0.0.1:4300
 ```
 
 Docker 部署：

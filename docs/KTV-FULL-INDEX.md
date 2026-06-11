@@ -194,10 +194,10 @@ API 侧传入搜索词前应使用 `apps/api/src/modules/catalog/search-normaliz
 批量补标签使用 Python runner：
 
 ```bash
-python3 scripts/tools/run_style_tagging_llm_batch.py status --env-file deploy/source/.env
-python3 scripts/tools/run_style_tagging_llm_batch.py run --env-file deploy/source/.env --max-existing-tags 1 --batch-size 30
-python3 scripts/tools/run_style_tagging_llm_batch.py import --env-file deploy/source/.env --dry-run
-python3 scripts/tools/run_style_tagging_llm_batch.py import --env-file deploy/source/.env --apply
+python3 scripts/run_style_tagging_llm_batch.py status --env-file deploy/source/.env
+python3 scripts/run_style_tagging_llm_batch.py run --env-file deploy/source/.env --max-existing-tags 1 --batch-size 30
+python3 scripts/run_style_tagging_llm_batch.py import --env-file deploy/source/.env --dry-run
+python3 scripts/run_style_tagging_llm_batch.py import --env-file deploy/source/.env --apply
 ```
 
 脚本先写 JSONL 和 state 文件，再显式导入数据库。标签回填不影响搜索、队列或播放。

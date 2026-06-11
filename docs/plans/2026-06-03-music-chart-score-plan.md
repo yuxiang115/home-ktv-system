@@ -4,7 +4,7 @@
 
 **Goal:** Build a standalone Python tool that collects all charts from Chinese mainstream music platforms and outputs a merged `+10 per chart appearance` score table.
 
-**Architecture:** Keep the tool self-contained under `scripts/tools/`. Implement platform discovery and chart collection as separate functions, then normalize and aggregate into a CSV report. Prefer standard-library HTTP and HTML parsing so the script can run in the existing deployment environment without extra Python packages.
+**Architecture:** Keep the tool self-contained under `scripts/`. Implement platform discovery and chart collection as separate functions, then normalize and aggregate into a CSV report. Prefer standard-library HTTP and HTML parsing so the script can run in the existing deployment environment without extra Python packages.
 
 **Tech Stack:** Python 3 standard library, `urllib`, `json`, `csv`, `re`, `html`, `concurrent.futures`, `unittest`
 
@@ -13,8 +13,8 @@
 ### Task 1: Add failing tests for CLI and aggregation
 
 **Files:**
-- Create: `scripts/tools/fetch_chart_scores_test.py`
-- Create: `scripts/tools/fetch_chart_scores.py`
+- Create: `scripts/fetch_chart_scores_test.py`
+- Create: `scripts/fetch_chart_scores.py`
 
 **Step 1: Write the failing test**
 
@@ -27,7 +27,7 @@ Add tests for:
 
 **Step 2: Run test to verify it fails**
 
-Run: `python3 scripts/tools/fetch_chart_scores_test.py`
+Run: `python3 scripts/fetch_chart_scores_test.py`
 
 Expected: FAIL because the new script does not exist yet.
 
@@ -41,15 +41,15 @@ Add script skeleton:
 
 **Step 4: Run test to verify it passes**
 
-Run: `python3 scripts/tools/fetch_chart_scores_test.py`
+Run: `python3 scripts/fetch_chart_scores_test.py`
 
 Expected: PASS for the first aggregation-focused tests.
 
 ### Task 2: Add failing parser tests for platform discovery and chart rows
 
 **Files:**
-- Modify: `scripts/tools/fetch_chart_scores_test.py`
-- Modify: `scripts/tools/fetch_chart_scores.py`
+- Modify: `scripts/fetch_chart_scores_test.py`
+- Modify: `scripts/fetch_chart_scores.py`
 
 **Step 1: Write the failing test**
 
@@ -63,7 +63,7 @@ Add parser tests for:
 
 **Step 2: Run test to verify it fails**
 
-Run: `python3 scripts/tools/fetch_chart_scores_test.py`
+Run: `python3 scripts/fetch_chart_scores_test.py`
 
 Expected: FAIL on missing parser functions.
 
@@ -73,15 +73,15 @@ Add parser functions for each platform using small fixtures and standard-library
 
 **Step 4: Run test to verify it passes**
 
-Run: `python3 scripts/tools/fetch_chart_scores_test.py`
+Run: `python3 scripts/fetch_chart_scores_test.py`
 
 Expected: PASS for parser coverage.
 
 ### Task 3: Implement network collection and reporting
 
 **Files:**
-- Modify: `scripts/tools/fetch_chart_scores.py`
-- Modify: `scripts/tools/README.md`
+- Modify: `scripts/fetch_chart_scores.py`
+- Modify: `scripts/README.md`
 
 **Step 1: Write the failing test**
 
@@ -93,7 +93,7 @@ Add tests for:
 
 **Step 2: Run test to verify it fails**
 
-Run: `python3 scripts/tools/fetch_chart_scores_test.py`
+Run: `python3 scripts/fetch_chart_scores_test.py`
 
 Expected: FAIL on missing collection/report helpers.
 
@@ -108,30 +108,30 @@ Implement:
 
 **Step 4: Run test to verify it passes**
 
-Run: `python3 scripts/tools/fetch_chart_scores_test.py`
+Run: `python3 scripts/fetch_chart_scores_test.py`
 
 Expected: PASS.
 
 ### Task 4: Run smoke verification and document usage
 
 **Files:**
-- Modify: `scripts/tools/README.md`
+- Modify: `scripts/README.md`
 
 **Step 1: Run focused tests**
 
-Run: `python3 scripts/tools/fetch_chart_scores_test.py`
+Run: `python3 scripts/fetch_chart_scores_test.py`
 
 Expected: PASS.
 
 **Step 2: Run a local smoke collection**
 
-Run: `python3 scripts/tools/fetch_chart_scores.py collect --platforms qq,kugou,kuwo,migu --output runtime/chart-scores/smoke`
+Run: `python3 scripts/fetch_chart_scores.py collect --platforms qq,kugou,kuwo,migu --output runtime/chart-scores/smoke`
 
 Expected: output files created and non-empty report rows for reachable platforms.
 
 **Step 3: Run NetEase smoke if local API is available**
 
-Run: `python3 scripts/tools/fetch_chart_scores.py collect --platforms netease --netease-base-url http://127.0.0.1:4300 --output runtime/chart-scores/netease-smoke`
+Run: `python3 scripts/fetch_chart_scores.py collect --platforms netease --netease-base-url http://127.0.0.1:4300 --output runtime/chart-scores/netease-smoke`
 
 Expected: works when the local `NeteaseCloudMusicApiBackup` service is up; otherwise a clear source failure is recorded.
 

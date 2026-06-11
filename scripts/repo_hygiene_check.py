@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 HIGH_RISK_PREFIXES = ("apps/", "clients/", "packages/", "deploy/", "scripts/", "docs/")
 HIGH_RISK_FILES = {"package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.base.json"}
 RUNTIME_PATHS = ("runtime", "logs", "home-ktv-media", "songs-sample", ".codex", ".planning/reports", ".worktrees", "worktrees")

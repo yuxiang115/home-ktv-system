@@ -72,13 +72,10 @@ deploy/env/
 ## 脚本
 
 ```text
-scripts/dev/
-scripts/tools/
+scripts/
 ```
 
-`scripts/dev` 是本地开发入口，负责启动 API、后台、Web TV 和手机控制器，并把日志写到 `logs/dev/`。
-
-`scripts/tools` 放部署自检、视觉检查、封面拉取、风格标签批处理、真实 MV 风险扫描等工具。说明见 [../scripts/tools/README.md](../scripts/tools/README.md)。
+`scripts/` 是扁平化脚本目录，包含本地开发入口、部署自检、视觉检查、封面拉取、风格标签批处理和曲库维护工具。说明见 [../scripts/README.md](../scripts/README.md)。
 
 ## 文档
 

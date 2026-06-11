@@ -62,7 +62,7 @@ Deduplication rules:
 
 ## Architecture
 
-The script stays self-contained under `scripts/tools/fetch_playlist_scores.py` and is split into five layers:
+The script stays self-contained under `scripts/fetch_playlist_scores.py` and is split into five layers:
 
 1. Input parsing
    - read keywords from CLI or file

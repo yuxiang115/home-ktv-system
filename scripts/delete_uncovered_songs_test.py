@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
-MODULE_PATH = ROOT / "scripts" / "tools" / "delete_uncovered_songs.py"
+ROOT = Path(__file__).resolve().parents[1]
+MODULE_PATH = ROOT / "scripts" / "delete_uncovered_songs.py"
 
 
 def load_module():

@@ -4,7 +4,7 @@
 
 **Goal:** Build a standalone Python tool that collects songs from playlist search results and direct playlist references, then outputs a merged playlist-based score table.
 
-**Architecture:** Keep the tool self-contained under `scripts/tools/`. Reuse the chart script's normalization and report shape, but implement playlist-specific discovery and fetch paths separately. Use only the Python standard library plus local `node` subprocess calls for Kuwo signing so the script runs in the existing environment without new Python package requirements.
+**Architecture:** Keep the tool self-contained under `scripts/`. Reuse the chart script's normalization and report shape, but implement playlist-specific discovery and fetch paths separately. Use only the Python standard library plus local `node` subprocess calls for Kuwo signing so the script runs in the existing environment without new Python package requirements.
 
 **Tech Stack:** Python 3 standard library, `urllib`, `json`, `csv`, `re`, `html`, `subprocess`, `unittest`
 
@@ -13,8 +13,8 @@
 ### Task 1: Add failing tests for CLI, inputs, and aggregation
 
 **Files:**
-- Create: `scripts/tools/fetch_playlist_scores_test.py`
-- Create: `scripts/tools/fetch_playlist_scores.py`
+- Create: `scripts/fetch_playlist_scores_test.py`
+- Create: `scripts/fetch_playlist_scores.py`
 
 **Step 1: Write the failing test**
 
@@ -28,7 +28,7 @@ Add tests for:
 
 **Step 2: Run test to verify it fails**
 
-Run: `python3 scripts/tools/fetch_playlist_scores_test.py`
+Run: `python3 scripts/fetch_playlist_scores_test.py`
 
 Expected: FAIL because the new script does not exist yet.
 
@@ -43,15 +43,15 @@ Add script skeleton:
 
 **Step 4: Run test to verify it passes**
 
-Run: `python3 scripts/tools/fetch_playlist_scores_test.py`
+Run: `python3 scripts/fetch_playlist_scores_test.py`
 
 Expected: PASS for the first input and aggregation tests.
 
 ### Task 2: Add failing parser tests for per-platform playlist parsing
 
 **Files:**
-- Modify: `scripts/tools/fetch_playlist_scores_test.py`
-- Modify: `scripts/tools/fetch_playlist_scores.py`
+- Modify: `scripts/fetch_playlist_scores_test.py`
+- Modify: `scripts/fetch_playlist_scores.py`
 
 **Step 1: Write the failing test**
 
@@ -66,7 +66,7 @@ Add parser tests for:
 
 **Step 2: Run test to verify it fails**
 
-Run: `python3 scripts/tools/fetch_playlist_scores_test.py`
+Run: `python3 scripts/fetch_playlist_scores_test.py`
 
 Expected: FAIL on missing parser functions.
 
@@ -76,15 +76,15 @@ Add parser functions for each platform using inline fixtures and standard-librar
 
 **Step 4: Run test to verify it passes**
 
-Run: `python3 scripts/tools/fetch_playlist_scores_test.py`
+Run: `python3 scripts/fetch_playlist_scores_test.py`
 
 Expected: PASS for parser coverage.
 
 ### Task 3: Implement real collection flow and reporting
 
 **Files:**
-- Modify: `scripts/tools/fetch_playlist_scores.py`
-- Modify: `scripts/tools/README.md`
+- Modify: `scripts/fetch_playlist_scores.py`
+- Modify: `scripts/README.md`
 
 **Step 1: Write the failing test**
 
@@ -97,7 +97,7 @@ Add tests for:
 
 **Step 2: Run test to verify it fails**
 
-Run: `python3 scripts/tools/fetch_playlist_scores_test.py`
+Run: `python3 scripts/fetch_playlist_scores_test.py`
 
 Expected: FAIL on missing collection/report helpers.
 
@@ -114,30 +114,30 @@ Implement:
 
 **Step 4: Run test to verify it passes**
 
-Run: `python3 scripts/tools/fetch_playlist_scores_test.py`
+Run: `python3 scripts/fetch_playlist_scores_test.py`
 
 Expected: PASS.
 
 ### Task 4: Run smoke verification and document usage
 
 **Files:**
-- Modify: `scripts/tools/README.md`
+- Modify: `scripts/README.md`
 
 **Step 1: Run focused tests**
 
-Run: `python3 scripts/tools/fetch_playlist_scores_test.py`
+Run: `python3 scripts/fetch_playlist_scores_test.py`
 
 Expected: PASS.
 
 **Step 2: Run a keyword-search smoke**
 
-Run: `python3 scripts/tools/fetch_playlist_scores.py collect --keywords 周杰伦 --search-limit-per-keyword 5 --output runtime/playlist-scores/smoke-keyword`
+Run: `python3 scripts/fetch_playlist_scores.py collect --keywords 周杰伦 --search-limit-per-keyword 5 --output runtime/playlist-scores/smoke-keyword`
 
 Expected: output files created and non-empty playlist rows from reachable keyword-search platforms.
 
 **Step 3: Run a direct-playlist smoke**
 
-Run: `python3 scripts/tools/fetch_playlist_scores.py collect --playlist-urls-file <sample-file> --output runtime/playlist-scores/smoke-direct`
+Run: `python3 scripts/fetch_playlist_scores.py collect --playlist-urls-file <sample-file> --output runtime/playlist-scores/smoke-direct`
 
 Expected: output files created and direct playlist parsing works for reachable sample playlists.
 

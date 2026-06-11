@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from android_app_icon_pipeline import save_webp_optimized
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ICON = REPO_ROOT / "docs/assets/app-icons/home-ktv-app-icon-source.png"
 DEFAULT_SCREENSHOT_SOURCE = Path("/Users/shaolongfei/Downloads/截图")
 DEFAULT_PROJECT_SCREENSHOT_SOURCE = Path("/Users/shaolongfei/Downloads/项目截图")

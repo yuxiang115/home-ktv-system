@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_ROOT = ROOT_DIR / "runtime" / "hot-song-candidates"
 DEFAULT_MANIFEST_PATH = ROOT_DIR / "packages" / "hot-songs" / "config" / "sources.example.json"
 DEFAULT_CONCURRENCY = 10

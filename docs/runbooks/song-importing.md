@@ -134,7 +134,7 @@ from ktv_songs;
 当前已有删除工具：
 
 ```text
-scripts/tools/delete_uncovered_songs.py
+scripts/delete_uncovered_songs.py
 ```
 
 它按准备好的 CSV 删除数据库记录、封面缓存和媒体文件。CSV 至少应包含脚本需要的字段，例如 `id`、`title`、`primary_artist_name`、`artist_names`、`cover_image_url`、`file_path`、`size_bytes`。
@@ -142,7 +142,7 @@ scripts/tools/delete_uncovered_songs.py
 先生成计划：
 
 ```bash
-python3 scripts/tools/delete_uncovered_songs.py plan \
+python3 scripts/delete_uncovered_songs.py plan \
   --input runtime/imports/<批次名>/delete-songs.csv \
   --output runtime/imports/<批次名>/delete-songs.plan.json
 ```
@@ -150,7 +150,7 @@ python3 scripts/tools/delete_uncovered_songs.py plan \
 确认后再执行：
 
 ```bash
-python3 scripts/tools/delete_uncovered_songs.py apply \
+python3 scripts/delete_uncovered_songs.py apply \
   --input runtime/imports/<批次名>/delete-songs.csv \
   --output runtime/imports/<批次名>/delete-songs.apply.json \
   --db-ssh-host lxc-dev \
@@ -219,14 +219,14 @@ curl -sS 'https://ktv-api.shaolongfei.com/admin/ktv-index/diagnostics?sampleSize
 涉及脚本：
 
 ```text
-scripts/tools/run_style_tagging_llm_batch.py
-scripts/tools/run_style_tagging_llm_batch_test.py
+scripts/run_style_tagging_llm_batch.py
+scripts/run_style_tagging_llm_batch_test.py
 ```
 
 查看待处理数量：
 
 ```bash
-python3 scripts/tools/run_style_tagging_llm_batch.py status \
+python3 scripts/run_style_tagging_llm_batch.py status \
   --env-file deploy/source/.env \
   --max-existing-tags 0
 ```
@@ -234,7 +234,7 @@ python3 scripts/tools/run_style_tagging_llm_batch.py status \
 运行一批：
 
 ```bash
-python3 scripts/tools/run_style_tagging_llm_batch.py run \
+python3 scripts/run_style_tagging_llm_batch.py run \
   --env-file deploy/source/.env \
   --max-existing-tags 0 \
   --batch-size 30 \
@@ -244,7 +244,7 @@ python3 scripts/tools/run_style_tagging_llm_batch.py run \
 导入前 dry-run：
 
 ```bash
-python3 scripts/tools/run_style_tagging_llm_batch.py import \
+python3 scripts/run_style_tagging_llm_batch.py import \
   --env-file deploy/source/.env \
   --output runtime/tagging/llm/<批次名>.jsonl \
   --dry-run
@@ -253,7 +253,7 @@ python3 scripts/tools/run_style_tagging_llm_batch.py import \
 确认后写库：
 
 ```bash
-python3 scripts/tools/run_style_tagging_llm_batch.py import \
+python3 scripts/run_style_tagging_llm_batch.py import \
   --env-file deploy/source/.env \
   --output runtime/tagging/llm/<批次名>.jsonl \
   --apply
@@ -279,10 +279,10 @@ where missing_at is null;
 涉及脚本：
 
 ```text
-scripts/tools/fetch_song_covers.py
-scripts/tools/fetch_song_covers_test.py
-scripts/tools/generate_cover_thumbnails.py
-scripts/tools/generate_cover_thumbnails_test.py
+scripts/fetch_song_covers.py
+scripts/fetch_song_covers_test.py
+scripts/generate_cover_thumbnails.py
+scripts/generate_cover_thumbnails_test.py
 apps/api/src/routes/media.ts
 apps/api/src/modules/covers/song-cover-repository.ts
 ```
@@ -335,11 +335,11 @@ bash deploy/source/ktv.sh cover-thumbnails -- \
 可用脚本：
 
 ```text
-scripts/tools/fetch_hot_song_candidates.py
-scripts/tools/fetch_chart_scores.py
-scripts/tools/fetch_playlist_scores.py
-scripts/tools/merge_music_scores.py
-scripts/tools/delete_uncovered_songs.py
+scripts/fetch_hot_song_candidates.py
+scripts/fetch_chart_scores.py
+scripts/fetch_playlist_scores.py
+scripts/merge_music_scores.py
+scripts/delete_uncovered_songs.py
 ```
 
 热门、榜单和歌单分数可用于生成“保留/删除候选表”，再交给删除脚本执行。

@@ -86,6 +86,11 @@ class RunStyleTaggingLlmBatchTest(unittest.TestCase):
         self.assertNotIn("st.tag_id", sql)
         self.assertNotIn("ktv_song_tagging_status", sql)
 
+    def test_parse_args_ignores_pnpm_forwarded_separator(self):
+        args = runner.parse_args(["--", "status"])
+
+        self.assertEqual(args.command, "status")
+
     def test_import_sql_writes_inline_style_tags(self):
         sql = runner.build_import_sql(
             [

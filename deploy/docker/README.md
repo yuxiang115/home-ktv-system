@@ -28,13 +28,13 @@ bash deploy/docker/ktv.sh cover-status
 bash deploy/docker/ktv.sh fetch-covers -- --limit 300
 bash deploy/docker/ktv.sh cover-coverage -- --limit 100
 docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
-  python3 /app/scripts/tools/run_style_tagging_llm_batch.py run --max-existing-tags 1 --batch-size 30 --output /data/home-ktv-media/tagging/llm-style-tags.jsonl
+  python3 /app/scripts/run_style_tagging_llm_batch.py run --max-existing-tags 1 --batch-size 30 --output /data/home-ktv-media/tagging/llm-style-tags.jsonl
 docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
-  python3 /app/scripts/tools/run_style_tagging_llm_batch.py import --output /data/home-ktv-media/tagging/llm-style-tags.jsonl --dry-run
+  python3 /app/scripts/run_style_tagging_llm_batch.py import --output /data/home-ktv-media/tagging/llm-style-tags.jsonl --dry-run
 docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
-  python3 /app/scripts/tools/run_style_tagging_llm_batch.py import --output /data/home-ktv-media/tagging/llm-style-tags.jsonl --apply
+  python3 /app/scripts/run_style_tagging_llm_batch.py import --output /data/home-ktv-media/tagging/llm-style-tags.jsonl --apply
 ```
 
-风格标签现在只走 `scripts/tools/run_style_tagging_llm_batch.py`，不再保留旧的 Docker 独立任务入口或 JSONL wrapper。run 阶段只追加 JSONL 和 state 文件，全部完成后才统一 import 写库；整批失败时不写入数据库，由外层脚本等待后重试。
+风格标签现在只走 `scripts/run_style_tagging_llm_batch.py`，不再保留旧的 Docker 独立任务入口或 JSONL wrapper。run 阶段只追加 JSONL 和 state 文件，全部完成后才统一 import 写库；整批失败时不写入数据库，由外层脚本等待后重试。
 
 完整配置、NAS 路径映射、公网入口和验证步骤见 [../../docs/deployment-docker.md](../../docs/deployment-docker.md)。歌曲封面拉取流程见 [../../docs/runbooks/song-cover-fetching.md](../../docs/runbooks/song-cover-fetching.md)。当前数据库结构见 [../../docs/database-schema.md](../../docs/database-schema.md)。

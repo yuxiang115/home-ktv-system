@@ -18,9 +18,9 @@ The merged result is only required to guarantee:
 
 The first version reads existing CSV outputs from:
 
-- `scripts/tools/fetch_hot_song_candidates.py`
-- `scripts/tools/fetch_chart_scores.py`
-- `scripts/tools/fetch_playlist_scores.py`
+- `scripts/fetch_hot_song_candidates.py`
+- `scripts/fetch_chart_scores.py`
+- `scripts/fetch_playlist_scores.py`
 
 It does not fetch any network data. It only reads local files and writes a merged CSV.
 

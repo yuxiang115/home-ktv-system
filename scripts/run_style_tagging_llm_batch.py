@@ -202,6 +202,7 @@ def main(argv=None):
 
 
 def parse_args(argv):
+    argv = [arg for arg in argv if arg != "--"]
     parser = argparse.ArgumentParser(description="Run batched LLM style tagging outside the API container.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 

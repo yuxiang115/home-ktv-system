@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
+ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_SOURCE_ROOT = ROOT_DIR / "runtime" / "media" / "covers" / "nas"
 DEFAULT_OUTPUT_ROOT = DEFAULT_SOURCE_ROOT / "thumbs"
 

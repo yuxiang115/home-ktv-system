@@ -26,7 +26,7 @@
 - [歌曲导入流程](runbooks/song-importing.md)
 - [歌曲封面缓存](runbooks/song-cover-fetching.md)
 - [热门歌曲工具](../packages/hot-songs/README.md)
-- [工具脚本说明](../scripts/tools/README.md)
+- [工具脚本说明](../scripts/README.md)
 
 ## 文档维护规则
 

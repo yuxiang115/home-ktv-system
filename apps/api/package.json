@@ -16,9 +16,9 @@
     "probe:ktv-index": "tsx src/scripts/ktv-index-probe.ts",
     "clean:variety-show-metadata": "tsx src/scripts/clean-variety-show-metadata.ts",
     "repair:ktv-song-metadata": "tsx src/scripts/repair-ktv-song-metadata.ts",
-    "covers:songs": "python3 ../../scripts/tools/fetch_song_covers.py fetch",
-    "covers:coverage": "python3 ../../scripts/tools/fetch_song_covers.py coverage",
-    "covers:status": "python3 ../../scripts/tools/fetch_song_covers.py status",
+    "covers:songs": "python3 ../../scripts/fetch_song_covers.py fetch",
+    "covers:coverage": "python3 ../../scripts/fetch_song_covers.py coverage",
+    "covers:status": "python3 ../../scripts/fetch_song_covers.py status",
     "sample:ktv-index": "tsx src/scripts/ktv-sample-index.ts",
     "test": "vitest run",
     "start": "node dist/server.js"

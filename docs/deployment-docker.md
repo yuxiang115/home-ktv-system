@@ -66,17 +66,17 @@ bash deploy/docker/ktv.sh cover-status
 bash deploy/docker/ktv.sh fetch-covers -- --limit 300
 bash deploy/docker/ktv.sh cover-coverage -- --limit 100
 docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
-  python3 /app/scripts/tools/run_style_tagging_llm_batch.py status --output /data/home-ktv-media/tagging/llm-style-tags.jsonl
+  python3 /app/scripts/run_style_tagging_llm_batch.py status --output /data/home-ktv-media/tagging/llm-style-tags.jsonl
 docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
-  python3 /app/scripts/tools/run_style_tagging_llm_batch.py run --max-existing-tags 1 --batch-size 30 --output /data/home-ktv-media/tagging/llm-style-tags.jsonl
+  python3 /app/scripts/run_style_tagging_llm_batch.py run --max-existing-tags 1 --batch-size 30 --output /data/home-ktv-media/tagging/llm-style-tags.jsonl
 docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
-  python3 /app/scripts/tools/run_style_tagging_llm_batch.py import --output /data/home-ktv-media/tagging/llm-style-tags.jsonl --dry-run
+  python3 /app/scripts/run_style_tagging_llm_batch.py import --output /data/home-ktv-media/tagging/llm-style-tags.jsonl --dry-run
 docker compose -f deploy/docker/compose.yml --env-file deploy/docker/.env exec -T api \
-  python3 /app/scripts/tools/run_style_tagging_llm_batch.py import --output /data/home-ktv-media/tagging/llm-style-tags.jsonl --apply
+  python3 /app/scripts/run_style_tagging_llm_batch.py import --output /data/home-ktv-media/tagging/llm-style-tags.jsonl --apply
 bash deploy/docker/ktv.sh stop
 ```
 
-风格标签不再走旧的部署 wrapper。统一使用 `scripts/tools/run_style_tagging_llm_batch.py`，它会先生成 JSONL 和 state，再统一导入数据库；`--max-existing-tags` 用来筛选低覆盖歌曲，避免重复补标签。
+风格标签不再走旧的部署 wrapper。统一使用 `scripts/run_style_tagging_llm_batch.py`，它会先生成 JSONL 和 state，再统一导入数据库；`--max-existing-tags` 用来筛选低覆盖歌曲，避免重复补标签。
 
 ## 服务
 

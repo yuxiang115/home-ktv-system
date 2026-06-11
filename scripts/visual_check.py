@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 LOG_DIR = REPO_ROOT / "logs" / "visual"
 DEFAULT_ADMIN_URL = "http://127.0.0.1:5174/"
 DEFAULT_API_URL = "http://127.0.0.1:4000"

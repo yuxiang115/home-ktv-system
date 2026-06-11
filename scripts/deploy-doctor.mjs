@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const INDEXED_NAS_ROOT = "/mnt/nas/KTV歌曲";
 const NETWORK_RETRY_ATTEMPTS = 4;
 const NETWORK_RETRY_DELAY_MS = 1000;
@@ -430,7 +430,7 @@ function printReport(report) {
 function printUsage() {
   console.log(
     [
-      "Usage: node scripts/node-tools/deploy-doctor.mjs [options]",
+      "Usage: node scripts/deploy-doctor.mjs [options]",
       "",
       "Options:",
       "  --mode docker|source       Deployment mode, default: docker",
