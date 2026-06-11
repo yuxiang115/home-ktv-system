@@ -23,13 +23,12 @@
 
 ### Node 工具
 
-部署校验和真实 MV 调研仍是 Node 脚本，已统一放到 `scripts/node-tools/`，后续有需要再单独迁移。
+部署校验仍是 Node 脚本，统一放到 `scripts/node-tools/`；用途和测试见 `scripts/node-tools/README.md`。
 
 | 脚本 | 用途 | 常用入口 |
 | --- | --- | --- |
 | `deploy-doctor.mjs` | 部署环境自检。 | `pnpm deploy:doctor` |
 | `web-deploy-smoke.mjs` | 部署后 smoke。 | `pnpm deploy:smoke` |
-| `real-mv-playback-risk-spike.mjs` | 真实 MV 播放兼容性调研。 | `pnpm real-mv:risk-spike -- ...` |
 
 ## 测试
 
@@ -47,12 +46,10 @@ python3 scripts/tools/run_style_tagging_llm_batch_test.py
 python3 scripts/tools/android_app_icon_pipeline_test.py
 node --test scripts/node-tools/deploy-doctor.test.mjs
 node --test scripts/node-tools/web-deploy-smoke.test.mjs
-node --test scripts/node-tools/real-mv-playback-risk-spike.test.mjs
-node --test scripts/node-tools/source-deployment-docs.test.mjs
 ```
 
 ## 当前整理状态
 
 - 已合并：`ui-visual-check.mjs`、`tv-visual-check.mjs` -> `visual_check.py`
 - 已迁移：`repo-hygiene-check.mjs` -> `repo_hygiene_check.py`
-- 已收拢：暂未迁移的 Node 脚本 -> `scripts/node-tools/`
+- 已收拢：部署 Node 脚本 -> `scripts/node-tools/`

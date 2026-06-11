@@ -10,7 +10,6 @@
     "ui:visual-check": "python3 scripts/tools/visual_check.py ui",
     "ui:visual-check:test": "python3 scripts/tools/visual_check_test.py",
     "tv:visual-check": "python3 scripts/tools/visual_check.py tv",
-    "real-mv:risk-spike": "node scripts/node-tools/real-mv-playback-risk-spike.mjs",
     "ktv:probe": "pnpm -F @home-ktv/api probe:ktv-index",
     "ktv:tags:llm-batch:py": "python3 scripts/tools/run_style_tagging_llm_batch.py",
     "covers:songs": "pnpm -F @home-ktv/api covers:songs",
