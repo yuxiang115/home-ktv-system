@@ -86,7 +86,9 @@ python3 -m unittest scripts.tools.android_app_icon_pipeline_test
 
 ## prepare_readme_assets.py
 
-`prepare_readme_assets.py` 用于更新仓库首页 README 的展示资产。它默认读取 `docs/assets/app-icons/home-ktv-app-icon-source.png` 和 `/Users/shaolongfei/Downloads/截图` 下的截图，输出 README 横幅和 WebP 截图到 `docs/assets/readme/`、`docs/assets/screenshots/`。
+`prepare_readme_assets.py` 用于更新仓库首页 README 的展示资产。它默认读取 `docs/assets/app-icons/home-ktv-app-icon-source.png`、`/Users/shaolongfei/Downloads/截图` 和 `/Users/shaolongfei/Downloads/项目截图` 下的截图，输出 README 横幅和 WebP 截图到 `docs/assets/readme/`、`docs/assets/screenshots/`。
+
+如果旧源图目录不存在，但对应 WebP 已经在仓库里，脚本会跳过这组已生成资产；缺少源图且目标 WebP 不存在时才会报错。
 
 脚本复用 `android_app_icon_pipeline.py` 里的 `save_webp_optimized`，因此本机安装 `cwebp` 时会自动走有损 WebP 压缩。
 
@@ -94,7 +96,7 @@ python3 -m unittest scripts.tools.android_app_icon_pipeline_test
 
 ```bash
 python3 scripts/tools/prepare_readme_assets.py
-python3 scripts/tools/prepare_readme_assets.py --screenshot-source /path/to/screenshots --webp-quality 82
+python3 scripts/tools/prepare_readme_assets.py --screenshot-source /path/to/screenshots --project-screenshot-source /path/to/project-screenshots --webp-quality 82
 ```
 
 ## deploy-doctor.mjs

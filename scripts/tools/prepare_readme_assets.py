@@ -15,6 +15,7 @@ from android_app_icon_pipeline import save_webp_optimized
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ICON = REPO_ROOT / "docs/assets/app-icons/home-ktv-app-icon-source.png"
 DEFAULT_SCREENSHOT_SOURCE = Path("/Users/shaolongfei/Downloads/截图")
+DEFAULT_PROJECT_SCREENSHOT_SOURCE = Path("/Users/shaolongfei/Downloads/项目截图")
 DEFAULT_README_ASSETS = REPO_ROOT / "docs/assets/readme"
 DEFAULT_SCREENSHOT_OUTPUT = REPO_ROOT / "docs/assets/screenshots"
 
@@ -25,21 +26,44 @@ SCREENSHOTS = {
     "控制端-我的.jpg": ("controller-profile.webp", 720),
 }
 
+PROJECT_SCREENSHOTS = {
+    "web端TV.jpg": ("web-tv.webp", 1280),
+    "后台-首页.jpg": ("admin-dashboard.webp", 960),
+    "后台-房间状态.jpg": ("admin-room-status.webp", 1280),
+    "后台-搜索预览.jpg": ("admin-search-preview.webp", 1280),
+    "数据库.jpg": ("database-browser.webp", 1280),
+}
+
 
 def main() -> int:
     args = parse_args()
     icon = args.icon.expanduser().resolve()
     screenshot_source = args.screenshot_source.expanduser().resolve()
+    project_screenshot_source = args.project_screenshot_source.expanduser().resolve()
     readme_assets = args.readme_assets.expanduser().resolve()
     screenshot_output = args.screenshot_output.expanduser().resolve()
 
     if not icon.exists():
         raise FileNotFoundError(f"app icon not found: {icon}")
-    if not screenshot_source.exists():
-        raise FileNotFoundError(f"screenshot source not found: {screenshot_source}")
-
     generated = [make_banner(icon, readme_assets / "home-ktv-banner.webp", args.webp_quality)]
-    generated.extend(optimize_screenshots(screenshot_source, screenshot_output, args.webp_quality))
+    generated.extend(
+        optimize_screenshots(
+            source_dir=screenshot_source,
+            output_dir=screenshot_output,
+            screenshots=SCREENSHOTS,
+            quality=args.webp_quality,
+            source_label="core screenshots",
+        )
+    )
+    generated.extend(
+        optimize_screenshots(
+            source_dir=project_screenshot_source,
+            output_dir=screenshot_output,
+            screenshots=PROJECT_SCREENSHOTS,
+            quality=args.webp_quality,
+            source_label="project screenshots",
+        )
+    )
 
     for path in generated:
         print(f"{display_path(path)} {format_size(path.stat().st_size)}")
@@ -55,6 +79,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_SCREENSHOT_SOURCE,
         help="Directory containing source screenshots.",
+    )
+    parser.add_argument(
+        "--project-screenshot-source",
+        type=Path,
+        default=DEFAULT_PROJECT_SCREENSHOT_SOURCE,
+        help="Directory containing Admin, Web TV, and database screenshots.",
     )
     parser.add_argument("--readme-assets", type=Path, default=DEFAULT_README_ASSETS, help="README asset output directory.")
     parser.add_argument(
@@ -126,16 +156,25 @@ def make_banner(icon_path: Path, output_path: Path, quality: int) -> Path:
     return output_path
 
 
-def optimize_screenshots(source_dir: Path, output_dir: Path, quality: int) -> list[Path]:
+def optimize_screenshots(
+    source_dir: Path,
+    output_dir: Path,
+    screenshots: dict[str, tuple[str, int]],
+    quality: int,
+    source_label: str,
+) -> list[Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     generated: list[Path] = []
-    for source_name, (target_name, max_width) in SCREENSHOTS.items():
+    for source_name, (target_name, max_width) in screenshots.items():
         source = source_dir / source_name
+        target = output_dir / target_name
+        if not source.exists() and target.exists():
+            print(f"skip {source_label}: {display_path(target)} already exists; missing source {source}", file=sys.stderr)
+            continue
         if not source.exists():
-            raise FileNotFoundError(f"screenshot not found: {source}")
+            raise FileNotFoundError(f"{source_label} screenshot not found: {source}")
         with Image.open(source) as image:
             processed = resize_for_readme(image.convert("RGB"), max_width)
-            target = output_dir / target_name
             save_webp_optimized(processed, target, quality)
             generated.append(target)
     return generated

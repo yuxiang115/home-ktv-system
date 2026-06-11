@@ -29,6 +29,26 @@ HomeKTV 是一套面向家庭 KTV 场景的完整自托管点歌系统。它把 
   </tr>
 </table>
 
+## More Screenshots
+
+<p align="center">
+  <img src="docs/assets/screenshots/web-tv.webp" alt="HomeKTV Web TV pairing screen" width="760">
+</p>
+
+<p align="center">
+  <img src="docs/assets/screenshots/admin-dashboard.webp" alt="HomeKTV admin dashboard with library analytics" width="720">
+</p>
+
+<table>
+  <tr>
+    <td align="center" width="50%"><img src="docs/assets/screenshots/admin-search-preview.webp" alt="HomeKTV admin search preview" width="440"></td>
+    <td align="center" width="50%"><img src="docs/assets/screenshots/admin-room-status.webp" alt="HomeKTV admin room status" width="440"></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2"><img src="docs/assets/screenshots/database-browser.webp" alt="HomeKTV PostgreSQL song library table" width="760"></td>
+  </tr>
+</table>
+
 ## What You Get
 
 HomeKTV 的目标不是只做一个播放器，而是把家庭 KTV 真正会遇到的链路一次打通：
