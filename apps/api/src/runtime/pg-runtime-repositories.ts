@@ -22,6 +22,10 @@ import {
 } from "../modules/playback/repositories/room-session-command-repository.js";
 import { PgRoomPairingTokenRepository } from "../modules/rooms/repositories/pairing-token-repository.js";
 import { PgRoomRepository } from "../modules/rooms/repositories/room-repository.js";
+import {
+  PgOnlineSupplementTaskRepository,
+  type OnlineSupplementTaskRepository
+} from "../modules/online-supplement/supplement-task-repository.js";
 import type { PlayerRouteRepositories } from "../routes/player.js";
 
 export type RuntimeRepositories = PlayerRouteRepositories & {
@@ -31,6 +35,7 @@ export type RuntimeRepositories = PlayerRouteRepositories & {
   songCovers?: SongCoverRepository;
   ktvIndex?: KtvIndexReadRepository;
   playableMedia?: PlayableMediaRepository;
+  supplementTasks?: OnlineSupplementTaskRepository;
 };
 
 export interface CreatePgRuntimeRepositoriesOptions {
@@ -57,6 +62,7 @@ export function createPgRuntimeRepositories(
     playbackEvents: new InMemoryPlaybackEventRepository(),
     ktvIndex: new PgKtvIndexReadRepository(db, {
       ...(options.mediaPathMappings ? { pathMappings: options.mediaPathMappings } : {})
-    })
+    }),
+    supplementTasks: new PgOnlineSupplementTaskRepository(db)
   };
 }

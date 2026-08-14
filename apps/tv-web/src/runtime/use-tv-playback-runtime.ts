@@ -204,7 +204,7 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
         queueEntryId: target.queueEntryId,
         sourceType: target.sourceType,
         assetId: target.assetId,
-        playbackPositionMs: endedPlaybackPositionMs(event.currentTarget),
+        playbackPositionMs: endedPlaybackPositionMs(pool),
         vocalMode: target.vocalMode,
         switchFamily: target.switchFamily,
         rollbackAssetId: null,
@@ -218,7 +218,7 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
   const currentTargetKey = playbackTargetKey(snapshot?.currentTarget ?? null);
   const activeVideo = videoPoolRef.current?.activeVideo ?? null;
   const playbackPositionMs = activeVideo
-    ? Math.max(0, Math.trunc(activeVideo.currentTime * 1000))
+    ? Math.max(0, videoPoolRef.current?.activePlaybackPositionMs() ?? Math.trunc(activeVideo.currentTime * 1000))
     : roomState.snapshot?.currentTarget?.resumePositionMs ?? 0;
   const durationMs =
     activeVideo && Number.isFinite(activeVideo.duration) ? Math.max(0, Math.trunc(activeVideo.duration * 1000)) : null;
@@ -323,7 +323,7 @@ async function ensureCurrentPlayback(
     await sendPlaybackTelemetryOnce({
       client,
       eventType: "playing",
-      playbackPositionMs: playbackPositionFromVideo(pool.activeVideo, target.resumePositionMs),
+      playbackPositionMs: pool.activePlaybackPositionMs(target.resumePositionMs),
       sentPlaybackTelemetryRef,
       snapshot,
       stage: "active_playback_started"
@@ -446,14 +446,6 @@ async function sendPlaybackTelemetryOnce(input: {
   }
 }
 
-function playbackPositionFromVideo(video: KtvVideoElement, fallbackMs: number): number {
-  if (!Number.isFinite(video.currentTime)) {
-    return Math.max(0, Math.trunc(fallbackMs));
-  }
-
-  return Math.max(0, Math.trunc(video.currentTime * 1000));
-}
-
 function playbackTargetKey(target: RoomSnapshot["currentTarget"] | null): string | null {
   if (!target) {
     return null;
@@ -462,9 +454,11 @@ function playbackTargetKey(target: RoomSnapshot["currentTarget"] | null): string
   return [target.queueEntryId, target.sourceType, target.assetId, target.vocalMode].join(":");
 }
 
-function endedPlaybackPositionMs(video: HTMLVideoElement): number {
+// remux 兜底流的 duration 是"从切换点起的剩余时长",结束时补上位置基准得到真实进度。
+function endedPlaybackPositionMs(pool: DualVideoPool): number {
+  const video = pool.activeVideo;
   const positionSeconds = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : video.currentTime;
-  return Math.max(0, Math.trunc(positionSeconds * 1000));
+  return Math.max(0, Math.trunc(positionSeconds * 1000)) + pool.activePositionBaseMs;
 }
 
 function isPlaybackCapabilityBlockedMessage(message: string): boolean {

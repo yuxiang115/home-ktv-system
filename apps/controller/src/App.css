@@ -2210,3 +2210,23 @@ input:focus {
     margin: 0 auto;
   }
 }
+
+/* Online supplement feedback */
+.online-supplement-notice {
+  margin: 8px 0 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(76, 175, 80, 0.14);
+  color: #7bd87f;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.online-supplement-task.failed strong {
+  color: #ff8a80;
+}
+
+.online-supplement-fail-reason {
+  color: #ff8a80;
+  word-break: break-all;
+}

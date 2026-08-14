@@ -54,6 +54,23 @@ describe("buildSwitchTarget", () => {
       })
     ).resolves.toBeNull();
   });
+
+  it("attaches a remux fallback url pointing at the target audio track and resume position", async () => {
+    const target = await buildSwitchTarget({
+      roomSlug: livingRoom.slug,
+      repositories: createRepositories({
+        session: createPlaybackSession(),
+        queueEntry: createQueueEntry({ playbackOptions: { preferredVocalMode: "original" } }),
+        playableMedia: [createPlayableMediaAsset()]
+      }),
+      mediaGateway: createMediaGateway()
+    });
+
+    expect(target?.vocalMode).toBe("instrumental");
+    expect(target?.fallbackPlaybackUrl).toBe(
+      "http://ktv.local/media/nas/ktv-asset-main?audio=1&start=81234"
+    );
+  });
 });
 
 function createRepositories(input: {
@@ -89,8 +106,19 @@ function createRepositories(input: {
 
 function createMediaGateway(): Pick<MediaGateway, "createPlaybackUrl"> {
   return {
-    createPlaybackUrl(source: PlayableMediaLookup) {
-      return `http://ktv.local/media/${source.sourceType}/${source.assetId}`;
+    createPlaybackUrl(
+      source: PlayableMediaLookup,
+      urlOptions?: { audioTrackPos?: number; startMs?: number }
+    ) {
+      const base = `http://ktv.local/media/${source.sourceType}/${source.assetId}`;
+      if (urlOptions?.audioTrackPos === undefined) {
+        return base;
+      }
+      const params = new URLSearchParams({ audio: String(urlOptions.audioTrackPos) });
+      if (urlOptions.startMs !== undefined) {
+        params.set("start", String(urlOptions.startMs));
+      }
+      return `${base}?${params.toString()}`;
     }
   };
 }

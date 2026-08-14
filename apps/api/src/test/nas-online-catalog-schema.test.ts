@@ -97,3 +97,19 @@ describe("NAS / online catalog migration", () => {
     expect(cleanupMigrationSql).toContain("DROP TABLE public.queue_entries_unmapped_archive");
   });
 });
+
+describe("online supplement tasks (YouTube/Bilibili library-build pipeline)", () => {
+  it("tracks the pipeline and resolves produced songs into ktv_songs", () => {
+    expect(schemaSql).toContain("CREATE TABLE IF NOT EXISTS online_supplement_tasks");
+    expect(schemaSql).toContain("ready_song_id text REFERENCES ktv_songs(id) ON DELETE SET NULL");
+    expect(Object.values(tableNames)).toContain("online_supplement_tasks");
+    expect(schemaSql).toContain("lyric_file text");
+  });
+
+  it("never reintroduces a direct online playback path", () => {
+    expect(schemaSql).not.toContain("ready_asset_id text");
+    expect(schemaSql).not.toContain("ready_online_asset_id");
+    expect(schemaSql).not.toContain("CREATE TABLE IF NOT EXISTS candidate_tasks");
+    expect(Object.values(tableNames)).not.toContain("candidate_tasks");
+  });
+});

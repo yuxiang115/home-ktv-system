@@ -1350,10 +1350,150 @@ function SearchResults({
       ) : null}
 
       {controller.songSearch && controller.songSearch.nas.results.length === 0 ? (
-        <p className="empty-state local-empty">{t("search.localEmpty")}</p>
+        <>
+          <p className="empty-state local-empty">{t("search.localEmpty")}</p>
+          <OnlineSupplementSection controller={controller} t={t} />
+        </>
       ) : null}
     </div>
   );
+}
+
+function OnlineSupplementSection({
+  controller,
+  t
+}: {
+  controller: RoomControllerState;
+  t: TFunction;
+}) {
+  void t;
+  const query = controller.songSearchQuery;
+  const candidates = controller.onlineSupplementCandidates;
+  const status = controller.onlineSupplementStatus;
+  const notice = controller.onlineSupplementNotice;
+  const tasks = controller.snapshot?.onlineTasks?.tasks ?? [];
+  const activeTasks = tasks.filter(
+    (task) => task.status === "discovered" || task.status === "processing"
+  );
+  const failedTasks = tasks.filter((task) => task.status === "failed").slice(0, 3);
+  const readyCount = tasks.filter((task) => task.status === "ready").length;
+
+  return (
+    <section className="indexed-panel online-supplement-panel" aria-label="在线补歌">
+      <div className="panel-heading">
+        <h3>在线补歌(YouTube)</h3>
+        {status === "loading" ? <span className="search-status loading">搜索中...</span> : null}
+        {status === "error" ? <span className="search-status unavailable">搜索失败</span> : null}
+      </div>
+
+      {notice ? <p className="online-supplement-notice">{notice}</p> : null}
+
+      {status === "idle" && candidates.length === 0 ? (
+        <button
+          className="primary-button"
+          type="button"
+          disabled={!query.trim()}
+          onClick={() => controller.runOnlineSupplementSearch(query)}
+        >
+          {query.trim() ? `在 YouTube 搜索“${query.trim()}”` : "输入关键词后可搜索 YouTube"}
+        </button>
+      ) : null}
+
+      {candidates.length > 0 ? (
+        <div className="indexed-result-list compact-result-list">
+          {candidates.map((candidate) => (
+            <article
+              className="song-row indexed-version-row compact-version-row"
+              key={`${candidate.provider}:${candidate.providerCandidateId}`}
+            >
+              <div className="compact-version-main">
+                <strong>{candidate.title}</strong>
+                <div className="compact-version-meta">
+                  <span>{candidate.provider}</span>
+                  {candidate.artistName ? <span>{candidate.artistName}</span> : null}
+                  {candidate.durationMs ? <span>{formatSupplementDuration(candidate.durationMs)}</span> : null}
+                </div>
+              </div>
+              <button
+                className="primary-button compact-queue-button"
+                type="button"
+                onClick={() => controller.requestOnlineSupplementCandidate(candidate)}
+              >
+                加入曲库
+              </button>
+            </article>
+          ))}
+          <button
+            className="secondary-button compact-button"
+            type="button"
+            onClick={controller.clearOnlineSupplementSearch}
+          >
+            清除结果
+          </button>
+        </div>
+      ) : null}
+
+      {activeTasks.length > 0 ? (
+        <div className="online-supplement-tasks">
+          <h4>处理中的补歌任务</h4>
+          {activeTasks.map((task) => (
+            <div className="online-supplement-task" key={task.taskId}>
+              <div className="compact-version-main">
+                <strong>{task.title}</strong>
+                <div className="compact-version-meta">
+                  <span>{supplementStageLabel(task.stage)}</span>
+                  {task.stageMessage ? <span>{task.stageMessage}</span> : null}
+                </div>
+              </div>
+              <div className="online-supplement-progress">
+                <div className="progress-bar" style={{ width: `${task.stageProgressPercent}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {failedTasks.length > 0 ? (
+        <div className="online-supplement-tasks">
+          <h4>处理失败(重新搜索加入即可重试)</h4>
+          {failedTasks.map((task) => (
+            <div className="online-supplement-task failed" key={task.taskId}>
+              <div className="compact-version-main">
+                <strong>{task.title}</strong>
+                <div className="compact-version-meta">
+                  <span>{supplementStageLabel(task.stage)}失败</span>
+                  {task.failureReason ? <span className="online-supplement-fail-reason">{task.failureReason.slice(0, 160)}</span> : null}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {readyCount > 0 && activeTasks.length === 0 && failedTasks.length === 0 ? (
+        <p className="online-supplement-notice">最近 {readyCount} 首补歌已完成,可在本地搜索点播。</p>
+      ) : null}
+    </section>
+  );
+}
+
+function supplementStageLabel(stage: string): string {
+  const labels: Record<string, string> = {
+    download: "下载",
+    rename: "解析命名",
+    vocal_remove: "生成伴奏",
+    mix: "合成双音轨",
+    lyrics: "获取歌词",
+    index: "入库"
+  };
+  return labels[stage] ?? stage;
+}
+
+function formatSupplementDuration(ms: number): string {
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
 function SearchNasSongRows({

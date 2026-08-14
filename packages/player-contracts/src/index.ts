@@ -5,6 +5,7 @@ import type {
   QueueEntryStatus,
   PlaybackProfile,
   RoomId,
+  RoomOnlineSupplementTaskSummary,
   SongSourceType,
   SongId,
   SwitchFamily,
@@ -49,6 +50,11 @@ export interface SwitchTarget {
   fromAssetId: AssetId;
   toAssetId: AssetId;
   playbackUrl: string;
+  /**
+   * 浏览器不支持单文件音轨切换(Chromium 无 video.audioTracks)时的兜底播放地址:
+   * 服务端 remux 出只含目标音轨的流(从 resumePositionMs 起),TV 端用 standby 池整流切换。
+   */
+  fallbackPlaybackUrl?: string | null;
   switchFamily: SwitchFamily;
   vocalMode: VocalMode;
   resumePositionMs: number;
@@ -210,6 +216,7 @@ export interface RoomControlSnapshot {
   switchTarget: SwitchTarget | null;
   targetVocalMode?: VocalMode | null;
   queue: readonly RoomQueueEntryPreview[];
+  onlineTasks?: RoomOnlineSupplementTaskSummary | null;
   notice: PlaybackNotice | null;
   generatedAt: string;
 }

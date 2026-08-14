@@ -42,6 +42,13 @@ export class DualVideoPool {
   activeVideo: KtvVideoElement;
   standbyVideo: KtvVideoElement;
   activeTarget: PlaybackTarget | null = null;
+  /**
+   * 当前流的"歌内位置基准":完整文件流为 0(currentTime 即真实进度);remux 选轨
+   * 兜底流从切换点开始输出(currentTime=0),基准 = 切换时刻的真实进度。
+   * 上报/显示进度用 activePlaybackPositionMs() = currentTime + 基准。
+   */
+  activePositionBaseMs = 0;
+  private standbyPositionBaseMs = 0;
 
   private previousTarget: PlaybackTarget | null = null;
   private standbyTarget: SwitchTarget | null = null;
@@ -55,10 +62,19 @@ export class DualVideoPool {
 
   primeActive(target: PlaybackTarget): void {
     this.activeTarget = target;
+    this.activePositionBaseMs = 0;
     this.activeVideo.src = target.playbackUrl;
     this.activeVideo.currentTime = msToSeconds(target.resumePositionMs);
     this.activeVideo.hidden = false;
     this.activeVideo.load();
+  }
+
+  /** 当前真实歌内进度(毫秒),兼容完整文件与 remux 兜底流;currentTime 非法时退到 fallbackMs */
+  activePlaybackPositionMs(fallbackMs = 0): number {
+    const currentMs = Number.isFinite(this.activeVideo.currentTime)
+      ? Math.max(0, Math.trunc(this.activeVideo.currentTime * 1000))
+      : Math.max(0, Math.trunc(fallbackMs));
+    return currentMs + this.activePositionBaseMs;
   }
 
   applyVolume(volumePercent: number | null | undefined): void {
@@ -76,9 +92,10 @@ export class DualVideoPool {
     await waitForReadyPlayback(this.activeVideo);
   }
 
-  prepareStandby(target: SwitchTarget): void {
+  prepareStandby(target: SwitchTarget, options?: { positionBaseMs?: number }): void {
     this.previousTarget = this.activeTarget;
     this.standbyTarget = target;
+    this.standbyPositionBaseMs = options?.positionBaseMs ?? 0;
     this.standbyVideo.src = target.playbackUrl;
     this.standbyVideo.currentTime = msToSeconds(target.resumePositionMs);
     this.standbyVideo.muted = this.activeVideo.muted;
@@ -101,6 +118,8 @@ export class DualVideoPool {
     this.activeVideo.hidden = true;
     this.standbyVideo.hidden = false;
     [this.activeVideo, this.standbyVideo] = [this.standbyVideo, this.activeVideo];
+    this.activePositionBaseMs = this.standbyPositionBaseMs;
+    this.standbyPositionBaseMs = 0;
     this.activeTarget = playbackTargetFromSwitchTarget(this.standbyTarget, this.previousTarget);
     this.previousTarget = null;
     this.standbyTarget = null;
@@ -129,6 +148,8 @@ export class DualVideoPool {
     this.activeVideo.hidden = true;
     this.standbyVideo.hidden = true;
     this.activeTarget = null;
+    this.activePositionBaseMs = 0;
+    this.standbyPositionBaseMs = 0;
     this.previousTarget = null;
     this.standbyTarget = null;
   }

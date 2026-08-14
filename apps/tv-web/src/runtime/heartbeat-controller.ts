@@ -30,7 +30,7 @@ export class HeartbeatController {
 
     await this.client.sendHeartbeat({
       currentQueueEntryId: target?.queueEntryId ?? null,
-      playbackPositionMs: target ? Math.max(0, Math.trunc(this.videoPool.activeVideo.currentTime * 1000)) : 0,
+      playbackPositionMs: target ? this.videoPool.activePlaybackPositionMs() : 0,
       health: "ok"
     });
 

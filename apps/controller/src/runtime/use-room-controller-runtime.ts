@@ -22,8 +22,11 @@ import {
   registerControllerUser,
   realtimeUrl,
   restoreControlSession,
+  searchOnlineSupplement,
   searchSongs,
   sendRoomInteraction,
+  requestOnlineSupplement,
+  type OnlineSupplementCandidate,
   setVolume,
   shuffleQueue,
   skipCurrent,
@@ -70,6 +73,10 @@ export interface RoomControllerState {
   songSearch: SongSearchResponse | null;
   songSearchQuery: string;
   songSearchStatus: "idle" | "loading" | "success" | "error";
+  onlineSupplementCandidates: OnlineSupplementCandidate[];
+  onlineSupplementQuery: string;
+  onlineSupplementStatus: "idle" | "loading" | "success" | "error";
+  onlineSupplementNotice: string | null;
   snapshot: RoomControlSnapshot | null;
   volumePercent: number;
   addSongVersion(songId: string, assetId: string): Promise<void>;
@@ -87,6 +94,9 @@ export interface RoomControllerState {
   refreshSongDiscovery(): void;
   refreshSongHistory(): Promise<void>;
   setSongSearchQuery(query: string): void;
+  runOnlineSupplementSearch(query: string): void;
+  requestOnlineSupplementCandidate(candidate: OnlineSupplementCandidate): Promise<void>;
+  clearOnlineSupplementSearch(): void;
   setVolumePercent(volumePercent: number): void;
   submitSongSearch(): void;
   switchVocalMode(): Promise<void>;
@@ -115,6 +125,10 @@ export function useRoomControllerRuntime(): RoomControllerState {
   const [songDiscoveryStatus, setSongDiscoveryStatus] = useState<RoomControllerState["songDiscoveryStatus"]>("idle");
   const [songHistory, setSongHistory] = useState<ControllerSongHistoryEntry[]>([]);
   const [songHistoryStatus, setSongHistoryStatus] = useState<RoomControllerState["songHistoryStatus"]>("idle");
+  const [onlineSupplementCandidates, setOnlineSupplementCandidates] = useState<OnlineSupplementCandidate[]>([]);
+  const [onlineSupplementQuery, setOnlineSupplementQuery] = useState("");
+  const [onlineSupplementStatus, setOnlineSupplementStatus] = useState<RoomControllerState["onlineSupplementStatus"]>("idle");
+  const [onlineSupplementNotice, setOnlineSupplementNotice] = useState<string | null>(null);
   const [pendingNasAssetId, setPendingNasAssetId] = useState<string | null>(null);
   const [pendingInteractionKind, setPendingInteractionKind] = useState<RoomInteractionKind | null>(null);
   const [pendingUndo, setPendingUndo] = useState<{ queueEntryId: string; undoExpiresAt: string } | null>(null);
@@ -254,6 +268,78 @@ export function useRoomControllerRuntime(): RoomControllerState {
       setErrorMessage(errorMessageFrom(error, "点歌历史加载失败"));
     }
   }, []);
+
+  const runOnlineSupplementSearch = useCallback(
+    async (query: string) => {
+      const trimmed = query.trim();
+      setOnlineSupplementQuery(trimmed);
+      if (!trimmed) {
+        setOnlineSupplementCandidates([]);
+        setOnlineSupplementStatus("idle");
+        return;
+      }
+      setOnlineSupplementStatus("loading");
+      try {
+        const response = await searchOnlineSupplement({
+          roomSlug: initial.roomSlug,
+          deviceId,
+          query: trimmed
+        });
+        setOnlineSupplementCandidates(response.candidates);
+        setOnlineSupplementStatus("success");
+      } catch (error) {
+        if (isApiCode(error, "ONLINE_SUPPLEMENT_DISABLED")) {
+          setOnlineSupplementCandidates([]);
+          setOnlineSupplementStatus("idle");
+          return;
+        }
+        setOnlineSupplementStatus("error");
+        setErrorMessage(errorMessageFrom(error, "在线搜索失败"));
+      }
+    },
+    [initial.roomSlug, deviceId]
+  );
+
+  const requestOnlineSupplementCandidate = useCallback(
+    async (candidate: OnlineSupplementCandidate) => {
+      try {
+        const response = await requestOnlineSupplement({
+          roomSlug: initial.roomSlug,
+          deviceId,
+          candidate
+        });
+        setErrorMessage(null);
+        setOnlineSupplementCandidates([]);
+        setOnlineSupplementStatus("idle");
+        setOnlineSupplementQuery("");
+        setOnlineSupplementNotice(
+          response.taskStatus === "failed"
+            ? `已重新提交「${candidate.title}」,开始处理`
+            : `已提交「${candidate.title}」,处理中…完成后自动进入曲库`
+        );
+      } catch (error) {
+        setErrorMessage(errorMessageFrom(error, "请求补歌失败"));
+      }
+    },
+    [initial.roomSlug, deviceId]
+  );
+
+  const clearOnlineSupplementSearch = useCallback(() => {
+    setOnlineSupplementCandidates([]);
+    setOnlineSupplementStatus("idle");
+    setOnlineSupplementQuery("");
+    setOnlineSupplementNotice(null);
+  }, []);
+
+  useEffect(() => {
+    if (!onlineSupplementNotice) {
+      return;
+    }
+    const timeoutId = globalThis.setTimeout(() => {
+      setOnlineSupplementNotice(null);
+    }, 10_000);
+    return () => globalThis.clearTimeout(timeoutId);
+  }, [onlineSupplementNotice]);
 
   useEffect(() => {
     if (authStatus !== "authenticated") {
@@ -714,6 +800,13 @@ export function useRoomControllerRuntime(): RoomControllerState {
       }, 180);
     },
     submitSongSearch,
+    runOnlineSupplementSearch,
+    requestOnlineSupplementCandidate,
+    clearOnlineSupplementSearch,
+    onlineSupplementCandidates,
+    onlineSupplementQuery,
+    onlineSupplementStatus,
+    onlineSupplementNotice,
     switchVocalMode: async () => {
       try {
         await runCommand((input) =>

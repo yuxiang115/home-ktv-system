@@ -65,7 +65,7 @@ export class SwitchController {
       this.videoPool.primeActive(snapshot.currentTarget);
     }
 
-    const playbackPositionMs = Math.max(0, Math.trunc(this.videoPool.activeVideo.currentTime * 1000));
+    const playbackPositionMs = this.videoPool.activePlaybackPositionMs();
     const transition = await this.client.requestSwitchTransition({
       roomSlug: snapshot.roomSlug,
       playbackPositionMs
@@ -106,6 +106,14 @@ export class SwitchController {
     const previousPositionMs = Math.max(0, Math.trunc(this.videoPool.activeVideo.currentTime * 1000));
     const result = selectAudioTrack(this.videoPool.activeVideo, switchTarget.selectedTrackRef);
     if (result.status !== "selected") {
+      // Chromium 系浏览器没有 video.audioTracks,单文件切轨选不出音轨;若服务端给了
+      // remux 选轨流地址,改用 standby 视频池整流切换(视频相同、音轨即目标轨)。
+      if (switchTarget.fallbackPlaybackUrl) {
+        const fallbackResult = await this.commitFallbackStreamSwitch(snapshot, switchTarget);
+        if (fallbackResult.status === "committed") {
+          return fallbackResult;
+        }
+      }
       await this.reportSwitchFailure(snapshot, switchTarget, new Error(result.message), "audio_track", previousPositionMs);
       return {
         status: "reverted",
@@ -120,6 +128,37 @@ export class SwitchController {
       status: "committed",
       switchTarget
     };
+  }
+
+  private async commitFallbackStreamSwitch(snapshot: RoomSnapshot, switchTarget: SwitchTarget): Promise<SwitchRuntimeResult> {
+    // remux 流从 startMs 开始输出;提交前用当前真实进度再校准一次 start,
+    // 并把该进度记为流的位置基准(standby currentTime 从 0 起)。
+    const positionMs = this.videoPool.activePlaybackPositionMs();
+    const fallbackUrl = withStartPosition(switchTarget.fallbackPlaybackUrl ?? switchTarget.playbackUrl, positionMs);
+    const fallbackTarget: SwitchTarget = {
+      ...switchTarget,
+      playbackUrl: fallbackUrl,
+      resumePositionMs: 0
+    };
+
+    try {
+      this.videoPool.prepareStandby(fallbackTarget, { positionBaseMs: positionMs });
+      await this.videoPool.playStandbyUntilReady();
+      this.videoPool.commitStandby();
+      await this.reportSwitchCommitted(snapshot, switchTarget);
+      return {
+        status: "committed",
+        switchTarget
+      };
+    } catch (error) {
+      this.videoPool.rollback();
+      await this.reportSwitchFailure(snapshot, switchTarget, error, "fallback_stream");
+      return {
+        status: "reverted",
+        switchTarget,
+        message: "切换失败,已保持当前播放。"
+      };
+    }
   }
 
   private async reportSwitchFailure(
@@ -155,12 +194,22 @@ export class SwitchController {
       queueEntryId: switchTarget.queueEntryId,
       sourceType: switchTarget.sourceType,
       assetId: switchTarget.toAssetId,
-      playbackPositionMs: Math.max(0, Math.trunc(this.videoPool.activeVideo.currentTime * 1000)),
+      playbackPositionMs: this.videoPool.activePlaybackPositionMs(),
       vocalMode: switchTarget.vocalMode,
       switchFamily: switchTarget.switchFamily,
       rollbackAssetId: switchTarget.rollbackAssetId,
       stage: "switch_committed"
     });
+  }
+}
+
+function withStartPosition(url: string, startMs: number): string {
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set("start", String(Math.max(0, Math.trunc(startMs))));
+    return parsed.toString();
+  } catch {
+    return url;
   }
 }
 

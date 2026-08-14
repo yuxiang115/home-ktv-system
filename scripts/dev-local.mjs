@@ -11,22 +11,21 @@ const PID_DIR = path.join(LOG_DIR, "pids");
 const ROOM_SLUG = process.env.TV_ROOM_SLUG?.trim() || "living-room";
 const MEDIA_ROOT = process.env.MEDIA_ROOT?.trim() || path.join(ROOT_DIR, "home-ktv-media");
 const MEDIA_PATH_MAPPINGS = process.env.MEDIA_PATH_MAPPINGS?.trim() || detectDefaultMediaPathMappings();
+const LAN_IPS = collectLanIps();
 const LAN_IP = detectLanIp(process.env.KTV_LAN_IP?.trim());
 const API_BASE_URL = process.env.PUBLIC_BASE_URL?.trim() || `http://${LAN_IP}:4000`;
 const CONTROLLER_BASE_URL = process.env.CONTROLLER_BASE_URL?.trim() || `http://${LAN_IP}:5176`;
+// 白名单要覆盖全部网卡地址(含 Tailscale/CGNAT):页面可能从 localhost、局域网 IP
+// 或 Tailscale IP 打开,漏掉任何一个源都会被 CORS 拦(表现为接口全部失败)。
 const CORS_ALLOWED_ORIGINS =
   process.env.CORS_ALLOWED_ORIGINS?.trim() ||
-  [
-    `http://localhost:5173`,
-    `http://127.0.0.1:5173`,
-    `http://${LAN_IP}:5173`,
-    `http://localhost:5174`,
-    `http://127.0.0.1:5174`,
-    `http://${LAN_IP}:5174`,
-    `http://localhost:5176`,
-    `http://127.0.0.1:5176`,
-    `http://${LAN_IP}:5176`
-  ].join(",");
+  ["localhost", "127.0.0.1", ...collectAllHostIpv4s()]
+    .flatMap((host) => [
+      `http://${host}:5173`,
+      `http://${host}:5174`,
+      `http://${host}:5176`
+    ])
+    .join(",");
 
 const SERVICES = {
   api: {
@@ -171,7 +170,8 @@ async function startService(service) {
     cwd: ROOT_DIR,
     detached: true,
     env,
-    stdio: ["ignore", logFd, logFd]
+    stdio: ["ignore", logFd, logFd],
+    shell: true
   });
 
   closeSync(logFd);
@@ -376,40 +376,70 @@ function detectLanIp(override) {
     return override;
   }
 
-  const interfaces = os.networkInterfaces();
-  const preferredOrder = ["en0", "en1"];
-  for (const name of preferredOrder) {
-    const found = firstExternalIpv4(interfaces[name]);
-    if (found) {
-      return found;
-    }
-  }
+  const candidates = collectLanIps();
+  return candidates[0] ?? "127.0.0.1";
+}
 
+// 收集所有可用于访问本机的 IPv4(排除 loopback / 链路本地 / CGNAT-Tailscale),
+// 排序:192.168.x(家庭局域网)→ 10.x → 172.16-31.x → 其余(含 Tailscale 100.64.x)。
+// 这样 URL/默认 API 地址优先落在真实局域网 IP 上,同时白名单覆盖其余地址。
+function collectLanIps() {
+  const interfaces = os.networkInterfaces();
+  const addresses = new Set();
   for (const [name, infos] of Object.entries(interfaces)) {
     if (/^(lo|utun|awdl|bridge|docker|vmnet|vboxnet)/u.test(name)) {
       continue;
     }
-    const found = firstExternalIpv4(infos);
-    if (found) {
-      return found;
+    for (const entry of infos ?? []) {
+      if (entry.family !== "IPv4" || entry.internal) {
+        continue;
+      }
+      if (entry.address.startsWith("169.254.") || isCgnatAddress(entry.address)) {
+        continue;
+      }
+      addresses.add(entry.address);
     }
   }
 
-  return "127.0.0.1";
+  return [...addresses].sort((left, right) => addressRank(left) - addressRank(right));
 }
 
-function firstExternalIpv4(entries) {
-  if (!entries) {
-    return null;
-  }
-
-  for (const entry of entries) {
-    if (entry.family === "IPv4" && !entry.internal && !entry.address.startsWith("169.254.")) {
-      return entry.address;
+// CORS 用的主机全集:所有非 loopback IPv4,包括 Tailscale(100.64.x)——手机可能
+// 通过任意一个地址打开前端页面。
+function collectAllHostIpv4s() {
+  const interfaces = os.networkInterfaces();
+  const addresses = new Set();
+  for (const [name, infos] of Object.entries(interfaces)) {
+    if (/^(lo|utun|awdl|bridge|docker|vmnet|vboxnet)/u.test(name)) {
+      continue;
+    }
+    for (const entry of infos ?? []) {
+      if (entry.family === "IPv4" && !entry.internal && !entry.address.startsWith("169.254.")) {
+        addresses.add(entry.address);
+      }
     }
   }
+  return [...addresses];
+}
 
-  return null;
+// 100.64.0.0/10 是运营商级 NAT 段,Tailscale 默认也用它;不是真正的局域网地址。
+function isCgnatAddress(address) {
+  const firstOctet = Number.parseInt(address.split(".")[0] ?? "0", 10);
+  const secondOctet = Number.parseInt(address.split(".")[1] ?? "0", 10);
+  return firstOctet === 100 && secondOctet >= 64 && secondOctet <= 127;
+}
+
+function addressRank(address) {
+  if (address.startsWith("192.168.")) {
+    return 0;
+  }
+  if (address.startsWith("10.")) {
+    return 1;
+  }
+  if (/^172\.(1[6-9]|2\d|3[01])\./u.test(address)) {
+    return 2;
+  }
+  return 3;
 }
 
 function isRunningFromPidFile(pidPath) {

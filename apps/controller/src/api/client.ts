@@ -41,6 +41,28 @@ export interface RoomInteractionAcceptedResponse {
   interaction: RoomInteractionEvent;
 }
 
+export interface OnlineSupplementCandidate {
+  provider: string;
+  providerCandidateId: string;
+  sourceUrl: string;
+  title: string;
+  artistName: string;
+  durationMs: number | null;
+  providerPayload: Record<string, unknown>;
+}
+
+export interface OnlineSupplementSearchResponse {
+  query: string;
+  candidates: OnlineSupplementCandidate[];
+}
+
+export interface OnlineSupplementRequestResponse {
+  status: "accepted";
+  taskId: string;
+  taskStatus: string;
+  stage: string;
+}
+
 export class ControllerApiError extends Error {
   constructor(
     message: string,
@@ -264,6 +286,47 @@ export async function sendRoomInteraction(input: {
   );
 }
 
+export async function searchOnlineSupplement(input: {
+  roomSlug: string;
+  deviceId: string;
+  query: string;
+  limit?: number;
+  signal?: AbortSignal;
+}): Promise<OnlineSupplementSearchResponse> {
+  const init: RequestInit = input.signal ? { signal: input.signal } : {};
+  const params = new URLSearchParams({
+    deviceId: input.deviceId,
+    q: input.query,
+    limit: String(input.limit ?? 8)
+  });
+  return fetchController<OnlineSupplementSearchResponse>(
+    `/rooms/${encodeURIComponent(input.roomSlug)}/online-supplement/search?${params.toString()}`,
+    init
+  );
+}
+
+export async function requestOnlineSupplement(input: {
+  roomSlug: string;
+  deviceId: string;
+  candidate: OnlineSupplementCandidate;
+}): Promise<OnlineSupplementRequestResponse> {
+  return fetchController<OnlineSupplementRequestResponse>(
+    `/rooms/${encodeURIComponent(input.roomSlug)}/online-supplement/request`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        deviceId: input.deviceId,
+        provider: input.candidate.provider,
+        providerCandidateId: input.candidate.providerCandidateId,
+        sourceUrl: input.candidate.sourceUrl,
+        title: input.candidate.title,
+        artistName: input.candidate.artistName,
+        durationMs: input.candidate.durationMs
+      })
+    }
+  );
+}
+
 export function realtimeUrl(input: { roomSlug: string; deviceId: string }): string {
   const path = `/rooms/${encodeURIComponent(input.roomSlug)}/realtime?deviceId=${encodeURIComponent(
     input.deviceId
@@ -324,6 +387,20 @@ function controllerUrl(path: string): string {
 }
 
 function apiBaseUrl(): string {
+  // 优先用页面自身地址推导 API(同 host、端口换 4000):手机无论从局域网 IP 还是
+  // Tailscale IP 打开控制器,API 都与页面同站,auth cookie(SameSite=Lax)必定随
+  // 请求发送。烤死的 VITE 绝对地址只作无 location 环境(测试)的兜底——一旦手机
+  // 换了网络入口,烤死地址会变成跨站,登录态全部失效。
+  const origin = globalThis.location?.origin ?? "";
+  if (origin) {
+    try {
+      const url = new URL(origin);
+      url.port = "4000";
+      return url.toString().replace(/\/$/, "");
+    } catch {
+      // fall through to configured base
+    }
+  }
   return import.meta.env.VITE_API_BASE_URL?.replace(/\/$/u, "") ?? "";
 }
 

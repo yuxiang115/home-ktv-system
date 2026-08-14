@@ -200,7 +200,8 @@ const KTV_ROOT_FOLDER_PROFILES: Record<string, KtvRootFolderProfile> = {
   "综合专辑 9300首1.4T": "strict_dash_tail_strip_variety_markers",
   "综艺精选": "strict_dash_tail",
   "网络热歌(有新歌加入)": "strict_dash_tail",
-  "酷狗排行TOP": "strict_dash_tail"
+  "酷狗排行TOP": "strict_dash_tail",
+  "_online": "strict_dash_tail"
 };
 
 function ruleForRootFolder(rootFolder: string): ((stem: string) => FilenameMetadataDraft | null) | null {
@@ -286,14 +287,32 @@ function parseStrictDashTailKtvFilenameWithOptions(
     }
   }
 
-  if (parts.length >= 3) {
+  if (parts.length === 3 && isKtvLanguageMarker(parts[2])) {
     const artistName = parts[0];
-    const title = parts.slice(1, -1).join("-").trim();
-    const category = parts.at(-1)?.trim();
-    if (artistName && title && category) {
+    const title = parts[1];
+    if (artistName && title) {
       return {
         artistName,
-        title: stripTrailingTitleMarker(title, options.trailingTitleMarkerMode),
+        title: stripTrailingTitleMarker(title, options.trailingTitleMarkerMode)
+      };
+    }
+  }
+
+  if (parts.length === 3 && isKtvLanguageMarker(parts[1])) {
+    return buildFilenameMetadata(null, parts[0], parts[2]);
+  }
+
+  if (parts.length >= 3) {
+    const artistName = parts[0];
+    const rawTitle = parts.slice(1, -1).join("-").trim();
+    const category = parts.at(-1)?.trim();
+    if (artistName && rawTitle && category) {
+      const inlineLanguage = extractTitleWithInlineLanguage(rawTitle, normalizeCategory(category));
+      return {
+        artistName,
+        title: inlineLanguage
+          ? inlineLanguage.title
+          : stripTrailingTitleMarker(rawTitle, options.trailingTitleMarkerMode),
         genre: [normalizeCategory(category)]
       };
     }

@@ -37,11 +37,26 @@ export function mapMediaPath(filePath: string, mappings: readonly MediaPathMappi
     }
 
     if (isPathWithinRoot(candidate, fromRoot)) {
-      return path.resolve(toRoot, path.relative(fromRoot, candidate));
+      return joinUnderRoot(mapping.to.trim(), path.relative(fromRoot, candidate));
     }
   }
 
   return filePath;
+}
+
+// path.resolve() would re-anchor POSIX-style targets (e.g. "/nas/...") onto the
+// current Windows drive; keep the configured root's own separator style instead.
+function joinUnderRoot(root: string, relative: string): string {
+  const trimmedRoot = root.replace(/[\\/]+$/u, "");
+  if (!trimmedRoot) {
+    return relative;
+  }
+  if (!relative) {
+    return trimmedRoot;
+  }
+  const separator = trimmedRoot.includes("/") && !trimmedRoot.includes("\\") ? "/" : path.sep;
+  const relativeParts = relative.split(/[\\/]/u).filter(Boolean);
+  return [trimmedRoot, ...relativeParts].join(separator);
 }
 
 export function mediaPathMappingTargets(mappings: readonly MediaPathMapping[] = []): string[] {

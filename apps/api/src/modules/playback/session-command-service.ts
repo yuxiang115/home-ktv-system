@@ -890,19 +890,41 @@ async function syncPlaybackSessionAfterQueueMutation(
 
   const currentQueueEntry =
     session.currentQueueEntryId ? await input.repositories.queueEntries.findById(session.currentQueueEntryId) : null;
-  const targetQueueEntry = currentQueueEntry ?? (await input.repositories.queueEntries.findCurrentForRoom(context.room.id));
+  const currentPlayableMedia = currentQueueEntry
+    ? await resolvePlayableMediaForQueueEntry(input.repositories, currentQueueEntry)
+    : null;
 
-  if (!targetQueueEntry) {
-    return input.repositories.playbackSessions.bumpVersion?.(context.room.id) ?? session;
-  }
-
-  const targetPlayableMedia = await resolvePlayableMediaForQueueEntry(input.repositories, targetQueueEntry);
-  if (!targetPlayableMedia) {
-    return input.repositories.playbackSessions.bumpVersion?.(context.room.id) ?? session;
+  let targetQueueEntry: QueueEntry | null = null;
+  let targetPlayableMedia: PlayableMediaAsset | null = null;
+  if (currentQueueEntry && currentPlayableMedia) {
+    targetQueueEntry = currentQueueEntry;
+    targetPlayableMedia = currentPlayableMedia;
   }
 
   const effectiveQueue = await input.repositories.queueEntries.listEffectiveQueue(context.room.id);
-  const currentIndex = effectiveQueue.findIndex((entry) => entry.id === targetQueueEntry.id);
+
+  // 会话没有健康的 current 时扫队列找第一首可播的;媒体已不可解析的条目(如补歌
+  // 文件被删)标 failed 让位。之前遇到不可解析条目直接早退,会话永远卡在
+  // playerState=loading 无 currentTarget,TV 一直"loading next song"不播放。
+  if (!targetQueueEntry && input.repositories.playableMedia) {
+    for (const entry of effectiveQueue) {
+      const media = await resolvePlayableMediaForQueueEntry(input.repositories, entry);
+      if (media) {
+        targetQueueEntry = entry;
+        targetPlayableMedia = media;
+        break;
+      }
+      await skipUnplayableQueueEntry(input, context, entry);
+    }
+  }
+
+  if (!targetQueueEntry || !targetPlayableMedia) {
+    return input.repositories.playbackSessions.setIdle?.(context.room.id)
+      ?? input.repositories.playbackSessions.bumpVersion?.(context.room.id)
+      ?? session;
+  }
+
+  const currentIndex = effectiveQueue.findIndex((entry) => entry.id === targetQueueEntry?.id);
   const nextQueueEntryId = currentIndex >= 0 ? effectiveQueue[currentIndex + 1]?.id ?? null : null;
   const shouldPreservePlaybackState = Boolean(session.currentQueueEntryId);
   if (!shouldPreservePlaybackState) {
@@ -925,6 +947,22 @@ async function syncPlaybackSessionAfterQueueMutation(
     playerPositionMs: shouldPreservePlaybackState ? session.playerPositionMs : 0,
     nextQueueEntryId,
     mediaStartedAt: shouldPreservePlaybackState && session.mediaStartedAt ? new Date(session.mediaStartedAt) : null
+  });
+}
+
+async function skipUnplayableQueueEntry(
+  input: ExecuteRoomCommandInput,
+  context: QueueMutationContext,
+  entry: QueueEntry
+): Promise<void> {
+  console.log(
+    `[queue-sync] skip unplayable entry ${entry.id} (song=${entry.songId}, status=${entry.status}): media missing or unresolvable`
+  );
+  await input.repositories.queueEntries.markCompleted({
+    roomId: context.room.id,
+    queueEntryId: entry.id,
+    status: "failed",
+    endedAt: context.now
   });
 }
 
@@ -955,7 +993,9 @@ function sourceRefFromQueueEntry(queueEntry: QueueEntry): MediaSourceRef {
 }
 
 function isQueueablePlayableMedia(asset: PlayableMediaAsset): boolean {
-  return asset.status === "ready" && asset.compatibilityStatus === "playable";
+  // 单音轨原唱(无伴奏音轨)也应可点 —— 走原唱播放。只要 ready 且有 original 音轨即可,
+  // 不强制 compatibilityStatus==="playable"(那会因 instrumental 缺失判成 review_required)。
+  return asset.status === "ready" && (asset.compatibilityStatus === "playable" || Boolean(asset.trackRoles.original));
 }
 
 function preferredVocalModeForPlayableMedia(
@@ -963,7 +1003,15 @@ function preferredVocalModeForPlayableMedia(
   sessionTargetVocalMode: VocalMode | string | null
 ): "original" | "instrumental" | null {
   const preferred = sessionTargetVocalMode === "original" ? "original" : "instrumental";
-  return hasPlayableMediaTrackForVocalMode(asset, preferred) ? preferred : null;
+  if (hasPlayableMediaTrackForVocalMode(asset, preferred)) {
+    return preferred;
+  }
+  // 房间想要伴唱但这首歌没有伴奏音轨(例如在线补歌产出的单音轨原唱)时,
+  // fallback 到原唱,让它至少能进队列播放,而不是被完全拒绝。
+  if (hasPlayableMediaTrackForVocalMode(asset, "original")) {
+    return "original";
+  }
+  return null;
 }
 
 function targetVocalModeForPlayableMedia(asset: PlayableMediaAsset, queueEntry: QueueEntry): VocalMode {

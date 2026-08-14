@@ -8,7 +8,17 @@ import type { RoomPairingTokenRepository } from "./repositories/pairing-token-re
 import type { ControlSessionRepository } from "../controller/repositories/control-session-repository.js";
 import type { PlayerDeviceSessionRepository } from "../player/register-player.js";
 import { buildRoomSnapshot } from "../../routes/room-snapshots.js";
-import type { PlaybackEvent, QueueEntry, RoomId } from "@home-ktv/domain";
+import {
+  summarizeSupplementTasks,
+  type OnlineSupplementTaskRepository
+} from "../online-supplement/supplement-task-repository.js";
+import type {
+  OnlineSupplementTaskSummary,
+  PlaybackEvent,
+  QueueEntry,
+  RoomId,
+  RoomOnlineSupplementTaskSummary
+} from "@home-ktv/domain";
 import {
   DEFAULT_ROOM_VOLUME_PERCENT,
   type PlaybackNotice,
@@ -32,35 +42,9 @@ export interface RoomRecentPlaybackEvent {
   createdAt: string;
 }
 
-export interface RoomOnlineTaskSummaryRow {
-  taskId: string;
-  roomId: string;
-  provider: string;
-  providerCandidateId: string;
-  title: string;
-  artistName: string;
-  sourceLabel: string;
-  durationMs: number | null;
-  candidateType: string;
-  reliabilityLabel: string;
-  riskLabel: string;
-  status: string;
-  failureReason: string | null;
-  recentEvent: Record<string, unknown>;
-  recentEventAt: string | null;
-  readyAssetId: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface RoomOnlineTaskSummary {
-  counts: Record<string, number>;
-  tasks: RoomOnlineTaskSummaryRow[];
-}
-
 export interface RoomControlRecoverySnapshot extends RoomControlSnapshot {
   recentEvents: RoomRecentPlaybackEvent[];
-  onlineTasks: RoomOnlineTaskSummary;
+  onlineTasks: RoomOnlineSupplementTaskSummary;
 }
 
 export interface ControlSnapshotRepositories {
@@ -72,6 +56,7 @@ export interface ControlSnapshotRepositories {
   controlSessions: ControlSessionRepository;
   deviceSessions: PlayerDeviceSessionRepository;
   playbackEvents?: RecentPlaybackEventRepository | undefined;
+  supplementTasks?: Pick<OnlineSupplementTaskRepository, "listRecentByRoom">;
 }
 
 export interface BuildRoomControlSnapshotInput {
@@ -105,11 +90,12 @@ export async function buildRoomControlSnapshot(input: BuildRoomControlSnapshotIn
     return null;
   }
 
-  const [session, queue, removedQueue, recentEvents] = await Promise.all([
+  const [session, queue, removedQueue, recentEvents, recentSupplementTasks] = await Promise.all([
     input.repositories.playbackSessions.findByRoomId(room.id),
     input.repositories.queueEntries.listEffectiveQueue(room.id),
     input.repositories.queueEntries.listUndoableRemoved(room.id, now),
-    listRecentPlaybackEvents(input.repositories, room.id)
+    listRecentPlaybackEvents(input.repositories, room.id),
+    listRecentSupplementTasks(input.repositories, room.id)
   ]);
   const activeTvPlayers = await input.repositories.deviceSessions.listActiveTvPlayers(
     room.id,
@@ -157,13 +143,13 @@ export async function buildRoomControlSnapshot(input: BuildRoomControlSnapshotIn
     targetVocalMode: baseSnapshot.targetVocalMode ?? null,
     queue: queuePreview,
     recentEvents: recentEvents.map(playbackEventPreview),
-    onlineTasks: buildEmptyOnlineTaskSummary(),
+    onlineTasks: summarizeSupplementTasks(recentSupplementTasks),
     notice: baseSnapshot.notice,
     generatedAt: baseSnapshot.generatedAt
   };
 }
 
-export function buildEmptyOnlineTaskSummary(): RoomOnlineTaskSummary {
+export function buildEmptyOnlineTaskSummary(): RoomOnlineSupplementTaskSummary {
   return { counts: { total: 0 }, tasks: [] };
 }
 
@@ -244,4 +230,14 @@ function listRecentPlaybackEvents(
     return Promise.resolve([]);
   }
   return repositories.playbackEvents.listRecentByRoom(roomId, 20);
+}
+
+function listRecentSupplementTasks(
+  repositories: ControlSnapshotRepositories,
+  roomId: string
+): Promise<OnlineSupplementTaskSummary[]> {
+  if (typeof repositories.supplementTasks?.listRecentByRoom !== "function") {
+    return Promise.resolve([]);
+  }
+  return repositories.supplementTasks.listRecentByRoom(roomId, 20);
 }

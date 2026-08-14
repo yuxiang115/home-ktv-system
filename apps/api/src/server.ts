@@ -3,7 +3,7 @@ import websocket from "@fastify/websocket";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Pool } from "pg";
-import type { DeviceSession, PlaybackEvent, PlaybackSession, Room } from "@home-ktv/domain";
+import type { DeviceSession, PlaybackEvent, PlaybackSession, Room, SupplementWorkflowId } from "@home-ktv/domain";
 import { protocolMessageNames } from "@home-ktv/protocol";
 import { loadConfig, normalizeApiConfig, type ApiConfig, type ApiConfigInput } from "./config.js";
 import { MediaPathResolver } from "./modules/assets/media-path-resolver.js";
@@ -15,6 +15,7 @@ import {
   type ControlSessionRepository
 } from "./modules/controller/repositories/control-session-repository.js";
 import { InMemoryControllerAuthRepository } from "./modules/controller/repositories/controller-auth-repository.js";
+import { InMemoryOnlineSupplementTaskRepository } from "./modules/online-supplement/supplement-task-repository.js";
 import type { PlaybackEventRepository } from "./modules/playback/repositories/playback-event-repository.js";
 import type {
   UpdatePlaybackFactsInput,
@@ -28,6 +29,11 @@ import {
 import { InMemoryRoomPairingTokenRepository } from "./modules/rooms/repositories/pairing-token-repository.js";
 import type { RoomRepository } from "./modules/rooms/repositories/room-repository.js";
 import { RoomSnapshotBroadcaster } from "./modules/realtime/room-snapshot-broadcaster.js";
+import { buildRoomControlSnapshot } from "./modules/rooms/build-control-snapshot.js";
+import {
+  notifySupplementProgress,
+  startSupplementProgressListener
+} from "./modules/online-supplement/supplement-progress-channel.js";
 import {
   createPgRuntimeRepositories,
   type RuntimeRepositories
@@ -47,6 +53,8 @@ import { registerRoomInteractionRoutes } from "./routes/room-interactions.js";
 import { registerRoomSnapshotRoutes } from "./routes/room-snapshots.js";
 import { registerSongDiscoveryRoutes } from "./routes/song-discovery.js";
 import { registerSongSearchRoutes } from "./routes/song-search.js";
+import { registerOnlineSupplementRoutes } from "./routes/online-supplement.js";
+import { YtDlpProvider } from "./modules/online-supplement/providers/yt-dlp-provider.js";
 
 export interface CreateServerOptions {
   poolFactory?: (databaseUrl: string) => Pool;
@@ -107,6 +115,24 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     });
   }
 
+  if (pool && resolvedConfig.onlineSupplementEnabled) {
+    startSupplementProgressListener({
+      databaseUrl: resolvedConfig.databaseUrl,
+      onProgress: async () => {
+        const snapshot = await buildRoomControlSnapshot({
+          roomSlug: resolvedConfig.roomSlug,
+          config: resolvedConfig,
+          repositories,
+          ...(mediaGateway ? { mediaGateway } : {})
+        });
+        if (snapshot) {
+          broadcaster.broadcastRoomSnapshot(resolvedConfig.roomSlug, snapshot);
+        }
+      },
+      onError: (error) => server.log.error({ error }, "supplement progress listener error")
+    }).catch((error) => server.log.error({ error }, "failed to start supplement progress listener"));
+  }
+
   await server.register(websocket);
   await registerCors(server, { allowedOrigins: resolvedConfig.corsAllowedOrigins });
   await registerHealthRoutes(server, {
@@ -118,6 +144,8 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
   await registerMediaRoutes(server, {
     coverRoot: resolvedConfig.mediaRoot ? join(resolvedConfig.mediaRoot, "covers") : "",
     mediaGateway,
+    ffmpegBin: resolvedConfig.ffmpegBin,
+    log: server.log,
     ...(pool
       ? {
           ktvIndexRawAssets: new PgKtvIndexRawAssetRepository(pool),
@@ -175,6 +203,33 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     queueEntries: repositories.queueEntries,
     ...(repositories.ktvIndex ? { ktvIndex: repositories.ktvIndex } : {})
   });
+  if (resolvedConfig.onlineSupplementEnabled && repositories.supplementTasks) {
+    await registerOnlineSupplementRoutes(server, {
+      rooms: repositories.rooms,
+      controlSessions: repositories.controlSessions,
+      supplementTasks: repositories.supplementTasks,
+      provider: new YtDlpProvider({
+        bin: resolvedConfig.ytDlpBin,
+        binArgs: resolvedConfig.ytDlpArgs,
+        playerClient: resolvedConfig.youtubePlayerClient,
+        cookie: resolvedConfig.youtubeCookie,
+        cookiesFromBrowser: resolvedConfig.youtubeCookiesFromBrowser,
+        log: (message, meta) => {
+          server.log.info(meta ?? {}, `online supplement: ${message}`);
+        }
+      }),
+      workflowId: resolvedConfig.onlineSupplementWorkflow as SupplementWorkflowId,
+      enabled: true,
+      ...(pool
+        ? {
+            notifyTaskChange: async (roomId: string) => {
+              await notifySupplementProgress(pool, roomId);
+            }
+          }
+        : {}),
+      log: server.log
+    });
+  }
   await registerSongDiscoveryRoutes(server, {
     rooms: repositories.rooms,
     queueEntries: repositories.queueEntries,
@@ -214,6 +269,7 @@ class InMemoryRuntimeRepositories implements RuntimeRepositories {
   readonly controlSessions = new InMemoryControlSessionRepository();
   readonly controllerAuth = new InMemoryControllerAuthRepository();
   readonly controlCommands = new InMemoryRoomSessionCommandRepository();
+  readonly supplementTasks = new InMemoryOnlineSupplementTaskRepository();
 
   readonly queueEntries = new InMemoryQueueEntryRepository();
 

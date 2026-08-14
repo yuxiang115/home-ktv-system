@@ -30,13 +30,28 @@ export interface MediaGatewayOptions {
   publicBaseUrl: string;
 }
 
+export interface MediaGatewayPlaybackUrlOptions {
+  /** 目标音频轨序号(0-based,按 technical_metadata.audioTracks 数组下标);stream remux 选轨用 */
+  audioTrackPos?: number;
+  /** 起播位置(毫秒),remux 流从该点开始输出 */
+  startMs?: number;
+}
+
 export class MediaGateway {
   constructor(private readonly options: MediaGatewayOptions) {}
 
-  createPlaybackUrl(source: PlayableMediaLookup): string {
+  createPlaybackUrl(source: PlayableMediaLookup, urlOptions?: MediaGatewayPlaybackUrlOptions): string {
     const path = `/media/${encodeURIComponent(source.sourceType)}/${encodeURIComponent(source.assetId)}`;
     const baseUrl = this.options.publicBaseUrl.trim().replace(/\/$/, "");
-    return baseUrl ? `${baseUrl}${path}` : path;
+    const params = new URLSearchParams();
+    if (typeof urlOptions?.audioTrackPos === "number" && Number.isFinite(urlOptions.audioTrackPos) && urlOptions.audioTrackPos >= 0) {
+      params.set("audio", String(Math.trunc(urlOptions.audioTrackPos)));
+    }
+    if (typeof urlOptions?.startMs === "number" && Number.isFinite(urlOptions.startMs) && urlOptions.startMs > 0) {
+      params.set("start", String(Math.trunc(urlOptions.startMs)));
+    }
+    const query = params.size > 0 ? `?${params.toString()}` : "";
+    return baseUrl ? `${baseUrl}${path}${query}` : `${path}${query}`;
   }
 
   async resolveForStreaming(source: PlayableMediaLookup): Promise<MediaGatewayResolution> {

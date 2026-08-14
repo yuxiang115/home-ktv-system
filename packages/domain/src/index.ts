@@ -624,6 +624,77 @@ export interface OnlineCandidateTask {
   purgedAt: string | null;
 }
 
+export type SupplementTaskId = EntityId;
+
+export const supplementTaskStatuses = ["discovered", "processing", "ready", "failed"] as const;
+export type SupplementTaskStatus = (typeof supplementTaskStatuses)[number];
+
+export const supplementTaskStages = ["download", "rename", "vocal_remove", "mix", "lyrics", "index"] as const;
+export type SupplementTaskStage = (typeof supplementTaskStages)[number];
+
+export const supplementStageStatuses = ["pending", "running", "done", "failed"] as const;
+export type SupplementStageStatus = (typeof supplementStageStatuses)[number];
+
+export type SupplementWorkflowId = "youtube-basic" | "youtube-enhanced";
+
+export interface OnlineSupplementTask {
+  id: SupplementTaskId;
+  roomId: RoomId;
+  provider: string;
+  providerCandidateId: string;
+  sourceUrl: string;
+  title: string;
+  artistName: string;
+  durationMs: number | null;
+  providerPayload: Record<string, unknown>;
+  workflowId: SupplementWorkflowId;
+  status: SupplementTaskStatus;
+  stage: SupplementTaskStage;
+  stageStatus: SupplementStageStatus;
+  stageProgressPercent: number;
+  stageMessage: string;
+  failureReason: string | null;
+  failureStage: SupplementTaskStage | null;
+  llmRenamedTitle: string | null;
+  finalFilePath: string | null;
+  lyricFile: string | null;
+  readySongId: SongId | null;
+  workerId: string | null;
+  workerLeaseUntil: string | null;
+  requestedBy: string | null;
+  downloadAt: string | null;
+  readyAt: string | null;
+  failedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OnlineSupplementTaskSummary {
+  taskId: SupplementTaskId;
+  roomId: RoomId;
+  provider: string;
+  providerCandidateId: string;
+  title: string;
+  artistName: string;
+  durationMs: number | null;
+  workflowId: SupplementWorkflowId;
+  status: SupplementTaskStatus;
+  stage: SupplementTaskStage;
+  stageProgressPercent: number;
+  stageMessage: string;
+  failureReason: string | null;
+  llmRenamedTitle: string | null;
+  readySongId: SongId | null;
+  lyricFile: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RoomOnlineSupplementTaskSummary {
+  counts: Record<string, number>;
+  tasks: readonly OnlineSupplementTaskSummary[];
+}
+
 export interface Room {
   id: RoomId;
   slug: string;

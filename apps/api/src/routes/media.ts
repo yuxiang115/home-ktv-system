@@ -1,7 +1,8 @@
 import { createReadStream } from "node:fs";
 import { open, stat } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { join } from "node:path";
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyBaseLogger, FastifyInstance, FastifyReply } from "fastify";
 import { inferVideoContentType } from "../modules/media/content-type.js";
 import type { MediaPathResolver, MediaPathResolution } from "../modules/assets/media-path-resolver.js";
 import type { QueryExecutor } from "../db/query-executor.js";
@@ -14,6 +15,9 @@ export interface MediaRouteContext {
   mediaGateway?: Pick<MediaGateway, "resolveForStreaming">;
   ktvIndexRawAssets?: KtvIndexRawAssetRepository;
   mediaPathResolver?: MediaPathResolver;
+  /** remux 选轨流(切伴奏 fallback)用的 ffmpeg;缺省为 PATH 上的 ffmpeg */
+  ffmpegBin?: string;
+  log?: FastifyBaseLogger;
 }
 
 export async function registerMediaRoutes(fastify: FastifyInstance, context: MediaRouteContext): Promise<void> {
@@ -75,10 +79,15 @@ export async function registerMediaRoutes(fastify: FastifyInstance, context: Med
     }
   );
 
-  fastify.get<{ Params: { assetId: string } }>("/media/nas/:assetId", async (request, reply) => {
-    if (!context.mediaGateway) {
-      return reply.status(503).send({ error: "MEDIA_GATEWAY_UNAVAILABLE" });
-    }
+  fastify.get<{ Params: { assetId: string }; Querystring: { audio?: unknown; start?: unknown } }>(
+    "/media/nas/:assetId",
+    async (request, reply) => {
+      if (!context.mediaGateway) {
+        return reply.status(503).send({ error: "MEDIA_GATEWAY_UNAVAILABLE" });
+      }
+
+      const audioTrackPos = parseNonNegativeInt(request.query.audio);
+      const startMs = parseNonNegativeInt(request.query.start);
 
     const resolution = await context.mediaGateway.resolveForStreaming({
       sourceType: "nas",
@@ -86,6 +95,16 @@ export async function registerMediaRoutes(fastify: FastifyInstance, context: Med
     });
     if (!resolution.ok) {
       return sendSourceMediaError(reply, resolution);
+    }
+
+    if (audioTrackPos !== null) {
+      return sendRemuxedAudioTrackStream(reply, request.raw, {
+        filePath: resolution.filePath,
+        audioTrackPos,
+        startMs: startMs ?? 0,
+        ffmpegBin: context.ffmpegBin ?? "ffmpeg",
+        ...(context.log ? { log: context.log } : {})
+      });
     }
 
     return sendResolvedMedia(reply, {
@@ -123,6 +142,89 @@ function parseNasCoverSongId(coverFileName: string): string | null {
     return null;
   }
   return coverFileName.slice(0, -".jpg".length);
+}
+
+function parseNonNegativeInt(value: unknown): number | null {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+// 浏览器(Chromium)不支持单文件音轨切换时,服务端用 ffmpeg 选轨 remux(codec copy,
+// 非转码)输出只含目标音轨的 matroska 流;startMs 让流直接从切换点开始,规避 pipe
+// 流不支持 Range seek 的问题。客户端断开时杀掉 ffmpeg 进程。
+function sendRemuxedAudioTrackStream(
+  reply: FastifyReply,
+  rawRequest: { on: (event: string, listener: () => void) => void },
+  input: {
+    filePath: string;
+    audioTrackPos: number;
+    startMs: number;
+    ffmpegBin: string;
+    log?: FastifyBaseLogger;
+  }
+): FastifyReply {
+  const startSeconds = input.startMs / 1000;
+  const args = [
+    "-nostdin",
+    ...(input.startMs > 0 ? ["-ss", startSeconds.toFixed(3)] : []),
+    "-i",
+    input.filePath,
+    "-map",
+    "0:v:0",
+    "-map",
+    `0:a:${input.audioTrackPos}`,
+    "-c",
+    "copy",
+    "-f",
+    "matroska",
+    "-avoid_negative_ts",
+    "make_zero",
+    "pipe:1"
+  ];
+
+  const child = spawn(input.ffmpegBin, args, { stdio: ["ignore", "pipe", "pipe"] });
+  const stderrChunks: Buffer[] = [];
+  let headersSent = false;
+
+  child.stderr?.on("data", (chunk: Buffer) => {
+    if (stderrChunks.length < 20) {
+      stderrChunks.push(chunk);
+    }
+  });
+  child.on("error", (error) => {
+    input.log?.error({ error, filePath: input.filePath }, "audio-track remux spawn failed");
+    if (!headersSent) {
+      headersSent = true;
+      void reply.status(500).send({ error: "MEDIA_REMUX_SPAWN_FAILED" });
+    } else {
+      child.stdout.destroy(error);
+    }
+  });
+  child.on("close", (code) => {
+    if (code !== 0 && !headersSent) {
+      const stderr = Buffer.concat(stderrChunks).toString("utf8").slice(-400);
+      input.log?.warn({ code, stderr, filePath: input.filePath }, "audio-track remux exited non-zero");
+      headersSent = true;
+      void reply.status(500).send({ error: "MEDIA_REMUX_FAILED" });
+    }
+  });
+
+  rawRequest.on("close", () => {
+    child.kill();
+  });
+
+  reply.header("cache-control", "no-store");
+  child.stdout.once("readable", () => {
+    if (!headersSent) {
+      headersSent = true;
+      reply.type("video/x-matroska");
+      void reply.send(child.stdout);
+    }
+  });
+  return reply;
 }
 
 async function sendNasCoverImage(

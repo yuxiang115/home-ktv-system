@@ -10,7 +10,8 @@ export const tableNames = {
   queueEntries: "queue_entries",
   controllerUsers: "controller_users",
   controllerAuthSessions: "controller_auth_sessions",
-  ktvSongs: "ktv_songs"
+  ktvSongs: "ktv_songs",
+  onlineSupplementTasks: "online_supplement_tasks"
 } as const;
 
 export const enumValues = {
@@ -20,7 +21,10 @@ export const enumValues = {
   roomStatus: ["active", "inactive", "maintenance"],
   queueEntryStatus: ["queued", "preparing", "loading", "playing", "played", "skipped", "failed", "removed"],
   clientType: ["tv", "controller"],
-  playerState: ["idle", "preparing", "loading", "playing", "paused", "recovering", "error"]
+  playerState: ["idle", "preparing", "loading", "playing", "paused", "recovering", "error"],
+  supplementTaskStatus: ["discovered", "processing", "ready", "failed"],
+  supplementTaskStage: ["download", "rename", "vocal_remove", "mix", "lyrics", "index"],
+  supplementStageStatus: ["pending", "running", "done", "failed"]
 } as const;
 
 export interface RoomRow {
@@ -107,6 +111,38 @@ export interface RoomPairingTokenRow {
   token_hash: string | null;
   token_expires_at: Date | null;
   rotated_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface OnlineSupplementTaskRow {
+  id: string;
+  room_id: string;
+  provider: string;
+  provider_candidate_id: string;
+  source_url: string;
+  title: string;
+  artist_name: string;
+  duration_ms: number | null;
+  provider_payload: Record<string, unknown>;
+  workflow_id: string;
+  status: string;
+  stage: string;
+  stage_status: string;
+  stage_progress_percent: number;
+  stage_message: string;
+  failure_reason: string | null;
+  failure_stage: string | null;
+  llm_renamed_title: string | null;
+  final_file_path: string | null;
+  lyric_file: string | null;
+  ready_song_id: string | null;
+  worker_id: string | null;
+  worker_lease_until: Date | null;
+  requested_by: string | null;
+  download_at: Date | null;
+  ready_at: Date | null;
+  failed_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -265,6 +301,7 @@ CREATE TABLE IF NOT EXISTS ktv_songs (
   last_requested_at timestamptz,
   cover_image_url text,
   cover_updated_at timestamptz,
+  lyric_file text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -296,4 +333,52 @@ ALTER TABLE queue_entries
   ADD CONSTRAINT queue_entries_song_fk
   FOREIGN KEY (song_id) REFERENCES ktv_songs(id)
   ON DELETE RESTRICT;
+
+CREATE TABLE IF NOT EXISTS online_supplement_tasks (
+  id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  room_id text NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+  provider text NOT NULL,
+  provider_candidate_id text NOT NULL,
+  source_url text NOT NULL,
+  title text NOT NULL,
+  artist_name text NOT NULL DEFAULT '',
+  duration_ms integer CHECK (duration_ms IS NULL OR duration_ms >= 0),
+  provider_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+  workflow_id text NOT NULL DEFAULT 'youtube-enhanced' CHECK (workflow_id IN ('youtube-basic', 'youtube-enhanced')),
+  status text NOT NULL DEFAULT 'discovered' CHECK (status IN ('discovered', 'processing', 'ready', 'failed')),
+  stage text NOT NULL DEFAULT 'download' CHECK (stage IN ('download', 'rename', 'vocal_remove', 'mix', 'lyrics', 'index')),
+  stage_status text NOT NULL DEFAULT 'pending' CHECK (stage_status IN ('pending', 'running', 'done', 'failed')),
+  stage_progress_percent integer NOT NULL DEFAULT 0 CHECK (stage_progress_percent >= 0 AND stage_progress_percent <= 100),
+  stage_message text NOT NULL DEFAULT '',
+  failure_reason text,
+  failure_stage text,
+  llm_renamed_title text,
+  final_file_path text,
+  lyric_file text,
+  ready_song_id text REFERENCES ktv_songs(id) ON DELETE SET NULL,
+  worker_id text,
+  worker_lease_until timestamptz,
+  requested_by text,
+  download_at timestamptz,
+  ready_at timestamptz,
+  failed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE(room_id, provider, provider_candidate_id)
+);
+
+CREATE INDEX IF NOT EXISTS online_supplement_tasks_room_status_updated_idx
+  ON online_supplement_tasks(room_id, status, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS online_supplement_tasks_stage_claim_idx
+  ON online_supplement_tasks(stage, stage_status, updated_at ASC)
+  WHERE status IN ('discovered', 'processing');
+
+CREATE INDEX IF NOT EXISTS online_supplement_tasks_ready_song_idx
+  ON online_supplement_tasks(ready_song_id)
+  WHERE ready_song_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS online_supplement_tasks_lease_idx
+  ON online_supplement_tasks(worker_lease_until)
+  WHERE stage_status = 'running';
 `;

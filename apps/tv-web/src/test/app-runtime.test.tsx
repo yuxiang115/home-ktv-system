@@ -409,9 +409,18 @@ function createPool(
     standbyVideo?: HTMLVideoElement;
   } = {}
 ) {
+  const activeVideo = input.activeVideo ?? createVideo({ hidden: false, paused: input.activePaused ?? true });
+  const standbyVideo = input.standbyVideo ?? createVideo({ hidden: true, paused: true });
   return {
     activeTarget: input.activeTarget ?? null,
-    activeVideo: input.activeVideo ?? createVideo({ hidden: false, paused: input.activePaused ?? true }),
+    activeVideo,
+    activePositionBaseMs: 0,
+    activePlaybackPositionMs(fallbackMs = 0) {
+      const currentMs = Number.isFinite(activeVideo.currentTime)
+        ? Math.max(0, Math.trunc(activeVideo.currentTime * 1000))
+        : Math.max(0, Math.trunc(fallbackMs));
+      return currentMs + this.activePositionBaseMs;
+    },
     disable: vi.fn(),
     primeActive: vi.fn(),
     prepareStandby: vi.fn(),
@@ -419,7 +428,7 @@ function createPool(
     rollback: vi.fn(),
     playActiveUntilReady: vi.fn(),
     playStandbyUntilReady: vi.fn(),
-    standbyVideo: input.standbyVideo ?? createVideo({ hidden: true, paused: true })
+    standbyVideo
   };
 }
 
