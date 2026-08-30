@@ -70,10 +70,11 @@ function resolveLlmConfig(env: NodeJS.ProcessEnv): SupplementLlmConfig | null {
   const baseUrl = readString(env.KTV_LLM_BASE_URL) || readString(env.LLM_API_BASE_URL);
   const apiKey = readString(env.KTV_LLM_API_KEY) || readString(env.LLM_API_KEY);
   const model = readString(env.KTV_LLM_MODEL) || readString(env.LLM_MODEL) || "gpt-5.5";
-  if (!baseUrl || !apiKey) {
+  // 本地推理服务(mlx_lm.server 等)不需要 API key;只要求 baseUrl
+  if (!baseUrl) {
     return null;
   }
-  return { baseUrl, apiKey, model };
+  return { baseUrl, apiKey: apiKey || "local", model };
 }
 
 function dryRunStageHandler(stage: SupplementTaskStage): StageHandler {
