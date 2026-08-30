@@ -511,12 +511,33 @@ def _is_cjk_char(char: str) -> bool:
     return any(low <= code <= high for low, high in CJK_RANGES)
 
 
+_t2s = None
+
+
+def _to_simplified(text: str) -> str:
+    """繁转简(懒加载 opencc;LRC 常见繁体、ASR 常输出简体,归一后才能匹配)。opencc 不可用时原样返回。"""
+    global _t2s
+    if _t2s is None:
+        try:
+            from opencc import OpenCC
+            _t2s = OpenCC("t2s")
+        except Exception:
+            _t2s = False
+    if _t2s is False:
+        return text
+    try:
+        return _t2s.convert(text)
+    except Exception:
+        return text
+
+
 def tokenize_for_match(text: str) -> list[str]:
     """(纯函数) 混合语种分词:CJK 逐字,连续非 CJK 字母数字合成一词(小写)。
 
     空白/标点天然丢弃(归一);ASR 段文本与 LRC 行文本必须用同一分词器,
     SequenceMatcher 的 token 相等比较才有可比粒度(中文按字、英文按词)。
     """
+    text = _to_simplified(text)
     tokens: list[str] = []
     run: list[str] = []
     for char in text:
