@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-"""align_lyrics.py 纯函数单测(VAD 分段 / 行段映射 / auto 语种判定 / 质量门禁统计)。
+"""align_lyrics.py 单测(VAD 分段 / 行段映射 / auto 语种判定 / 质量门禁统计 /
+对齐核心数据流)。
 
 node 测试管线跑不到 python,这里用零依赖的裸 assert 脚本(node vitest 之外的
 补充)。两种运行方式:
@@ -7,11 +8,13 @@ node 测试管线跑不到 python,这里用零依赖的裸 assert 脚本(node vi
     python test_align.py           # 逐个跑 test_* 函数,全过 exit 0
     python -m pytest test_align.py # 同样可用(pytest 风格命名)
 
-不需要 torch/qwen_asr/ffmpeg:被测函数都是纯函数,只有 numpy 依赖(帧能量)。
+不需要 torch/qwen_asr/ffmpeg:被测函数都是纯函数;对齐核心(align_lines)
+用 stub aligner + numpy 合成波形覆盖,不加载模型。
 """
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -20,10 +23,14 @@ from align_lyrics import (  # noqa: E402
     MAP_TOLERANCE,
     VAD_MIN_GAP_SECONDS,
     VAD_MIN_SEGMENT_SECONDS,
+    align_lines,
     cjk_char_ratio,
+    collapsed_word_fraction,
     evaluate_quality,
     line_weight,
+    line_within_segment,
     map_lines_to_segments,
+    parse_lrc,
     resolve_language,
     voiced_segments_from_energy,
 )
@@ -169,6 +176,191 @@ def test_line_weight_counts_non_whitespace_only() -> None:
     assert line_weight("  ") == 0.0
 
 
+# ---- Phase B: alignment core (LRC timeline leakage regression) -----------------
+
+
+class _StubUnit:
+    def __init__(self, text: str, start_time: float, end_time: float) -> None:
+        self.text = text
+        self.start_time = start_time
+        self.end_time = end_time
+
+
+class _StubAligner:
+    """模拟 Qwen3 aligner 接口:unit 时间相对 clip 起点,固定节拍铺开。
+
+    lying=True 时故意返回远离 clip 的时间(模型 artifact/时间轴泄漏),
+    用于验证越界行被丢弃而不是带错误时间输出。
+    collapsing=True 时前两个词给正常时长、其余词 start==end(模型把整行
+    文本硬塞进不含该语音的切片时的典型塌缩输出)。
+    """
+
+    def __init__(self, lead: float = 0.35, beat: float = 0.3, lying: bool = False,
+                 collapsing: bool = False) -> None:
+        self.lead = lead
+        self.beat = beat
+        self.lying = lying
+        self.collapsing = collapsing
+        self.clips: list[float] = []
+
+    def align(self, audio, text, language):
+        clip, sr = audio
+        clip_len = clip.size / sr
+        self.clips.append(clip_len)
+        tokens = text.split() or [text]
+        units: list[_StubUnit] = []
+        cursor = self.lead
+        for position, token in enumerate(tokens):
+            end = min(cursor + self.beat, max(cursor + 0.05, clip_len - 0.05))
+            if self.lying:
+                units.append(_StubUnit(token, cursor - 60.0, end - 60.0))
+            elif self.collapsing and position >= 2:
+                units.append(_StubUnit(token, end, end))
+            else:
+                units.append(_StubUnit(token, cursor, end))
+            cursor = end
+        return [units]
+
+
+def _baby_like_audio():
+    """Justin Bieber - Baby 形状的合成波形:前 15.8s 安静(前奏),之后两段有声。"""
+    import numpy as np
+
+    sr = 16000
+    audio = np.zeros(int(40 * sr), dtype=np.float32)
+    audio[int(15.8 * sr):int(21.0 * sr)] = 0.4
+    audio[int(24.0 * sr):int(30.0 * sr)] = 0.4
+    return audio, sr
+
+
+def test_align_lines_output_timeline_comes_from_audio_not_lrc() -> None:
+    # 回归(实锤 bug):LRC 首行 [00:03.41](LRCLIB 录音室时间轴),但该 MV
+    # 混音/人声首段在 15.8s。输出首行必须来自音频段(15-17s 区间),绝不
+    # 是 3.4s——v1 管线按 LRC 时间戳切块时首行就精确落在 3.4s。
+    audio, sr = _baby_like_audio()
+    with tempfile.TemporaryDirectory() as tmp:
+        lrc = Path(tmp) / "baby.lrc"
+        lrc.write_text(
+            "[00:03.41] Oh whoa, oh whoa, oh whoa\n"
+            "[00:14.64] You know you love me, I know you care\n",
+            encoding="utf-8",
+        )
+        lines = parse_lrc(lrc)
+        assert abs(lines[0][0] - 3.41) < 0.01  # LRC 确实声称首行 3.41s
+        line_texts = [text for _, text in lines]
+
+        output, unmatched, segments, first_segment_start = align_lines(
+            audio, sr, line_texts, "English", _StubAligner()
+        )
+
+    assert not unmatched
+    assert 15.5 <= segments[0][0] <= 16.0  # VAD 首段就是音频里的 15.8s
+    assert first_segment_start == segments[0][0]
+    first_start = output[0]["start"]
+    # 首行来自音频段:落在 [段起点-切片余量, 段起点+2s],与 3.41 至少差 1s
+    assert segments[0][0] - 0.3 <= first_start <= segments[0][0] + 2.0
+    assert abs(first_start - 3.41) > 1.0
+    # 每行时间都落在自己段的硬校验范围内
+    for entry in output:
+        assert line_within_segment(entry, segments[0]) or line_within_segment(entry, segments[1])
+    # 门禁(含首行-首段偏差硬校验)应通过
+    problems, stats = evaluate_quality(output, len(line_texts), first_segment_start)
+    assert problems == []
+    assert stats["coverage"] == 1.0
+
+
+def test_align_lines_drops_lines_whose_times_escape_segment() -> None:
+    # 模型 artifact(unit 时间跑到 clip 外):该行必须被丢弃(unmatched),
+    # 绝不能带着远离音频段的时间输出,也不回退 LRC 时间戳。
+    audio, sr = _baby_like_audio()
+    line_texts = ["Oh whoa, oh whoa, oh whoa", "You know you love me, I know you care"]
+    output, unmatched, segments, first_segment_start = align_lines(
+        audio, sr, line_texts, "English", _StubAligner(lying=True)
+    )
+    assert output == []
+    assert unmatched == [0, 1]
+    assert first_segment_start is None
+    problems, stats = evaluate_quality(output, len(line_texts), first_segment_start)
+    assert stats["coverage"] == 0.0
+    assert any("coverage" in problem for problem in problems)
+
+
+def test_align_lines_drops_lines_with_collapsed_word_timings() -> None:
+    # Baby 实锤的坏输出形态:行 span 落在段内(不越界),但超半数词 start==end
+    # (模型把文本硬塞进不含该语音的段,如把整句词配到前奏 ad-lib 段)。这种行
+    # 必须按 unmatched 丢弃,而不是带着塌缩词时间输出。
+    audio, sr = _baby_like_audio()
+    line_texts = ["Oh whoa, oh whoa, oh whoa", "You know you love me, I know you care"]
+    output, unmatched, segments, first_segment_start = align_lines(
+        audio, sr, line_texts, "English", _StubAligner(collapsing=True)
+    )
+    # 6 词塌 4 个(67%)、9 词塌 7 个(78%):两行都超 50% 阈值被丢弃
+    assert output == []
+    assert unmatched == [0, 1]
+
+
+def test_collapsed_word_fraction_and_file_gate() -> None:
+    assert collapsed_word_fraction({"words": [
+        {"text": "a", "start": 0.0, "end": 0.3},
+        {"text": "b", "start": 0.3, "end": 0.6},
+    ]}) == 0.0
+    # 4/6 塌缩 = Baby 首行实测形态
+    assert collapsed_word_fraction({"words": [
+        {"text": "Oh", "start": 3.36, "end": 3.92},
+        {"text": "whoa", "start": 3.92, "end": 5.12},
+        {"text": "oh", "start": 5.12, "end": 5.12},
+        {"text": "whoa", "start": 5.12, "end": 5.12},
+        {"text": "oh", "start": 5.12, "end": 5.12},
+        {"text": "whoa", "start": 5.12, "end": 5.12},
+    ]}) > 0.5
+    assert collapsed_word_fraction({"words": []}) == 1.0
+    # 文件级兜底:两行各 30-50% 塌缩(逐行阈值不丢),总体 33% > 30% => 拒绝
+    lines = [
+        {"start": 1.0, "end": 2.0, "text": "a b c", "words": [
+            {"text": "a", "start": 1.0, "end": 1.3},
+            {"text": "b", "start": 1.3, "end": 1.6},
+            {"text": "c", "start": 1.6, "end": 1.6},
+        ]},
+        {"start": 3.0, "end": 4.0, "text": "d e f", "words": [
+            {"text": "d", "start": 3.0, "end": 3.3},
+            {"text": "e", "start": 3.3, "end": 3.6},
+            {"text": "f", "start": 3.6, "end": 3.6},
+        ]},
+    ]
+    problems, stats = evaluate_quality(lines, 2)
+    assert any("collapsed" in problem for problem in problems)
+    assert stats["collapsedWordFraction"] == round(2 / 6, 3)
+    # 健康输出:零塌缩,不受影响
+    healthy = [{"start": 1.0, "end": 2.0, "text": "a b", "words": [
+        {"text": "a", "start": 1.0, "end": 1.5}, {"text": "b", "start": 1.5, "end": 2.0},
+    ]}]
+    problems, stats = evaluate_quality(healthy, 1)
+    assert problems == []
+    assert stats["collapsedWordFraction"] == 0.0
+
+
+def test_align_lines_silent_audio_maps_nothing() -> None:
+    # 全静音音频(分离失败/拿错文件):无 VAD 段,所有行 unmatched,门禁拒绝
+    import numpy as np
+
+    sr = 16000
+    audio = np.zeros(int(10 * sr), dtype=np.float32)
+    output, unmatched, segments, first_segment_start = align_lines(
+        audio, sr, ["一句歌词", "另一句歌词"], "Chinese", _StubAligner()
+    )
+    assert output == [] and segments == []
+    assert unmatched == [0, 1]
+    assert first_segment_start is None
+
+
+def test_line_within_segment_margins() -> None:
+    entry = {"start": 10.0, "end": 12.0, "text": "x", "words": []}
+    assert line_within_segment(entry, (10.2, 11.5))  # 起点在段内,end 12 <= 11.5+1
+    assert not line_within_segment(entry, (13.0, 15.0))  # 整行在段前(>1s)
+    assert not line_within_segment({"start": 3.36, "end": 5.12}, (15.81, 16.65))
+    assert line_within_segment({"start": 3.36, "end": 5.12}, (3.0, 5.5))
+
+
 # ---- Phase B: quality gate ------------------------------------------------------
 
 
@@ -208,6 +400,30 @@ def test_evaluate_quality_flags_coverage_and_word_duration() -> None:
     assert stats["coverage"] == 0.2
     assert any("coverage" in problem for problem in problems)
     assert any("median word duration" in problem for problem in problems)
+
+
+def test_evaluate_quality_flags_first_line_timeline_leak() -> None:
+    # 硬时间轴校验:LRC 首行 3.36s 但首个被采用 VAD 段在 15.81s(Baby 实测),
+    # 偏差 >2s => 拒绝整个输出(时间轴不是这段音频的)
+    leaked = [
+        {"start": 3.36, "end": 5.12, "text": "Oh whoa", "words": [
+            {"text": "Oh", "start": 3.36, "end": 5.12},
+        ]},
+    ]
+    problems, _ = evaluate_quality(leaked, 1, first_segment_start=15.81)
+    assert any("deviates" in problem and "15.81" in problem for problem in problems)
+
+    # 首行贴着音频首段(+0.35s 切片内偏移) => 无此问题
+    honest = [
+        {"start": 16.16, "end": 17.5, "text": "Oh whoa", "words": [
+            {"text": "Oh", "start": 16.16, "end": 17.5},
+        ]},
+    ]
+    problems, _ = evaluate_quality(honest, 1, first_segment_start=15.81)
+    assert not any("deviates" in problem for problem in problems)
+
+    # 不传段起点(旧调用方式/无输出)不触发该校验
+    assert evaluate_quality(leaked, 1)[0] == []
 
 
 def test_defaults_are_sensible() -> None:

@@ -27,9 +27,21 @@ New pipeline:
      segment (+/-0.3s margin) by the cached model, so one wrong segment can
      never poison the rest of the song.
   5. quality gate (before writing anything): line times strictly increasing,
-     matched line coverage >= 80%, median word duration within 0.05~2s.
+     matched line coverage >= 80%, median word duration within 0.05~2s, word
+     timings not collapsed (<30% words under 20ms; lines >50% collapsed are
+     dropped as unmatched), plus HARD timeline checks — the output timeline
+     must be the audio's, not the LRC's: every line must sit inside its mapped
+     VAD segment (+/-1s), and the first output line must start within 2s of
+     the first adopted VAD segment (catches studio-LRC-timeline leakage on
+     MVs with intros).
      Failure => no output file, one-line report on stderr, exit code 4
      (= alignment quality below bar; callers degrade best-effort to LRC).
+
+Invariant (regression-tested): output line start/end may ONLY originate from
+VAD segment boundaries and aligner unit times. LRC timestamps are used solely
+to order lines inside parse_lrc; a line that cannot be aligned to a segment is
+dropped from the output entirely (counted into coverage), NEVER backfilled
+with its LRC timestamp.
 
 Exit codes: 0 ok / 3 skipped (no lyrics / audio missing) / 4 quality gate / 1 error.
 """
@@ -85,6 +97,21 @@ MIN_CLIP_SECONDS = 0.2     # 短于该值的切片直接判 unmatched(模型对�
 # ---- Phase B: quality gate ------------------------------------------------
 MIN_LINE_COVERAGE = 0.8
 WORD_DURATION_RANGE = (0.05, 2.0)
+# 塌缩词检测:模型把文本硬塞进不含该语音的切片时,词时长会大面积塌缩到 ~0
+# (Baby 实测 46% 的词 <20ms,首行 6 词 4 个 start==end)。词时长中位数对这种
+# 分布不敏感(0.08s 仍在 [0.05,2] 内),必须按占比判:单行超半数词塌缩 =>
+# 该行对齐失败,丢弃(unmatched);整文件剩余词塌缩率超 30% => 拒绝输出。
+WORD_COLLAPSE_SECONDS = 0.02
+LINE_MAX_COLLAPSED_WORD_FRACTION = 0.5
+FILE_MAX_COLLAPSED_WORD_FRACTION = 0.3
+# 硬时间轴校验:输出行时间只能来自 VAD 段边界 + aligner unit 时间。每行必须
+# 落在其映射段 [start-1, end+1] 内(1s 容纳切片余量 0.3s + 模型边界毛刺);
+# 越界行按 unmatched 丢弃,绝不回退 LRC 时间戳。
+SEGMENT_CONTAINMENT_MARGIN_SECONDS = 1.0
+# 输出首行与「首个被采用的 VAD 段」起点的偏差上限。超过 2s 说明输出时间轴
+# 不是这段音频的(典型:输出复刻 LRC 录音室时间轴,而 MV 带前奏)——直接
+# 整体拒绝,宁可降级行级 LRC 也不能输出错误时间轴。
+FIRST_LINE_SEGMENT_MAX_DEVIATION_SECONDS = 2.0
 
 
 class AlignmentSkipped(RuntimeError):
@@ -335,16 +362,109 @@ def align_single_line(
     return {"start": words[0]["start"], "end": words[-1]["end"], "text": text, "words": words}
 
 
+def line_within_segment(
+    entry: dict,
+    segment: tuple[float, float],
+    margin: float = SEGMENT_CONTAINMENT_MARGIN_SECONDS,
+) -> bool:
+    """(纯函数) 硬校验:对齐出的行时间必须落在其映射段的 [start-margin, end+margin] 内。
+
+    输出时间的唯一合法来源是段边界 + unit 时间,正常情况行 start >= 段起点-0.3s
+    (切片余量)、end <= 段终点+0.3s;margin 放宽到 1s 只为容忍模型边界毛刺。
+    越界 = 该行对齐结果不可信,调用方必须丢弃该行(unmatched),不得输出。
+    """
+    return entry["start"] >= segment[0] - margin and entry["end"] <= segment[1] + margin
+
+
+def collapsed_word_fraction(entry: dict, collapse_seconds: float = WORD_COLLAPSE_SECONDS) -> float:
+    """(纯函数) 行内「塌缩词」占比:时长 < collapse_seconds 的词 / 总词数。
+
+    正常对齐里几乎不存在 <20ms 的词(中文单字/英文短词也 ~100ms+);模型把
+    整行文本硬塞进不含该语音的切片时会大面积产生 start==end 的词。占比是
+    该行对齐是否可信的判别式(比词时长中位数敏感:中位数会被半数健康词顶住)。
+    """
+    words = entry["words"]
+    if not words:
+        return 1.0
+    collapsed = sum(1 for word in words if word["end"] - word["start"] < collapse_seconds)
+    return collapsed / len(words)
+
+
+def align_lines(
+    audio: "np.ndarray",
+    sr: int,
+    line_texts: Sequence[str],
+    language: str,
+    model,
+) -> tuple[list[dict], list[int], list[tuple[float, float]], float | None]:
+    """对齐核心数据流(无文件 IO,便于回归测试):VAD 分段 -> 行段映射 ->
+    逐行独立对齐 -> 行时间硬校验。
+
+    LRC 时间戳在进入本函数前就被丢弃(只保留行顺序);unmatched 行(无段可配/
+    对齐失败/越界/词时间塌缩)一律不输出。返回
+    (output_lines, unmatched_line_indexes, vad_segments, first_adopted_segment_start),
+    first_adopted_segment_start = 首个成功输出行所配 VAD 段的起点(供质量门禁
+    校验输出时间轴与音频时间轴一致;无输出行时为 None)。
+    """
+    energy, frame_rate = frame_energies(audio, sr)
+    segments = voiced_segments_from_energy(energy, frame_rate)
+    mapping = map_lines_to_segments(
+        [line_weight(text) for text in line_texts],
+        [end - start for start, end in segments],
+    )
+
+    output_lines: list[dict] = []
+    unmatched_lines: list[int] = []
+    first_segment_start: float | None = None
+    for index, text in enumerate(line_texts):
+        segment_index = mapping[index] if index < len(mapping) else None
+        if segment_index is None:
+            unmatched_lines.append(index)
+            continue
+        segment = segments[segment_index]
+        entry = align_single_line(model, audio, sr, text, language, segment)
+        if (
+            entry is None
+            or not line_within_segment(entry, segment)
+            or collapsed_word_fraction(entry) > LINE_MAX_COLLAPSED_WORD_FRACTION
+        ):
+            unmatched_lines.append(index)
+            continue
+        if first_segment_start is None:
+            first_segment_start = segment[0]
+        output_lines.append(entry)
+    return output_lines, unmatched_lines, segments, first_segment_start
+
+
 # ---- Phase B: quality gate ----------------------------------------------------
 
 
-def evaluate_quality(output_lines: Sequence[dict], total_lrc_lines: int) -> tuple[list[str], dict]:
-    """返回 (问题列表, 统计)。问题列表非空 = 质量门禁不通过。"""
+def evaluate_quality(
+    output_lines: Sequence[dict],
+    total_lrc_lines: int,
+    first_segment_start: float | None = None,
+) -> tuple[list[str], dict]:
+    """返回 (问题列表, 统计)。问题列表非空 = 质量门禁不通过。
+
+    first_segment_start 传入「首个被采用的 VAD 段」起点时启用硬时间轴校验:
+    输出首行 start 偏离它超过 FIRST_LINE_SEGMENT_MAX_DEVIATION_SECONDS 即拒绝
+    ——输出时间轴必须来自音频,绝不允许复刻 LRC 录音室时间轴(MV 带前奏时
+    两者相差可达十几秒,Justin Bieber - Baby 实测 LRC 首行 3.4s vs MV 人声
+    首段 15.8s)。
+    """
     problems: list[str] = []
     for previous, current in zip(output_lines, output_lines[1:]):
         if current["start"] <= previous["start"]:
             problems.append("line times not strictly increasing")
             break
+    if output_lines and first_segment_start is not None:
+        deviation = output_lines[0]["start"] - first_segment_start
+        if abs(deviation) > FIRST_LINE_SEGMENT_MAX_DEVIATION_SECONDS:
+            problems.append(
+                f"first line start {output_lines[0]['start']:.2f}s deviates {deviation:+.1f}s"
+                + f" from first adopted VAD segment {first_segment_start:.2f}s"
+                + " (output timeline is not the audio's; LRC timeline leakage?)"
+            )
     coverage = len(output_lines) / total_lrc_lines if total_lrc_lines else 0.0
     if coverage < MIN_LINE_COVERAGE:
         problems.append(f"matched line coverage {coverage:.0%} < {MIN_LINE_COVERAGE:.0%}")
@@ -353,12 +473,23 @@ def evaluate_quality(output_lines: Sequence[dict], total_lrc_lines: int) -> tupl
     low, high = WORD_DURATION_RANGE
     if not durations or not (low <= median <= high):
         problems.append(f"median word duration {median:.3f}s outside [{low:.2f}, {high:.1f}]s")
+    # 词时间塌缩率(逐行 >50% 塌缩的行已在 align_lines 丢弃;这里兜底检查
+    # 剩余输出里塌缩词的总体占比,防止大量 30-50% 塌缩的行凑出一份坏时间轴)
+    total_words = len(durations)
+    collapsed = sum(1 for line in output_lines for word in line["words"] if word["end"] - word["start"] < WORD_COLLAPSE_SECONDS)
+    collapsed_fraction = collapsed / total_words if total_words else 0.0
+    if collapsed_fraction > FILE_MAX_COLLAPSED_WORD_FRACTION:
+        problems.append(
+            f"word timings collapsed: {collapsed}/{total_words} words <{WORD_COLLAPSE_SECONDS}s"
+            + f" ({collapsed_fraction:.0%} > {FILE_MAX_COLLAPSED_WORD_FRACTION:.0%})"
+        )
     stats = {
         "lineCount": len(output_lines),
         "totalLines": total_lrc_lines,
         "coverage": round(coverage, 3),
         "medianWordDuration": round(median, 3),
-        "wordCount": len(durations),
+        "wordCount": total_words,
+        "collapsedWordFraction": round(collapsed_fraction, 3),
     }
     return problems, stats
 
@@ -413,32 +544,18 @@ def align_file(
     if not audio.exists():
         raise AlignmentSkipped(f"audio not found: {audio}")
 
+    # LRC 时间戳自此被丢弃:parse_lrc 排序确定行顺序后,下游只见文本。输出
+    # 行时间只能来自 VAD 段边界 + aligner unit 时间(见 align_lines 不变式)。
     line_texts = [text for _, text in lines]
     resolved_language = resolve_language(language, "\n".join(line_texts))
 
     with tempfile.TemporaryDirectory(prefix="ktv-align-") as tmp_name:
         audio_data, sr = load_audio_16k_mono(audio, Path(tmp_name))
-        energy, frame_rate = frame_energies(audio_data, sr)
-        segments = voiced_segments_from_energy(energy, frame_rate)
-        mapping = map_lines_to_segments(
-            [line_weight(text) for text in line_texts],
-            [end - start for start, end in segments],
+        output_lines, unmatched_lines, segments, first_segment_start = align_lines(
+            audio_data, sr, line_texts, resolved_language, model
         )
 
-        output_lines: list[dict] = []
-        unmatched_lines: list[int] = []
-        for index, text in enumerate(line_texts):
-            segment_index = mapping[index] if index < len(mapping) else None
-            if segment_index is None:
-                unmatched_lines.append(index)
-                continue
-            entry = align_single_line(model, audio_data, sr, text, resolved_language, segments[segment_index])
-            if entry is None:
-                unmatched_lines.append(index)
-                continue
-            output_lines.append(entry)
-
-    problems, stats = evaluate_quality(output_lines, len(line_texts))
+    problems, stats = evaluate_quality(output_lines, len(line_texts), first_segment_start)
     stats.update(
         language=resolved_language,
         unmatchedLines=len(unmatched_lines),

@@ -298,6 +298,33 @@ describe("AlignStageHandler", () => {
     await expect(stat(out)).rejects.toThrow();
   });
 
+  it("degrades best-effort when the gate rejects a non-audio timeline (LRC leakage hard check)", async () => {
+    // python v2 门禁的硬时间轴校验:输出首行偏离首个 VAD 段 >2s(LRC 录音室
+    // 时间轴泄漏,MV 带前奏)整体拒绝。TS 侧必须同样识别为 quality-gate 并
+    // 走 lrc 兜底,绝不让错误时间轴的 karaoke.json 入库。
+    const workDir = await createWorkDir();
+    await prepareVocalsAndLyrics(workDir);
+    const handler = new AlignStageHandler({
+      ...handlerOptions,
+      run: async () => {
+        throw new Error(
+          "Command failed: python align_lyrics.py --audio x: exit=4 | alignment quality-gate failed: " +
+            "first line start 3.36s deviates -12.5s from first adopted VAD segment 15.81s " +
+            "(output timeline is not the audio's; LRC timeline leakage?)"
+        );
+      }
+    });
+    const { input } = createInput(createTask({ stage: "align" }), workDir);
+    const out = karaokeJsonPath(workDir, "task-1");
+
+    const result = await handler.execute(input);
+
+    expect(result.status).toBe("completed");
+    expect(result.message).toContain("align failed (best-effort quality-gate, lrc fallback)");
+    expect(result.message).toContain("first line start 3.36s");
+    await expect(stat(out)).rejects.toThrow();
+  });
+
   it("skips when neither the vocals stem nor the downloaded asset exists", async () => {
     const workDir = await createWorkDir();
     await mkdir(path.join(workDir, "_lyrics"), { recursive: true });
