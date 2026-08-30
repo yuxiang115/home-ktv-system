@@ -1,6 +1,6 @@
 import type { RoomSnapshot } from "@home-ktv/player-contracts";
 import type { CSSProperties } from "react";
-import { useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { InteractionOverlay } from "./components/InteractionOverlay.js";
 import { LyricsOverlay } from "./components/LyricsOverlay.js";
 import { SeekHotzone, SeekNudgeOverlay } from "./components/SeekNudgeOverlay.js";
@@ -15,6 +15,26 @@ export function App() {
   const activeVideoRef = useRef<HTMLVideoElement>(null);
   const standbyVideoRef = useRef<HTMLVideoElement>(null);
   const runtime = useTvPlaybackRuntime({ activeVideoRef, standbyVideoRef });
+  // 歌词提前量校准(毫秒):LRCLIB 行时间戳整体偏晚 + 行内扫光把行间隙计入进度,
+  // 两者叠加让高亮比人声慢几百毫秒。默认 300,可用 URL ?lyricsLeadMs= 微调,
+  // localStorage 记住。只作用于歌词渲染,不影响 seek/心跳上报。
+  const [lyricsLeadMs] = useState(() => {
+    const fromQuery = Number.parseInt(new URLSearchParams(globalThis.location?.search ?? "").get("lyricsLeadMs") ?? "", 10);
+    if (Number.isFinite(fromQuery) && fromQuery >= -2000 && fromQuery <= 2000) {
+      try {
+        globalThis.localStorage?.setItem("home-ktv.tv-lyrics-lead-ms", `${fromQuery}`);
+      } catch {
+        /* ignore */
+      }
+      return fromQuery;
+    }
+    const stored = Number.parseInt(globalThis.localStorage?.getItem("home-ktv.tv-lyrics-lead-ms") ?? "", 10);
+    if (Number.isFinite(stored) && stored >= -2000 && stored <= 2000) {
+      return stored;
+    }
+    return 300;
+  });
+  const lyricsGetPositionMs = useCallback(() => runtime.getPositionMs() + lyricsLeadMs, [runtime.getPositionMs, lyricsLeadMs]);
   const isPlaybackScreen =
     runtime.roomState.status === "ready" &&
     Boolean(runtime.snapshot?.currentTarget) &&
@@ -41,8 +61,8 @@ export function App() {
           <LyricsOverlay
             karaokeLines={runtime.karaokeLines}
             lrcLines={runtime.lyricLines ?? []}
-            positionMs={runtime.playbackPositionMs}
-            getPositionMs={runtime.getPositionMs}
+            positionMs={runtime.playbackPositionMs + lyricsLeadMs}
+            getPositionMs={lyricsGetPositionMs}
           />
         ) : null}
         {isPlaybackScreen ? (
