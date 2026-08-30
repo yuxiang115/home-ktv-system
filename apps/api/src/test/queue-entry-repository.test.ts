@@ -67,6 +67,54 @@ describe("PgQueueEntryRepository", () => {
     expect(counts.get("ktv-song-1")).toBe(3);
   });
 
+  it("exposes per-song lyric availability in the controller user song history", async () => {
+    const db = new RecordingDb([
+      {
+        song_id: "ktv-song-1",
+        title: "晴天",
+        artist_name: "周杰伦",
+        request_count: 3,
+        last_requested_at: now,
+        has_lyrics: true
+      },
+      {
+        song_id: "ktv-song-2",
+        title: "雨天",
+        artist_name: "孙燕姿",
+        request_count: "1",
+        last_requested_at: now,
+        has_lyrics: false
+      }
+    ]);
+    const repository = new PgQueueEntryRepository(db);
+
+    const history = await repository.listControllerUserSongHistory("13800138000");
+
+    expect(db.queries[0]).toContain("JOIN ktv_songs");
+    expect(db.queries[0]).toContain("(s.lyric_file IS NOT NULL) AS has_lyrics");
+    expect(db.queries[0]).toContain("s.lyric_file");
+    expect(history).toEqual([
+      {
+        songId: "ktv-song-1",
+        assetId: "ktv-song-1",
+        title: "晴天",
+        artistName: "周杰伦",
+        requestCount: 3,
+        lastRequestedAt: now.toISOString(),
+        hasLyrics: true
+      },
+      {
+        songId: "ktv-song-2",
+        assetId: "ktv-song-2",
+        title: "雨天",
+        artistName: "孙燕姿",
+        requestCount: 1,
+        lastRequestedAt: now.toISOString(),
+        hasLyrics: false
+      }
+    ]);
+  });
+
   it("increments ktv_songs counters when appending a NAS queue entry", async () => {
     const db = new RecordingDb([
       {

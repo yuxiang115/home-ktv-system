@@ -2,6 +2,7 @@ import { readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import * as OpenCC from "opencc-js";
 import { defaultStageCommandRunner, type StageCommandRunner } from "./vocal-remove-handler.js";
+import { SidecarTransportError, type PythonSidecar } from "../python-sidecar.js";
 import type { StageExecuteInput, StageExecuteResult, StageHandler } from "../supplement-orchestrator.js";
 
 // align 阶段产出固定放在 _lyrics/<taskId>.karaoke.json(index 阶段按约定读取,
@@ -75,6 +76,9 @@ export interface AlignStageHandlerOptions {
   demucsModel: string;
   timeoutMs?: number;
   run?: StageCommandRunner;
+  /** 常驻 sidecar 客户端(可选):配置未启用/未注入时不走 sidecar;
+   * 传输层故障自动回退单次脚本路径,业务失败按旧路径语义处理 */
+  sidecar?: PythonSidecar | null;
 }
 
 export class AlignStageHandler implements StageHandler {
@@ -109,34 +113,73 @@ export class AlignStageHandler implements StageHandler {
 
     const language = alignerLanguageForSpecName(input.task.llmRenamedTitle);
     input.log("align start", { vocals, lrc, out, language });
-    const args = [
-      this.options.scriptPath,
-      "--audio",
-      vocals,
-      "--lyrics",
-      lrc,
-      "--out",
-      out,
-      "--language",
-      language,
-      "--model",
-      this.options.model,
-      "--device",
-      this.options.device,
-      "--dtype",
-      this.options.dtype
-    ];
-
     await input.reportProgress(20, `逐字对齐(${language}, qwen3 aligner)`);
     // 首跑要下载模型权重,给足 lease 与超时(lease 与默认超时对齐为 20min)
     await input.renewLease(new Date(Date.now() + 20 * 60 * 1000));
-    try {
-      await this.run(this.options.bin, args, this.options.timeoutMs ?? 20 * 60 * 1000);
-    } catch (error) {
-      // 超时被 kill 时 python 可能已写了半截文件,删掉防止截断 JSON 入库
-      await rm(out, { force: true }).catch(() => undefined);
-      const message = error instanceof Error ? error.message : String(error);
-      return { status: "completed", message: `align failed (best-effort, lrc fallback): ${message.slice(0, 300)}` };
+    const timeoutMs = this.options.timeoutMs ?? 20 * 60 * 1000;
+
+    // 优先走常驻 sidecar(模型已加载,秒级);传输层故障(进程崩溃/超时/broken)
+    // 回退单次脚本路径,sidecar 故障绝不阻塞管线
+    const sidecar = this.options.sidecar;
+    let sidecarHandled = false;
+    if (sidecar && !sidecar.isBroken()) {
+      try {
+        const response = await sidecar.align(
+          {
+            audio: vocals,
+            lyrics: lrc,
+            out,
+            language,
+            model: this.options.model,
+            device: this.options.device,
+            dtype: this.options.dtype
+          },
+          timeoutMs
+        );
+        sidecarHandled = true;
+        if (!response.ok) {
+          // 与单次脚本路径同语义:对齐失败不 fail 任务,lrc 兜底
+          await rm(out, { force: true }).catch(() => undefined);
+          const message = (response.error ?? "sidecar align failed").slice(0, 300);
+          return { status: "completed", message: `align failed (best-effort, lrc fallback): ${message}` };
+        }
+        input.log("align via sidecar ok", { out });
+      } catch (error) {
+        if (!(error instanceof SidecarTransportError)) {
+          throw error;
+        }
+        input.log("align sidecar transport failure; falling back to one-shot script", {
+          error: error.message
+        });
+      }
+    }
+
+    if (!sidecarHandled) {
+      const args = [
+        this.options.scriptPath,
+        "--audio",
+        vocals,
+        "--lyrics",
+        lrc,
+        "--out",
+        out,
+        "--language",
+        language,
+        "--model",
+        this.options.model,
+        "--device",
+        this.options.device,
+        "--dtype",
+        this.options.dtype
+      ];
+      try {
+        await this.run(this.options.bin, args, timeoutMs);
+      } catch (error) {
+        // 超时被 kill 时 python 可能已写了半截文件,删掉防止截断 JSON 入库
+        await rm(out, { force: true }).catch(() => undefined);
+        const message = error instanceof Error ? error.message : String(error);
+        return { status: "completed", message: `align failed (best-effort, lrc fallback): ${message.slice(0, 300)}` };
+      }
     }
 
     if (!(await stat(out).catch(() => null))) {

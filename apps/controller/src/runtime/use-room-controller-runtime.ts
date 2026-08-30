@@ -698,6 +698,10 @@ export function useRoomControllerRuntime(): RoomControllerState {
                   }
                 : current
             );
+            // 「我的点歌」历史行同样就地置 true,免得刷新前还挂着「生成歌词」按钮。
+            setSongHistory((current) =>
+              current.map((entry) => (entry.assetId === assetId ? { ...entry, hasLyrics: true } : entry))
+            );
             return;
           }
           setLyricsRegenerationResults((current) => ({ ...current, [assetId]: "not_found" }));

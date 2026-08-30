@@ -483,6 +483,12 @@ function HistorySongRow({
     }
   };
 
+  // 与搜索结果行同一套「生成歌词」交互:pending 防连点、found 就地置 true、not_found 行内提示。
+  // 历史条目 assetId 即 ktv_songs.id(SQL INNER JOIN 保证总有值),hasLyrics 缺省(旧后端)时不显示。
+  const canRegenerateLyrics = song.hasLyrics === false && Boolean(song.assetId);
+  const lyricsPending = canRegenerateLyrics && controller.lyricsRegenerationPending.includes(song.assetId);
+  const lyricsOutcome = canRegenerateLyrics ? controller.lyricsRegenerationResults[song.assetId] : undefined;
+
   return (
     <article className="my-history-row" aria-label={`${song.title} ${song.requestCount} 次`}>
       <div className="my-history-row__main">
@@ -491,6 +497,35 @@ function HistorySongRow({
       </div>
       <div className="my-history-row__meta">
         <span className="my-history-count">点过 {song.requestCount} 次</span>
+        {canRegenerateLyrics && lyricsOutcome ? (
+          <span
+            className="single-track-badge"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              minHeight: 18,
+              marginLeft: 6,
+              padding: "2px 6px",
+              border: "1px solid rgba(245, 158, 11, 0.34)",
+              borderRadius: 999,
+              fontSize: "0.66rem",
+              fontWeight: 850
+            }}
+          >
+            {lyricsOutcome === "not_found" ? "未找到歌词" : "生成歌词失败"}
+          </span>
+        ) : null}
+        {canRegenerateLyrics ? (
+          <button
+            className="secondary-button compact-button"
+            type="button"
+            style={{ minHeight: 24, marginLeft: 6, padding: "0 9px", fontSize: "0.7rem" }}
+            disabled={lyricsPending}
+            onClick={() => controller.regenerateLyrics(song.assetId)}
+          >
+            {lyricsPending ? "生成中…" : "生成歌词"}
+          </button>
+        ) : null}
       </div>
       <button className="primary-button compact-button" type="button" onClick={addAgain} aria-label={`再点 ${song.title}`}>
         再点

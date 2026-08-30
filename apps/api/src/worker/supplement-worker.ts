@@ -17,11 +17,13 @@ import {
   buildSupplementHandlers,
   type SupplementLlmConfig
 } from "../modules/online-supplement/supplement-handlers.js";
+import { getMediaSidecar, shutdownMediaSidecar, type PythonSidecar } from "../modules/online-supplement/python-sidecar.js";
 import {
   activeChildPids,
   killProcessTree
 } from "../modules/online-supplement/handlers/vocal-remove-handler.js";
 import type { MediaPathMapping } from "../modules/assets/media-path-mapping.js";
+import type { ApiConfig } from "../config.js";
 
 const ALL_STAGES: readonly SupplementTaskStage[] = Array.from(
   new Set<SupplementTaskStage>(
@@ -109,6 +111,7 @@ interface HandlerDeps {
     device: string;
     dtype: string;
   };
+  sidecar?: PythonSidecar | null;
 }
 
 function buildStageHandlers(runtime: WorkerRuntimeOptions, deps: HandlerDeps): Map<SupplementTaskStage, StageHandler> {
@@ -134,12 +137,47 @@ function buildStageHandlers(runtime: WorkerRuntimeOptions, deps: HandlerDeps): M
     demucsDevice: deps.demucsDevice,
     demucsModel: deps.demucsModel,
     ...(deps.ffmpegBin ? { ffmpegBin: deps.ffmpegBin } : {}),
-    aligner: deps.aligner
+    aligner: deps.aligner,
+    ...(deps.sidecar ? { sidecar: deps.sidecar } : {})
   });
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// sidecar 需要一个真实 python 解释器:优先 ALIGNER_BIN(qwen-asr 那个 python);
+// 未配置 aligner 时,若 DEMUCS_BIN 本身指向 python(如 python.exe -m demucs 的
+// 用法)也可用;两者都不是 python 则 sidecar 无法启动,保持旧路径。
+function looksLikePythonBin(bin: string): boolean {
+  const name = path.basename(bin).toLowerCase();
+  return /^python(\d+(\.\d+)?)?(w)?(\.exe)?$/u.test(name);
+}
+
+function resolveMediaSidecar(config: ApiConfig): PythonSidecar | null {
+  if (!config.mediaSidecarEnabled) {
+    return null;
+  }
+  const bin =
+    config.alignerBin || (looksLikePythonBin(config.demucsBin) ? config.demucsBin : "");
+  if (!bin) {
+    console.log(
+      "[supplement-worker] MEDIA_SIDECAR_ENABLED=true but no python bin resolvable " +
+        "(set ALIGNER_BIN); sidecar disabled, using one-shot script paths"
+    );
+    return null;
+  }
+  // sidecar 脚本与 ALIGNER_SCRIPT 同目录(默认 apps/api/python/media_sidecar.py)
+  const scriptPath = path.join(
+    path.dirname(path.resolve(process.cwd(), config.alignerScript)),
+    "media_sidecar.py"
+  );
+  return getMediaSidecar({
+    bin,
+    scriptPath,
+    ...(config.demucsBin ? { demucsBin: config.demucsBin } : {}),
+    ...(config.demucsArgs ? { demucsArgs: config.demucsArgs } : {})
+  });
 }
 
 interface StopSignal {
@@ -164,6 +202,9 @@ function installShutdownHandlers(stop: StopSignal, inFlight: InFlightRound): voi
       process.exit(1);
     }
     stop.stopped = true;
+    // 先关常驻 sidecar:其 pid 也在 activeChildPids 里,但显式 shutdown 会立即
+    // reject 在途请求,让依赖它的阶段快速返回后再进入统一树杀流程
+    void shutdownMediaSidecar();
     void drainActiveChildren(inFlight);
   };
   process.on("SIGINT", handler);
@@ -236,6 +277,7 @@ export async function runSupplementWorker(options: RunSupplementWorkerOptions = 
     }
   });
   const llm = resolveLlmConfig(env);
+  const sidecar = resolveMediaSidecar(config);
   const handlers = buildStageHandlers(runtime, {
     pool,
     workDir: config.supplementImportRoot,
@@ -254,7 +296,8 @@ export async function runSupplementWorker(options: RunSupplementWorkerOptions = 
       model: config.alignerModel,
       device: config.alignerDevice,
       dtype: config.alignerDtype
-    }
+    },
+    ...(sidecar ? { sidecar } : {})
   });
   const orchestrator = new SupplementOrchestrator({
     repo,
@@ -270,10 +313,11 @@ export async function runSupplementWorker(options: RunSupplementWorkerOptions = 
 
   console.log(
     `[supplement-worker] started (workerId=${runtime.workerId}, dryRun=${runtime.dryRun}, ` +
-    `handlers=[${Array.from(handlers.keys()).join(",")}], ` +
-    `aligner=${config.alignerBin ? `${config.alignerModel}@${config.alignerDevice}` : "disabled"}, ` +
-    `demucs=${config.demucsBin || "demucs"}@${config.demucsDevice}, ` +
-    `poll=${runtime.pollIntervalMs}ms, lease=${runtime.leaseDurationMs}ms)`
+      `handlers=[${Array.from(handlers.keys()).join(",")}], ` +
+      `aligner=${config.alignerBin ? `${config.alignerModel}@${config.alignerDevice}` : "disabled"}, ` +
+      `demucs=${config.demucsBin || "demucs"}@${config.demucsDevice}, ` +
+      `sidecar=${sidecar ? "enabled (resident python, lazy start)" : "disabled"}, ` +
+      `poll=${runtime.pollIntervalMs}ms, lease=${runtime.leaseDurationMs}ms)`
   );
 
   // 孤儿自清:子进程生命周期由父进程保证(runner 在 spawn 时登记 pid、exit 时

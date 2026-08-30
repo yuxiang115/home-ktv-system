@@ -409,6 +409,7 @@ function createConfig(): ApiConfig {
     alignerDevice: "cuda:0",
     alignerDtype: "bfloat16",
     alignerScript: "python/align_lyrics.py",
+    mediaSidecarEnabled: false,
     ffmpegBin: "ffmpeg",
     publicBaseUrl: "http://ktv.local",
     roomSlug: "living-room",

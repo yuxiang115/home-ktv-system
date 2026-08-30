@@ -10,6 +10,7 @@ import { VocalRemoveStageHandler } from "./handlers/vocal-remove-handler.js";
 import { AlignStageHandler } from "./handlers/align-handler.js";
 import { MixStageHandler } from "./handlers/mix-handler.js";
 import { IndexStageHandler } from "./handlers/index-handler.js";
+import type { PythonSidecar } from "./python-sidecar.js";
 
 export interface SupplementLlmConfig {
   baseUrl: string;
@@ -36,6 +37,8 @@ export interface SupplementHandlersOptions {
     device: string;
     dtype: string;
   };
+  /** 常驻 media sidecar(可选):vocal_remove/align 优先复用已加载模型 */
+  sidecar?: PythonSidecar | null;
 }
 
 export function buildSupplementHandlers(options: SupplementHandlersOptions): Map<SupplementTaskStage, StageHandler> {
@@ -53,7 +56,8 @@ export function buildSupplementHandlers(options: SupplementHandlersOptions): Map
       ...(options.demucsArgs ? { binArgs: options.demucsArgs } : {}),
       device: options.demucsDevice,
       model: options.demucsModel,
-      workDir: options.workDir
+      workDir: options.workDir,
+      ...(options.sidecar ? { sidecar: options.sidecar } : {})
     })
   );
   handlers.set(
@@ -64,7 +68,8 @@ export function buildSupplementHandlers(options: SupplementHandlersOptions): Map
       model: options.aligner?.model ?? "Qwen/Qwen3-ForcedAligner-0.6B",
       device: options.aligner?.device ?? "cuda:0",
       dtype: options.aligner?.dtype ?? "bfloat16",
-      demucsModel: options.demucsModel
+      demucsModel: options.demucsModel,
+      ...(options.sidecar ? { sidecar: options.sidecar } : {})
     })
   );
   handlers.set(

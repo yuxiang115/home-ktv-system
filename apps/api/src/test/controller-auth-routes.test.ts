@@ -158,7 +158,17 @@ describe("controller auth routes", () => {
                 title: "晴天",
                 artistName: "周杰伦",
                 requestCount: 3,
-                lastRequestedAt: "2026-06-05T10:00:00.000Z"
+                lastRequestedAt: "2026-06-05T10:00:00.000Z",
+                hasLyrics: true
+              },
+              {
+                songId: "ktv-song-rain",
+                assetId: "ktv-song-rain",
+                title: "雨天",
+                artistName: "孙燕姿",
+                requestCount: 1,
+                lastRequestedAt: "2026-06-04T10:00:00.000Z",
+                hasLyrics: false
               }
             ]
           : []
@@ -197,7 +207,17 @@ describe("controller auth routes", () => {
           title: "晴天",
           artistName: "周杰伦",
           requestCount: 3,
-          lastRequestedAt: "2026-06-05T10:00:00.000Z"
+          lastRequestedAt: "2026-06-05T10:00:00.000Z",
+          hasLyrics: true
+        },
+        {
+          songId: "ktv-song-rain",
+          assetId: "ktv-song-rain",
+          title: "雨天",
+          artistName: "孙燕姿",
+          requestCount: 1,
+          lastRequestedAt: "2026-06-04T10:00:00.000Z",
+          hasLyrics: false
         }
       ]
     });

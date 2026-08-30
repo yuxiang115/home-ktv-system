@@ -847,6 +847,59 @@ describe("mobile controller runtime", () => {
     expect(within(row).getByRole("button", { name: "生成歌词" })).toBeTruthy();
   });
 
+  it("regenerates lyrics from a My tab history row without lyrics", async () => {
+    const user = userEvent.setup();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))],
+      controllerHistoryResponse: {
+        songs: [
+          {
+            songId: "ktv-song-sunny",
+            assetId: "ktv-song-sunny",
+            title: "晴天",
+            artistName: "周杰伦",
+            requestCount: 3,
+            lastRequestedAt: "2026-06-05T10:00:00.000Z",
+            hasLyrics: false
+          },
+          {
+            songId: "ktv-song-rain",
+            assetId: "ktv-song-rain",
+            title: "雨天",
+            artistName: "孙燕姿",
+            requestCount: 1,
+            lastRequestedAt: "2026-06-04T10:00:00.000Z",
+            hasLyrics: true
+          }
+        ]
+      }
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    await screen.findByRole("button", { name: "打开搜索" });
+    await user.click(screen.getByRole("button", { name: "我的" }));
+    const history = await screen.findByRole("region", { name: "点歌历史" });
+    const sunnyRow = await within(history).findByRole("article", { name: "晴天 3 次" });
+    const rainRow = await within(history).findByRole("article", { name: "雨天 1 次" });
+
+    // 已有歌词的历史行不出现「生成歌词」按钮
+    expect(within(rainRow).queryByRole("button", { name: "生成歌词" })).toBeNull();
+    await user.click(within(sunnyRow).getByRole("button", { name: "生成歌词" }));
+
+    await waitFor(() =>
+      expect(
+        requests.some(
+          (request) => request.method === "POST" && request.url === "/media/ktv-index/ktv-song-sunny/regenerate-lyrics"
+        )
+      ).toBe(true)
+    );
+    // found:该历史行就地变为有歌词,按钮消失
+    await waitFor(() => expect(within(sunnyRow).queryByRole("button", { name: "生成歌词" })).toBeNull());
+    expect(within(sunnyRow).queryByText("未找到歌词")).toBeNull();
+  });
+
   it("requires duplicate confirmation before re-adding a queued song version", async () => {
     const { requests } = installControllerFetchMock({
       restoreResponses: [json(sessionResponse(roomSnapshot()))]

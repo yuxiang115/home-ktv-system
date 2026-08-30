@@ -2,6 +2,7 @@ import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { downloadedAssetPath } from "./download-handler.js";
 import type { StageExecuteInput, StageExecuteResult, StageHandler } from "../supplement-orchestrator.js";
+import { SidecarTransportError, type PythonSidecar } from "../python-sidecar.js";
 import { defaultStageCommandRunner, type StageCommandRunner } from "../process-runner.js";
 
 // 子进程执行与进程树生命周期管理(spawn 版 runner)已抽到共享模块 process-runner:
@@ -32,6 +33,9 @@ export interface VocalRemoveStageHandlerOptions {
   model?: string;
   timeoutMs?: number;
   run?: StageCommandRunner;
+  /** 常驻 sidecar 客户端(可选):优先复用已加载的 demucs 模型;
+   * 传输层故障回退 CLI 路径,业务失败按 CLI 失败同语义进入重试 */
+  sidecar?: PythonSidecar | null;
 }
 
 export class VocalRemoveStageHandler implements StageHandler {
@@ -70,6 +74,41 @@ export class VocalRemoveStageHandler implements StageHandler {
     ];
     const timeoutMs = this.options.timeoutMs ?? 15 * 60 * 1000;
 
+    // 单次分离:优先常驻 sidecar(模型已加载),传输层故障(进程崩溃/超时/
+    // broken)同一次尝试内回退 CLI;业务失败(ok:false)与 CLI 非零退出同语义,
+    // 交由外层重试循环处理
+    const separateOnce = async (): Promise<void> => {
+      const sidecar = this.options.sidecar;
+      if (sidecar && !sidecar.isBroken()) {
+        try {
+          const response = await sidecar.demucs(
+            {
+              audio: src,
+              outDir,
+              model,
+              device: this.options.device,
+              ...(this.options.binArgs ? { binArgs: this.options.binArgs } : {})
+            },
+            timeoutMs
+          );
+          if (response.ok) {
+            input.log("demucs via sidecar ok", { via: response.result?.via ?? "" });
+            return;
+          }
+          throw new Error(response.error ?? "sidecar demucs failed");
+        } catch (error) {
+          if (error instanceof SidecarTransportError) {
+            input.log("demucs sidecar transport failure; falling back to CLI", {
+              error: error.message
+            });
+          } else {
+            throw error;
+          }
+        }
+      }
+      await this.run(this.options.bin, args, timeoutMs);
+    };
+
     const deviceHint = this.options.device === "cpu" ? "cpu 模式较慢,约数分钟" : "gpu 加速";
     await input.reportProgress(10, `demucs ${this.options.device} (${deviceHint})`);
 
@@ -78,7 +117,7 @@ export class VocalRemoveStageHandler implements StageHandler {
       await input.renewLease(new Date(Date.now() + 15 * 60 * 1000));
       try {
         input.log(`demucs attempt ${attempt}/2`, { src, outDir, model, device: this.options.device });
-        await this.run(this.options.bin, args, timeoutMs);
+        await separateOnce();
         lastError = null;
         break;
       } catch (error) {

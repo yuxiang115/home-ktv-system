@@ -380,6 +380,8 @@ export interface ControllerSongHistoryEntry {
   artistName: string;
   requestCount: number;
   lastRequestedAt: string;
+  /** ktv_songs.lyric_file 是否存在(历史行「生成歌词」按钮的显隐依据);无关联资产时缺省为 false。 */
+  hasLyrics?: boolean;
 }
 
 export interface ControllerSongHistoryResponse {

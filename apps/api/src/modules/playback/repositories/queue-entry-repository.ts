@@ -174,16 +174,18 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
       artist_name: string;
       request_count: string | number;
       last_requested_at: Date | string;
+      has_lyrics: boolean | null;
     }>(
       `SELECT q.song_id,
               s.title,
               s.primary_artist_name AS artist_name,
               count(*)::int AS request_count,
-              max(q.requested_at) AS last_requested_at
+              max(q.requested_at) AS last_requested_at,
+              (s.lyric_file IS NOT NULL) AS has_lyrics
        FROM queue_entries q
        JOIN ktv_songs s ON s.id = q.song_id
        WHERE q.requested_by_user_phone = $1
-       GROUP BY q.song_id, s.title, s.primary_artist_name
+       GROUP BY q.song_id, s.title, s.primary_artist_name, s.lyric_file
        ORDER BY max(q.requested_at) DESC
        LIMIT $2`,
       [phone, normalizedLimit]
@@ -195,7 +197,8 @@ export class PgQueueEntryRepository implements QueueEntryRepository {
       title: row.title,
       artistName: row.artist_name,
       requestCount: typeof row.request_count === "number" ? row.request_count : Number.parseInt(row.request_count, 10),
-      lastRequestedAt: toIsoString(row.last_requested_at)
+      lastRequestedAt: toIsoString(row.last_requested_at),
+      hasLyrics: row.has_lyrics === true
     }));
   }
 
@@ -464,7 +467,8 @@ export class InMemoryQueueEntryRepository implements QueueEntryRepository {
         title: entry.songId,
         artistName: "",
         requestCount: entry.count,
-        lastRequestedAt: entry.lastRequestedAt
+        lastRequestedAt: entry.lastRequestedAt,
+        hasLyrics: false
       }));
   }
 

@@ -28,6 +28,8 @@ export interface ApiConfig {
   alignerDevice: string;
   alignerDtype: string;
   alignerScript: string;
+  /** 常驻 python sidecar(demucs/对齐模型进程内复用);默认关闭,故障时自动回退单次脚本路径 */
+  mediaSidecarEnabled: boolean;
   ffmpegBin: string;
   publicBaseUrl: string;
   roomSlug: string;
@@ -61,6 +63,7 @@ export type ApiConfigInput = Omit<
   | "alignerDevice"
   | "alignerDtype"
   | "alignerScript"
+  | "mediaSidecarEnabled"
   | "ffmpegBin"
   | "scanIntervalMinutes"
 > & {
@@ -87,6 +90,7 @@ export type ApiConfigInput = Omit<
   alignerDevice?: string;
   alignerDtype?: string;
   alignerScript?: string;
+  mediaSidecarEnabled?: boolean;
   ffmpegBin?: string;
   scanIntervalMinutes?: number;
 };
@@ -160,6 +164,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     alignerDevice: readString(env.ALIGNER_DEVICE) || DEFAULT_ALIGNER_DEVICE,
     alignerDtype: readString(env.ALIGNER_DTYPE) || DEFAULT_ALIGNER_DTYPE,
     alignerScript: readString(env.ALIGNER_SCRIPT) || DEFAULT_ALIGNER_SCRIPT,
+    mediaSidecarEnabled: readBoolean(env.MEDIA_SIDECAR_ENABLED),
     ffmpegBin: readString(env.FFMPEG_BIN) || "ffmpeg",
     publicBaseUrl: readString(env.PUBLIC_BASE_URL),
     roomSlug: readString(env.TV_ROOM_SLUG) || DEFAULT_ROOM_SLUG,
@@ -195,6 +200,7 @@ export function normalizeApiConfig(config: ApiConfigInput): ApiConfig {
     alignerDevice: config.alignerDevice || DEFAULT_ALIGNER_DEVICE,
     alignerDtype: config.alignerDtype || DEFAULT_ALIGNER_DTYPE,
     alignerScript: config.alignerScript || DEFAULT_ALIGNER_SCRIPT,
+    mediaSidecarEnabled: config.mediaSidecarEnabled ?? false,
     ffmpegBin: config.ffmpegBin ?? "ffmpeg",
     scanIntervalMinutes: config.scanIntervalMinutes ?? DEFAULT_SCAN_INTERVAL_MINUTES
   };
