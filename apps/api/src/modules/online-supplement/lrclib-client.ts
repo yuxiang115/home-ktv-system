@@ -101,13 +101,14 @@ export async function fetchBestLrclibRecord(input: FetchBestLrclibRecordInput): 
 
   if (durationSeconds !== null) {
     const exact = await getLrclib(fetchImpl, baseUrl, timeoutMs, input.artistName, input.trackName, durationSeconds);
-    if (exact) {
+    // get 是精确匹配但可能命中纯文本(无时间轴)记录;没有 synced 就继续走后面的链路
+    if (exact?.syncedLyrics?.trim()) {
       return exact;
     }
   }
 
   const noDuration = await getLrclib(fetchImpl, baseUrl, timeoutMs, input.artistName, input.trackName, null);
-  if (noDuration) {
+  if (noDuration?.syncedLyrics?.trim()) {
     return noDuration;
   }
 

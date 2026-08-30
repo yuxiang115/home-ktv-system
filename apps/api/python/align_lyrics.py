@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 """Char/word-level karaoke timing via Qwen3-ForcedAligner.
 
-Input : vocals wav + line-level LRC
+Input : audio (vocals wav preferred; any ffmpeg-readable media like the downloaded
+        mkv also works — ffmpeg converts to 16k mono, slightly lower quality but
+        correct timing) + line-level LRC
 Output: JSON {"lines":[{"start","end","text","words":[{"text","start","end"}]}]} (seconds)
 
 Qwen3-ForcedAligner aligns at most ~5 minutes per call, so long songs are cut
@@ -20,6 +22,10 @@ import tempfile
 from pathlib import Path
 
 LRC_TS = re.compile(r"\[(\d{1,2}):(\d{1,2}(?:[.:]\d{1,3})?)\]")
+# 增强版(A2)行内逐字时间戳 <mm:ss.xx>:不参与对齐文本(否则污染字符预算),剥离
+LRC_WORD_TS = re.compile(r"<\d{1,2}:\d{1,2}(?:[.:]\d{1,3})?>")
+# offset 元数据(毫秒):正值 => 歌词提前(时间轴前移),即 time -= offset/1000
+LRC_OFFSET = re.compile(r"\[offset:([+-]?\d+(?:\.\d+)?)\]", re.IGNORECASE)
 CHUNK_SECONDS = 240.0
 CHUNK_LEAD_SECONDS = 1.0
 
@@ -40,15 +46,22 @@ def ffprobe_cmd() -> str:
 
 def parse_lrc(path: Path) -> list[tuple[float, str]]:
     lines: list[tuple[float, str]] = []
+    offset_ms = 0.0
     for raw in path.read_text(encoding="utf-8").splitlines():
+        offset_match = LRC_OFFSET.search(raw)
+        if offset_match:
+            offset_ms = float(offset_match.group(1))
+            continue
         stamps = LRC_TS.findall(raw)
         if not stamps:
             continue
-        text = LRC_TS.sub("", raw).strip()
-        if not text:
+        text = LRC_WORD_TS.sub("", LRC_TS.sub("", raw)).strip()
+        # LRCLIB 常见用 "." 这类纯符号行占位前奏;无字母数字的行不参与对齐
+        if not text or not any(ch.isalnum() for ch in text):
             continue
         for minutes, seconds in stamps:
-            lines.append((int(minutes) * 60 + float(seconds.replace(":", ".")), text))
+            start = int(minutes) * 60 + float(seconds.replace(":", ".")) - offset_ms / 1000.0
+            lines.append((start, text))
     lines.sort(key=lambda item: item[0])
     return lines
 
@@ -70,6 +83,9 @@ def cut_audio(src: Path, dst: Path, start: float, end: float) -> None:
             "-ss", f"{max(0.0, start):.3f}",
             "-to", f"{end:.3f}",
             "-i", str(src),
+            # 源可能是含视频轨的 mkv(下载产物/库内文件直接对齐):-vn 丢弃视频流,
+            # 只取最佳音频流转 16k mono(wav 容器本身也不含视频,显式声明更稳)
+            "-vn",
             "-ac", "1", "-ar", "16000",
             str(dst),
         ],

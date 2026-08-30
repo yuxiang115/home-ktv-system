@@ -171,6 +171,13 @@ describe("AlignStageHandler", () => {
     await writeFile(path.join(workDir, "_lyrics", "task-1.lrc"), "[00:10.00]测试\n", "utf8");
   }
 
+  async function prepareDownloadedAndLyrics(workDir: string): Promise<void> {
+    await mkdir(path.join(workDir, "_downloads"), { recursive: true });
+    await writeFile(path.join(workDir, "_downloads", "task-1.mkv"), "video");
+    await mkdir(path.join(workDir, "_lyrics"), { recursive: true });
+    await writeFile(path.join(workDir, "_lyrics", "task-1.lrc"), "[00:10.00]测试\n", "utf8");
+  }
+
   it("skips when no aligner bin is configured", async () => {
     const workDir = await createWorkDir();
     await prepareVocalsAndLyrics(workDir);
@@ -209,12 +216,45 @@ describe("AlignStageHandler", () => {
     const result = await handler.execute(input);
 
     expect(result.status).toBe("completed");
-    expect(result.message).toBe("aligned");
+    expect(result.message).toBe("aligned (vocals)");
     expect(calls).toHaveLength(1);
     expect(calls[0]?.args).toContain("--language");
     expect(calls[0]?.args).toContain("Chinese");
     expect(calls[0]?.args).toContain("python/align_lyrics.py");
+    // 有 vocals stem 时优先用 vocals(质量最好)
+    expect(calls[0]?.args[calls[0]!.args.indexOf("--audio") + 1]).toBe(
+      path.join(workDir, "_stems", "task-1", "htdemucs", "task-1", "vocals.wav")
+    );
     expect(leaseCalls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("aligns with the downloaded asset when the vocals stem is missing (basic workflow)", async () => {
+    const workDir = await createWorkDir();
+    await prepareDownloadedAndLyrics(workDir);
+    const calls: Array<{ bin: string; args: string[] }> = [];
+    const handler = new AlignStageHandler({
+      ...handlerOptions,
+      run: async (bin, args) => {
+        calls.push({ bin, args: [...args] });
+        const outIndex = args.indexOf("--out");
+        const out = outIndex >= 0 ? (args[outIndex + 1] ?? "") : "";
+        await mkdir(path.dirname(out), { recursive: true });
+        await writeFile(out, JSON.stringify({
+          lines: [{ start: 10, end: 12, text: "测试", words: [{ text: "测", start: 10, end: 11 }] }]
+        }), "utf8");
+      }
+    });
+    const { input } = createInput(createTask({ stage: "align" }), workDir);
+
+    const result = await handler.execute(input);
+
+    expect(result.status).toBe("completed");
+    expect(result.message).toBe("aligned (downloaded)");
+    expect(calls).toHaveLength(1);
+    // 无 vocals stem 时回退到 download 阶段产物(mkv 直读,时间轴仍准确)
+    expect(calls[0]?.args[calls[0]!.args.indexOf("--audio") + 1]).toBe(
+      path.join(workDir, "_downloads", "task-1.mkv")
+    );
   });
 
   it("completes (best-effort) when the aligner fails", async () => {
@@ -235,8 +275,10 @@ describe("AlignStageHandler", () => {
     expect(result.message).toContain("model download failed");
   });
 
-  it("skips when the vocals stem is missing", async () => {
+  it("skips when neither the vocals stem nor the downloaded asset exists", async () => {
     const workDir = await createWorkDir();
+    await mkdir(path.join(workDir, "_lyrics"), { recursive: true });
+    await writeFile(path.join(workDir, "_lyrics", "task-1.lrc"), "[00:10.00]测试\n", "utf8");
     const handler = new AlignStageHandler({
       ...handlerOptions,
       run: async () => {
@@ -248,7 +290,7 @@ describe("AlignStageHandler", () => {
     const result = await handler.execute(input);
 
     expect(result.status).toBe("completed");
-    expect(result.message).toContain("no vocals stem");
+    expect(result.message).toContain("no vocals stem or downloaded audio");
   });
 
   it("deletes a stale karaoke json from a previous attempt when the aligner is disabled", async () => {

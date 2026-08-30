@@ -5,14 +5,31 @@ export interface LrcLine {
 
 // LRC 行时间戳,如 [00:12.00] / [00:12:30](冒号毫秒)/ 一行多戳 [00:12.00][01:30.00]
 const TIMESTAMP_PATTERN = /\[(\d{1,2}):(\d{1,2})(?:[.:](\d{1,3}))?\]/gu;
+// 增强版(A2)行内逐字时间戳,如 <00:12.50>/<00:12:50>:渲染层只做行内线性插值,
+// 这些标签既不该显示也不参与文本,统一剥离
+const WORD_TIMESTAMP_PATTERN = /<\d{1,2}:\d{1,2}(?:[.:]\d{1,3})?>/gu;
+// offset 元数据(毫秒):[offset:+500]/[offset:-500]/[offset:500]
+const OFFSET_PATTERN = /\[offset:([+-]?\d+(?:\.\d+)?)\]/iu;
 
 export function parseLrc(content: string): LrcLine[] {
   const lines: LrcLine[] = [];
+  let offsetMs: number | null = null;
   for (const rawLine of content.split(/\r?\n/u)) {
+    // offset 元数据行(可能多处出现,后出现的覆盖前面的)
+    const offsetMatch = OFFSET_PATTERN.exec(rawLine);
+    if (offsetMatch) {
+      const parsed = Number.parseFloat(offsetMatch[1] ?? "");
+      if (Number.isFinite(parsed)) {
+        offsetMs = parsed;
+      }
+      continue;
+    }
+
+    const cleanLine = rawLine.replace(WORD_TIMESTAMP_PATTERN, "");
     TIMESTAMP_PATTERN.lastIndex = 0;
     const stamps: number[] = [];
     let match: RegExpExecArray | null;
-    while ((match = TIMESTAMP_PATTERN.exec(rawLine)) !== null) {
+    while ((match = TIMESTAMP_PATTERN.exec(cleanLine)) !== null) {
       const minutes = Number.parseInt(match[1] ?? "0", 10);
       const seconds = Number.parseInt(match[2] ?? "0", 10);
       const fractionRaw = match[3] ?? "0";
@@ -28,8 +45,9 @@ export function parseLrc(content: string): LrcLine[] {
       continue;
     }
 
-    const text = rawLine.replace(TIMESTAMP_PATTERN, "").trim();
-    if (!text) {
+    const text = cleanLine.replace(TIMESTAMP_PATTERN, "").trim();
+    // LRCLIB 常见用 "." 这类纯符号行占位前奏;渲染成一行点很难看,直接跳过
+    if (!text || !/[\p{L}\p{N}]/u.test(text)) {
       continue;
     }
     for (const timeMs of stamps) {
@@ -37,7 +55,10 @@ export function parseLrc(content: string): LrcLine[] {
     }
   }
 
-  return lines.sort((left, right) => left.timeMs - right.timeMs);
+  // LRC 标准:offset 为正值 => 歌词提前显示(时间轴整体前移),即 timeMs -= offset
+  const shiftMs = offsetMs ?? 0;
+  const adjusted = lines.map((line) => ({ ...line, timeMs: line.timeMs - shiftMs }));
+  return adjusted.sort((left, right) => left.timeMs - right.timeMs);
 }
 
 // 当前行:最后一个 timeMs <= positionMs 的下标;演唱前返回 -1。

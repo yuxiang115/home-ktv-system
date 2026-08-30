@@ -2,6 +2,7 @@ import { readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import * as OpenCC from "opencc-js";
 import { defaultStageCommandRunner, type StageCommandRunner } from "./vocal-remove-handler.js";
+import { downloadedAssetPath } from "./download-handler.js";
 import { SidecarTransportError, type PythonSidecar } from "../python-sidecar.js";
 import type { StageExecuteInput, StageExecuteResult, StageHandler } from "../supplement-orchestrator.js";
 
@@ -102,9 +103,17 @@ export class AlignStageHandler implements StageHandler {
       return { status: "completed", message: "align skipped (no aligner configured)" };
     }
 
+    // 音频源回退:vocals stem 质量最好(无人声伴奏干扰);basic 工作流/分离失败时
+    // 没有 stem,退回 download 阶段产物(mkv 含视频轨,python 端 ffmpeg 会转 16k
+    // mono,混音对齐质量略降但时间轴准确)。两个都没有才 skip。
     const vocals = vocalsStemPath(input.workDir, input.task.id, this.options.demucsModel);
-    if (!(await stat(vocals).catch(() => null))) {
-      return { status: "completed", message: `align skipped (no vocals stem)` };
+    const hasVocals = (await stat(vocals).catch(() => null)) != null;
+    const downloaded = downloadedAssetPath(input.workDir, input.task.id);
+    const hasDownloaded = (await stat(downloaded).catch(() => null)) != null;
+    const audio = hasVocals ? vocals : downloaded;
+    const audioSource = hasVocals ? "vocals" : "downloaded";
+    if (!hasVocals && !hasDownloaded) {
+      return { status: "completed", message: "align skipped (no vocals stem or downloaded audio)" };
     }
     const lrc = input.task.lyricFile ?? path.join(input.workDir, LYRICS_SUBDIR, `${input.task.id}.lrc`);
     if (!(await stat(lrc).catch(() => null))) {
@@ -112,8 +121,8 @@ export class AlignStageHandler implements StageHandler {
     }
 
     const language = alignerLanguageForSpecName(input.task.llmRenamedTitle);
-    input.log("align start", { vocals, lrc, out, language });
-    await input.reportProgress(20, `逐字对齐(${language}, qwen3 aligner)`);
+    input.log("align start", { audio, audioSource, lrc, out, language });
+    await input.reportProgress(20, `逐字对齐(${language}, qwen3 aligner, 源=${audioSource})`);
     // 首跑要下载模型权重,给足 lease 与超时(lease 与默认超时对齐为 20min)
     await input.renewLease(new Date(Date.now() + 20 * 60 * 1000));
     const timeoutMs = this.options.timeoutMs ?? 20 * 60 * 1000;
@@ -126,7 +135,7 @@ export class AlignStageHandler implements StageHandler {
       try {
         const response = await sidecar.align(
           {
-            audio: vocals,
+            audio,
             lyrics: lrc,
             out,
             language,
@@ -158,7 +167,7 @@ export class AlignStageHandler implements StageHandler {
       const args = [
         this.options.scriptPath,
         "--audio",
-        vocals,
+        audio,
         "--lyrics",
         lrc,
         "--out",
@@ -192,8 +201,8 @@ export class AlignStageHandler implements StageHandler {
       return { status: "completed", message: "align output invalid (lrc fallback)" };
     }
 
-    input.log("align done", { out });
+    input.log("align done", { out, audioSource });
     await input.reportProgress(95, "逐字对齐完成");
-    return { status: "completed", message: "aligned" };
+    return { status: "completed", message: `aligned (${audioSource})` };
   }
 }

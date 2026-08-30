@@ -444,7 +444,7 @@ describe("AlignStageHandler sidecar 接入", () => {
     const result = await handler.execute(createInput(createTask({ stage: "align" }), workDir));
 
     expect(result.status).toBe("completed");
-    expect(result.message).toBe("aligned");
+    expect(result.message).toBe("aligned (vocals)");
     expect(harness.children[0]?.requests[0]?.cmd).toBe("align");
     expect(harness.children[0]?.requests[0]?.args).toMatchObject({
       language: "Chinese",
@@ -504,7 +504,7 @@ describe("AlignStageHandler sidecar 接入", () => {
     const result = await handler.execute(createInput(createTask({ stage: "align" }), workDir));
 
     expect(result.status).toBe("completed");
-    expect(result.message).toBe("aligned");
+    expect(result.message).toBe("aligned (vocals)");
     expect(calls).toHaveLength(1);
   });
 
@@ -538,7 +538,7 @@ describe("AlignStageHandler sidecar 接入", () => {
 
     const result = await handler.execute(createInput(createTask({ stage: "align" }), workDir));
 
-    expect(result.message).toBe("aligned");
+    expect(result.message).toBe("aligned (vocals)");
     expect(harness.spawnCount()).toBe(spawnsBefore);
   });
 });

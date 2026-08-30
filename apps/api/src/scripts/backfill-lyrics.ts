@@ -1,8 +1,10 @@
 // 回填在线补歌的同步歌词:对 _online 目录里 lyric_file 为空的歌曲,按文件名
 // "歌手-歌名-语种-分类" 解析出歌手/歌名,查 LRCLIB,把 synced LRC 写到 mkv 旁
 // 并 UPDATE ktv_songs.lyric_file。尽力而为:单首失败不影响其他。
-// --with-karaoke:对 karaoke_lyrics_file 为空的歌,从库内 mkv 重新 demucs 出
-// vocals 再跑 Qwen3-ForcedAligner 生成逐字时间轴(需要 ALIGNER_BIN/DEMUCS_BIN)。
+// --with-karaoke:对 karaoke_lyrics_file 为空的歌,直接用库内 mkv 跑
+// Qwen3-ForcedAligner 生成逐字时间轴(需要 ALIGNER_BIN;align_lyrics.py 的
+// ffmpeg 会把 mkv 转 16k mono,混音对齐质量略降但时间轴准确)。仅当
+// KTV_BACKFILL_USE_DEMUCS=1 时才先重新 demucs 分离 vocals(质量最好但慢)。
 // 用法: DATABASE_URL=... tsx src/scripts/backfill-lyrics.ts [--dry-run] [--with-karaoke] [--only-karaoke]
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
@@ -120,6 +122,9 @@ async function backfillKaraoke(pool: Pool, rows: readonly BackfillRow[], dryRun:
     console.log(`[backfill-lyrics] karaoke skipped: ALIGNER_BIN not configured`);
     return;
   }
+  console.log(
+    `[backfill-lyrics] karaoke audio source: ${USE_DEMUCS ? "demucs vocals (slow, best quality)" : "library mkv (direct)"}`
+  );
   console.log(`[backfill-lyrics] ${pending.length} song(s) without karaoke timing`);
   let filled = 0;
   for (const row of pending) {
@@ -145,59 +150,86 @@ async function backfillKaraoke(pool: Pool, rows: readonly BackfillRow[], dryRun:
   console.log(`[backfill-lyrics] karaoke done: ${filled}/${pending.length} filled`);
 }
 
-// 库内产物没有 vocals stem(index 后已清理),用 demucs 重新分离原唱再对齐。
+// 库内产物没有 vocals stem(index 后已清理)。默认直接用库内 mkv 对齐(mkv 直读,
+// ffmpeg 转 16k mono);KTV_BACKFILL_USE_DEMUCS=1 且 DEMUCS_BIN 可用时才重新分离
+// vocals 再对齐(质量最好,但每首要多花分钟级分离时间)。
+const USE_DEMUCS = process.env.KTV_BACKFILL_USE_DEMUCS === "1";
+
 async function alignLibraryMkv(row: BackfillRow, karaokePath: string, stem: string): Promise<void> {
+  if (!USE_DEMUCS) {
+    await runAligner(row.file_path, row.lyric_file as string, karaokePath, stem);
+    await ensureKaraokeOutput(karaokePath);
+    return;
+  }
+
   const workDir = await mkdtemp(path.join(os.tmpdir(), "ktv-backfill-"));
   try {
-    const demucsPrefix = DEMUCS_ARGS ? DEMUCS_ARGS.split(/\s+/u).filter(Boolean) : [];
-    await execFileAsync(
-      DEMUCS_BIN,
-      [
-        ...demucsPrefix,
-        "--two-stems",
-        "vocals",
-        "-n",
-        DEMUCS_MODEL,
-        "-d",
-        DEMUCS_DEVICE,
-        "-o",
-        workDir,
-        row.file_path
-      ],
-      { timeout: 20 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 }
-    );
-    const vocals = path.join(workDir, DEMUCS_MODEL, stem, "vocals.wav");
-    if (!(await stat(vocals).catch(() => null))) {
-      throw new Error(`demucs produced no vocals at ${vocals}`);
-    }
-
-    await execFileAsync(
-      ALIGNER_BIN,
-      [
-        path.resolve(process.cwd(), ALIGNER_SCRIPT),
-        "--audio",
-        vocals,
-        "--lyrics",
-        row.lyric_file as string,
-        "--out",
-        karaokePath,
-        "--language",
-        alignerLanguageForSpecName(stem),
-        "--model",
-        ALIGNER_MODEL,
-        "--device",
-        ALIGNER_DEVICE,
-        "--dtype",
-        ALIGNER_DTYPE
-      ],
-      { timeout: 20 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 }
-    );
-    if (!(await stat(karaokePath).catch(() => null))) {
-      throw new Error("aligner produced no output");
-    }
+    const vocals = await separateVocals(workDir, row.file_path, stem);
+    await runAligner(vocals, row.lyric_file as string, karaokePath, stem);
+    await ensureKaraokeOutput(karaokePath);
   } finally {
     await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
   }
+}
+
+async function runAligner(
+  audio: string,
+  lyricsFile: string,
+  karaokePath: string,
+  stem: string
+): Promise<void> {
+  await execFileAsync(
+    ALIGNER_BIN,
+    [
+      path.resolve(process.cwd(), ALIGNER_SCRIPT),
+      "--audio",
+      audio,
+      "--lyrics",
+      lyricsFile,
+      "--out",
+      karaokePath,
+      "--language",
+      alignerLanguageForSpecName(stem),
+      "--model",
+      ALIGNER_MODEL,
+      "--device",
+      ALIGNER_DEVICE,
+      "--dtype",
+      ALIGNER_DTYPE
+    ],
+    { timeout: 20 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 }
+  );
+}
+
+async function ensureKaraokeOutput(karaokePath: string): Promise<void> {
+  if (!(await stat(karaokePath).catch(() => null))) {
+    throw new Error("aligner produced no output");
+  }
+}
+
+async function separateVocals(workDir: string, sourceMkv: string, stem: string): Promise<string> {
+  const demucsPrefix = DEMUCS_ARGS ? DEMUCS_ARGS.split(/\s+/u).filter(Boolean) : [];
+  await execFileAsync(
+    DEMUCS_BIN,
+    [
+      ...demucsPrefix,
+      "--two-stems",
+      "vocals",
+      "-n",
+      DEMUCS_MODEL,
+      "-d",
+      DEMUCS_DEVICE,
+      "-o",
+      workDir,
+      sourceMkv
+    ],
+    { timeout: 20 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 }
+  );
+  const vocals = path.join(workDir, DEMUCS_MODEL, stem, "vocals.wav");
+  if (!(await stat(vocals).catch(() => null))) {
+    throw new Error(`demucs produced no vocals at ${vocals}`);
+  }
+  return vocals;
 }
 
 // LRCLIB 变体查询(原文→简体)统一走 lrclib-client 的 fetchBestLrclibWithVariants,

@@ -38,6 +38,40 @@ describe("parseLrc", () => {
     expect(lines).toEqual([{ timeMs: 15_000, text: "有效" }]);
   });
 
+  it("strips enhanced (word-level) inline timestamps from line text", () => {
+    const lines = parseLrc("[00:12.00]你<00:12.50>好<00:13.25>呀\n[00:20.00]colon<00:20:75>form\n");
+
+    expect(lines).toEqual([
+      { timeMs: 12_000, text: "你好呀" },
+      { timeMs: 20_000, text: "colonform" }
+    ]);
+  });
+
+  it("applies a positive offset by showing lyrics earlier (timeMs -= offsetMs)", () => {
+    const lines = parseLrc("[offset:+500]\n[00:12.00]第一句\n[00:30.00]第二句\n");
+
+    expect(lines.map((line) => line.timeMs)).toEqual([11_500, 29_500]);
+  });
+
+  it("applies a negative offset by delaying the timeline", () => {
+    const lines = parseLrc("[offset:-1500]\n[00:12.00]第一句\n");
+
+    expect(lines.map((line) => line.timeMs)).toEqual([13_500]);
+  });
+
+  it("supports unsigned offset values and re-sorts after the shift", () => {
+    const lines = parseLrc("[00:12.00]a\n[offset:250]\n[00:12.10]b\n");
+
+    expect(lines.map((line) => line.text)).toEqual(["a", "b"]);
+    expect(lines.map((line) => line.timeMs)).toEqual([11_750, 11_850]);
+  });
+
+  it("ignores malformed offset values without breaking parsing", () => {
+    const lines = parseLrc("[offset:abc]\n[00:12.00]第一句\n");
+
+    expect(lines).toEqual([{ timeMs: 12_000, text: "第一句" }]);
+  });
+
   it("returns empty for empty content", () => {
     expect(parseLrc("")).toEqual([]);
     expect(parseLrc("纯文本没有时间戳")).toEqual([]);
