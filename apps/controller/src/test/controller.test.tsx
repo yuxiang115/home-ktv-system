@@ -847,6 +847,46 @@ describe("mobile controller runtime", () => {
     expect(within(row).getByRole("button", { name: "生成歌词" })).toBeTruthy();
   });
 
+  it("marks the row as having lyrics when the ASR fallback transcribes it", async () => {
+    const user = userEvent.setup();
+    installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))],
+      songSearchResponse: noLyricsSongSearchResponse,
+      regenerateLyricsResponse: () => ({ status: "transcribed", lyricFile: "/media/_online/asset-actor-online.lrc" })
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    const dialog = await typeSearchQuery(user, "演員");
+    const row = await within(dialog).findByRole("article", { name: "薛之謙_Joker_Xue-演員-國語-流行.mkv" });
+    await user.click(within(row).getByRole("button", { name: "生成歌词" }));
+
+    // transcribed 与 found 同样就地置 hasLyrics=true:按钮消失,行内提示「已转写生成」
+    await waitFor(() => expect(within(row).queryByRole("button", { name: "生成歌词" })).toBeNull());
+    expect(await within(row).findByText("已转写生成")).toBeTruthy();
+  });
+
+  it("keeps the button but warns when transcription has no timing", async () => {
+    const user = userEvent.setup();
+    installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))],
+      songSearchResponse: noLyricsSongSearchResponse,
+      regenerateLyricsResponse: () => ({ status: "transcribed_no_timing" })
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    const dialog = await typeSearchQuery(user, "演員");
+    const row = await within(dialog).findByRole("article", { name: "薛之謙_Joker_Xue-演員-國語-流行.mkv" });
+    await user.click(within(row).getByRole("button", { name: "生成歌词" }));
+
+    // 无时间轴不落库:hasLyrics 不变(按钮仍在),仅行内提示说明原因
+    expect(await within(row).findByText("已转写但无时间轴，暂不启用")).toBeTruthy();
+    expect(within(row).getByRole("button", { name: "生成歌词" })).toBeTruthy();
+  });
+
   it("regenerates lyrics from a My tab history row without lyrics", async () => {
     const user = userEvent.setup();
     const { requests } = installControllerFetchMock({

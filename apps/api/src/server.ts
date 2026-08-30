@@ -161,6 +161,9 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     mediaGateway,
     ffmpegBin: resolvedConfig.ffmpegBin,
     lrclibBaseUrl: resolvedConfig.lyricsLrclibBaseUrl,
+    ...(resolvedConfig.asrBaseUrl
+      ? { asrBaseUrl: resolvedConfig.asrBaseUrl, asrModel: resolvedConfig.asrModel }
+      : {}),
     log: server.log,
     ...(pool
       ? {

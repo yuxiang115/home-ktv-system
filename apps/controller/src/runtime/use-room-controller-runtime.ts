@@ -44,9 +44,9 @@ export const sessionRefreshIntervalMs = 15 * 60 * 1000;
 // 超时或补歌任务 ready(曲库变化)后缓存失效,重新请求
 export const songSearchCacheTtlMs = 60_000;
 
-// 「生成歌词」单资产行内结果:found 时按钮直接消失(hasLyrics 就地置 true),
-// 只有这两个结局需要留在行内提示
-export type LyricsRegenerationOutcome = "not_found" | "error";
+// 「生成歌词」单资产行内结果:found/transcribed 时按钮直接消失(hasLyrics 就地置
+// true,transcribed 额外留一条「已转写生成」),其余结局留在行内提示
+export type LyricsRegenerationOutcome = "not_found" | "transcribed" | "transcribed_no_timing" | "error";
 
 interface ControllerCommandInput {
   roomSlug: string;
@@ -660,9 +660,10 @@ export function useRoomControllerRuntime(): RoomControllerState {
     [deviceId, initial.roomSlug, runCommand, runSongHistory, runSongSearch]
   );
 
-  // 「生成歌词」:只重查该资产的 LRCLIB 歌词并落库,不重跑下载/伴奏/对齐。
-  // found 时把当前搜索结果里该版本的 hasLyrics 就地置 true(不重跑整个搜索);
-  // not_found/网络错误留在行内提示,重试前先清掉旧提示。
+  // 「生成歌词」:只重查该资产的 LRCLIB 歌词并落库,不重跑下载/伴奏/对齐;
+  // LRCLIB 未命中且后端配了 ASR 服务时,会回退为从 MV 音频转写生成歌词。
+  // found/transcribed 把当前搜索结果里该版本的 hasLyrics 就地置 true(不重跑整个
+  // 搜索);not_found/transcribed_no_timing/网络错误留在行内提示,重试前先清掉旧提示。
   const regenerateLyrics = useCallback(
     (assetId: string) => {
       if (lyricsRegenerationPending.includes(assetId)) {
@@ -681,7 +682,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
 
       void regenerateAssetLyrics({ assetId })
         .then((response) => {
-          if (response.status === "found") {
+          if (response.status === "found" || response.status === "transcribed") {
             setSongSearch((current) =>
               current
                 ? {
@@ -702,6 +703,14 @@ export function useRoomControllerRuntime(): RoomControllerState {
             setSongHistory((current) =>
               current.map((entry) => (entry.assetId === assetId ? { ...entry, hasLyrics: true } : entry))
             );
+            if (response.status === "transcribed") {
+              setLyricsRegenerationResults((current) => ({ ...current, [assetId]: "transcribed" }));
+            }
+            return;
+          }
+          if (response.status === "transcribed_no_timing") {
+            // 转写只有纯文本无时间轴,后端未落库:hasLyrics 不变,行内提示说明原因。
+            setLyricsRegenerationResults((current) => ({ ...current, [assetId]: "transcribed_no_timing" }));
             return;
           }
           setLyricsRegenerationResults((current) => ({ ...current, [assetId]: "not_found" }));

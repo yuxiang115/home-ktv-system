@@ -16,7 +16,7 @@ import {
   vocalModeName
 } from "./i18n.js";
 import { joinRoomByRoomNumber } from "./api/client.js";
-import { useRoomController, type RoomControllerState } from "./runtime/use-room-controller.js";
+import { useRoomController, type LyricsRegenerationOutcome, type RoomControllerState } from "./runtime/use-room-controller.js";
 
 export function App() {
   return (
@@ -467,6 +467,22 @@ function MyScreen({
   );
 }
 
+// 「生成歌词」行内结局文案:not_found = LRCLIB 与 ASR 转写都没有产出;
+// transcribed = LRCLIB 未命中,ASR 从 MV 音频转写生成(时间轴与 MV 同步);
+// transcribed_no_timing = 转写只有纯文本无时间轴,后端未落库。
+function lyricsOutcomeLabel(outcome: LyricsRegenerationOutcome): string {
+  switch (outcome) {
+    case "not_found":
+      return "未找到歌词";
+    case "transcribed":
+      return "已转写生成";
+    case "transcribed_no_timing":
+      return "已转写但无时间轴，暂不启用";
+    default:
+      return "生成歌词失败";
+  }
+}
+
 function HistorySongRow({
   controller,
   onQueueAddFeedback,
@@ -483,11 +499,13 @@ function HistorySongRow({
     }
   };
 
-  // 与搜索结果行同一套「生成歌词」交互:pending 防连点、found 就地置 true、not_found 行内提示。
-  // 历史条目 assetId 即 ktv_songs.id(SQL INNER JOIN 保证总有值),hasLyrics 缺省(旧后端)时不显示。
+  // 与搜索结果行同一套「生成歌词」交互:pending 防连点、found/transcribed 就地置
+  // true、其余结局行内提示。历史条目 assetId 即 ktv_songs.id(SQL INNER JOIN 保证
+  // 总有值),hasLyrics 缺省(旧后端)时不显示。transcribed 后 hasLyrics 已置 true,
+  // 结局提示不随 canRegenerateLyrics 消失,让用户看到「已转写生成」的反馈。
   const canRegenerateLyrics = song.hasLyrics === false && Boolean(song.assetId);
   const lyricsPending = canRegenerateLyrics && controller.lyricsRegenerationPending.includes(song.assetId);
-  const lyricsOutcome = canRegenerateLyrics ? controller.lyricsRegenerationResults[song.assetId] : undefined;
+  const lyricsOutcome = controller.lyricsRegenerationResults[song.assetId];
 
   return (
     <article className="my-history-row" aria-label={`${song.title} ${song.requestCount} 次`}>
@@ -497,7 +515,7 @@ function HistorySongRow({
       </div>
       <div className="my-history-row__meta">
         <span className="my-history-count">点过 {song.requestCount} 次</span>
-        {canRegenerateLyrics && lyricsOutcome ? (
+        {lyricsOutcome ? (
           <span
             className="single-track-badge"
             style={{
@@ -512,7 +530,7 @@ function HistorySongRow({
               fontWeight: 850
             }}
           >
-            {lyricsOutcome === "not_found" ? "未找到歌词" : "生成歌词失败"}
+            {lyricsOutcomeLabel(lyricsOutcome)}
           </span>
         ) : null}
         {canRegenerateLyrics ? (
@@ -1691,11 +1709,7 @@ function SearchNasSongRows({
                 {version.audioTrackCount === 1 ? (
                   <span className="single-track-badge">{t("search.singleAudioTrackSource")}</span>
                 ) : null}
-                {version.hasLyrics === false && lyricsOutcome ? (
-                  <span className="single-track-badge">
-                    {lyricsOutcome === "not_found" ? "未找到歌词" : "生成歌词失败"}
-                  </span>
-                ) : null}
+                {lyricsOutcome ? <span className="single-track-badge">{lyricsOutcomeLabel(lyricsOutcome)}</span> : null}
               </div>
             </div>
             {version.hasLyrics === false ? (

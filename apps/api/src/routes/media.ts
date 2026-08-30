@@ -1,14 +1,20 @@
 import { createReadStream } from "node:fs";
-import { open, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, open, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { tmpdir } from "node:os";
+import { promisify } from "node:util";
 import { spawn } from "node:child_process";
 import { basename, dirname, extname, join } from "node:path";
 import type { FastifyBaseLogger, FastifyInstance, FastifyReply } from "fastify";
+import { DEFAULT_ASR_MODEL } from "../config.js";
 import { inferVideoContentType } from "../modules/media/content-type.js";
 import { artistTrackFromStem, fetchBestLrclibWithVariants } from "../modules/online-supplement/lrclib-client.js";
+import { transcribeAudio, type AsrSegment, type AsrTranscriber } from "../modules/online-supplement/asr-client.js";
 import type { MediaPathResolver, MediaPathResolution } from "../modules/assets/media-path-resolver.js";
 import type { QueryExecutor } from "../db/query-executor.js";
 import type { MediaGateway, MediaGatewayResolution } from "../modules/media/media-gateway.js";
 
+const execFileAsync = promisify(execFile);
 const safeNasCoverFileName = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.jpg$/u;
 const defaultLrclibBaseUrl = "https://lrclib.net";
 
@@ -21,10 +27,25 @@ export interface MediaRouteContext {
   lrclibBaseUrl?: string;
   /** 注入 fetch 实现(测试用);缺省用全局 fetch */
   lyricsFetchImpl?: typeof fetch;
+  /** ASR 转写服务基地址(Qwen3-ASR,whisper 风格);空 = LRCLIB 未命中后不做转写 */
+  asrBaseUrl?: string;
+  /** ASR 模型名(透传给 /v1/audio/transcriptions) */
+  asrModel?: string;
+  /** mkv → 16k mono m4a 抽音频步骤(默认 ffmpeg);测试注入以跳过真实 ffmpeg */
+  asrAudioExtractor?: AsrAudioExtractor;
+  /** 转写步骤(默认 transcribeAudio);测试注入 fake */
+  asrTranscriber?: AsrTranscriber;
   /** remux 选轨流(切伴奏 fallback)用的 ffmpeg;缺省为 PATH 上的 ffmpeg */
   ffmpegBin?: string;
   log?: FastifyBaseLogger;
 }
+
+/** 抽音频步骤:输入 mkv 路径,产出 ASR 用的 16kHz mono 音频文件 */
+export type AsrAudioExtractor = (input: {
+  ffmpegBin: string;
+  filePath: string;
+  outputPath: string;
+}) => Promise<void>;
 
 export async function registerMediaRoutes(fastify: FastifyInstance, context: MediaRouteContext): Promise<void> {
   fastify.get<{ Params: { "*": string } }>("/media/covers/nas/thumbs/*", async (request, reply) => {
@@ -154,6 +175,7 @@ export async function registerMediaRoutes(fastify: FastifyInstance, context: Med
   // 为 lyrics 阶段失败/LRCLIB 未命中的歌(多为在线补歌产物)单独重查歌词并落库,
   // 不重跑下载/伴奏/对齐等其他阶段。文件名按 "歌手-歌名-语种-分类" 反查 LRCLIB
   // (原文→简体变体),命中写 <stem>.lrc 到 mkv 旁并 UPDATE lyric_file。
+  // LRCLIB 未命中且配置了 ASR 服务时,改为从 MV 音频转写歌词(带时间戳,天然同步)。
   fastify.post<{ Params: { assetId: string } }>(
     "/media/ktv-index/:assetId/regenerate-lyrics",
     async (request, reply) => {
@@ -187,7 +209,26 @@ export async function registerMediaRoutes(fastify: FastifyInstance, context: Med
 
       const synced = matched?.record.syncedLyrics?.trim();
       if (!synced) {
-        return reply.status(200).send({ status: "not_found" });
+        return transcribeLyricsWithAsr(
+          reply,
+          {
+            asrBaseUrl: context.asrBaseUrl,
+            asrModel: context.asrModel,
+            asrAudioExtractor: context.asrAudioExtractor,
+            asrTranscriber: context.asrTranscriber,
+            ffmpegBin: context.ffmpegBin,
+            ...(context.log ? { log: context.log } : {}),
+            ktvIndexRawAssets: context.ktvIndexRawAssets,
+            mediaPathResolver: context.mediaPathResolver
+          },
+          {
+            assetId: request.params.assetId,
+            row,
+            stem,
+            artistName: names.artistName,
+            trackName: names.trackName
+          }
+        );
       }
 
       // 写到 mkv 同目录:落盘用 mediaPathResolver 解析出的本机路径,库里存
@@ -273,6 +314,128 @@ function parseNasCoverSongId(coverFileName: string): string | null {
     return null;
   }
   return coverFileName.slice(0, -".jpg".length);
+}
+
+// transcribeLyricsWithAsr 需要的字段(ktvIndexRawAssets/mediaPathResolver 已在路由
+// 开头判过非空;可选字段显式收 undefined,配合 exactOptionalPropertyTypes 直接透传)。
+interface MediaAsrRouteContext {
+  asrBaseUrl?: string | undefined;
+  asrModel?: string | undefined;
+  asrAudioExtractor?: AsrAudioExtractor | undefined;
+  asrTranscriber?: AsrTranscriber | undefined;
+  ffmpegBin?: string | undefined;
+  log?: FastifyBaseLogger | undefined;
+  ktvIndexRawAssets: KtvIndexRawAssetRepository;
+  mediaPathResolver: MediaPathResolver;
+}
+
+// LRCLIB 未命中后的 ASR 转写回退:mkv 抽成 16kHz mono 音频 → 转写(带时间戳) →
+// 拼 LRC 落库。segments 有时间戳 → transcribed(写 <stem>.lrc + UPDATE lyric_file);
+// 只有纯文本无时间轴 → transcribed_no_timing(不落库,仅提示);连文本都没有 →
+// 视同 not_found;ASR 网络/HTTP 失败 → 502 ASR_UNAVAILABLE。
+async function transcribeLyricsWithAsr(
+  reply: FastifyReply,
+  context: MediaAsrRouteContext,
+  input: {
+    assetId: string;
+    row: KtvIndexRawAssetRow;
+    stem: string;
+    artistName: string;
+    trackName: string;
+  }
+): Promise<FastifyReply> {
+  const asrBaseUrl = context.asrBaseUrl?.trim();
+  if (!asrBaseUrl) {
+    return reply.status(200).send({ status: "not_found" });
+  }
+
+  const resolved = await context.mediaPathResolver.resolveAssetFile(input.row.filePath);
+  if (!resolved.ok) {
+    return sendRawMediaPathError(reply, resolved);
+  }
+
+  const tempDir = await mkdtemp(join(tmpdir(), "home-ktv-asr-"));
+  try {
+    const audioPath = join(tempDir, "audio.m4a");
+    const extractAudio = context.asrAudioExtractor ?? extractMonoAudioWithFfmpeg;
+    try {
+      await extractAudio({
+        ffmpegBin: context.ffmpegBin ?? "ffmpeg",
+        filePath: resolved.filePath,
+        outputPath: audioPath
+      });
+    } catch (error) {
+      context.log?.warn({ error, assetId: input.assetId }, "regenerate-lyrics ffmpeg extract failed");
+      return reply.status(500).send({ error: "AUDIO_EXTRACT_FAILED" });
+    }
+
+    const transcriber: AsrTranscriber = context.asrTranscriber ?? transcribeAudio;
+    let transcription: Awaited<ReturnType<AsrTranscriber>>;
+    try {
+      transcription = await transcriber({
+        baseUrl: asrBaseUrl,
+        model: context.asrModel?.trim() || DEFAULT_ASR_MODEL,
+        filePath: audioPath,
+        prompt: `这是${input.artistName}演唱的歌曲《${input.trackName}》，请转写歌词文本`
+      });
+    } catch (error) {
+      context.log?.warn({ error, assetId: input.assetId }, "regenerate-lyrics asr error");
+      return reply.status(502).send({ error: "ASR_UNAVAILABLE" });
+    }
+
+    const lines = buildLrcLinesFromSegments(transcription.segments);
+    if (lines.length === 0) {
+      if (transcription.text.trim()) {
+        return reply.status(200).send({ status: "transcribed_no_timing" });
+      }
+      return reply.status(200).send({ status: "not_found" });
+    }
+
+    // 与 LRCLIB 命中分支同一套落盘/回写策略:本机路径写文件,库里存原始风格路径。
+    const lyricPath = join(dirname(input.row.filePath), `${input.stem}.lrc`);
+    try {
+      await writeFile(join(dirname(resolved.filePath), `${input.stem}.lrc`), `${lines.join("\n")}\n`, "utf8");
+    } catch (error) {
+      context.log?.warn({ error, lyricPath }, "regenerate-lyrics write failed");
+      return reply.status(500).send({ error: "LYRIC_WRITE_FAILED" });
+    }
+
+    await context.ktvIndexRawAssets.updateLyricFile(input.row.id, lyricPath);
+    return reply.status(200).send({ status: "transcribed", lyricFile: lyricPath });
+  } finally {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+// mkv → 16kHz mono m4a(ASR 输入):丢视频轨、混单声道、重采样,大幅减小上传体积。
+async function extractMonoAudioWithFfmpeg(input: {
+  ffmpegBin: string;
+  filePath: string;
+  outputPath: string;
+}): Promise<void> {
+  await execFileAsync(
+    input.ffmpegBin,
+    ["-y", "-nostdin", "-i", input.filePath, "-vn", "-ac", "1", "-ar", "16000", input.outputPath],
+    { timeout: 120_000, windowsHide: true }
+  );
+}
+
+// whisper 风格 segments → LRC 行:按 start 排序,过滤纯空白/纯符号段
+// (与 python/align_lyrics.py 的 isalnum 规则一致:无字母数字的行不保留)。
+function buildLrcLinesFromSegments(segments: readonly AsrSegment[]): string[] {
+  return [...segments]
+    .sort((a, b) => a.start - b.start)
+    .map((segment) => ({ start: segment.start, text: segment.text.trim() }))
+    .filter((segment) => Number.isFinite(segment.start) && /[\p{L}\p{N}]/u.test(segment.text))
+    .map((segment) => `[${formatLrcTimestamp(segment.start)}]${segment.text}`);
+}
+
+// 秒 → "[mm:ss.xx]"(两位分钟、两位小数秒,与 LRCLIB/align 脚本同风格)。
+function formatLrcTimestamp(seconds: number): string {
+  const clamped = Math.max(seconds, 0);
+  const minutes = Math.floor(clamped / 60);
+  const rest = clamped - minutes * 60;
+  return `${String(minutes).padStart(2, "0")}:${rest.toFixed(2).padStart(5, "0")}`;
 }
 
 function parseNonNegativeInt(value: unknown): number | null {

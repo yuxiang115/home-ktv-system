@@ -63,9 +63,11 @@ export interface OnlineSupplementRequestResponse {
   stage: string;
 }
 
-// POST /media/ktv-index/:assetId/regenerate-lyrics:查不到歌词不是错误
+// POST /media/ktv-index/:assetId/regenerate-lyrics:查不到歌词不是错误。
+// transcribed = LRCLIB 未命中后由 ASR 从 MV 音频转写生成(时间轴与 MV 同步);
+// transcribed_no_timing = 转写只有纯文本无时间轴,后端未落库。
 export interface RegenerateLyricsResponse {
-  status: "found" | "not_found";
+  status: "found" | "not_found" | "transcribed" | "transcribed_no_timing";
   lyricFile?: string;
 }
 

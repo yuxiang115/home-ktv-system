@@ -14,6 +14,9 @@ export interface ApiConfig {
   supplementImportRoot: string;
   supplementBatchSize: number;
   lyricsLrclibBaseUrl: string;
+  /** Qwen3-ASR 转写服务(OpenAI whisper 风格)基地址;空 = LRCLIB 未命中后不做转写 */
+  asrBaseUrl: string;
+  asrModel: string;
   ytDlpBin: string;
   ytDlpArgs: string;
   youtubePlayerClient: string;
@@ -49,6 +52,8 @@ export type ApiConfigInput = Omit<
   | "supplementImportRoot"
   | "supplementBatchSize"
   | "lyricsLrclibBaseUrl"
+  | "asrBaseUrl"
+  | "asrModel"
   | "ytDlpBin"
   | "ytDlpArgs"
   | "youtubePlayerClient"
@@ -76,6 +81,8 @@ export type ApiConfigInput = Omit<
   supplementImportRoot?: string;
   supplementBatchSize?: number;
   lyricsLrclibBaseUrl?: string;
+  asrBaseUrl?: string;
+  asrModel?: string;
   ytDlpBin?: string;
   ytDlpArgs?: string;
   youtubePlayerClient?: string;
@@ -102,6 +109,7 @@ const DEFAULT_SCAN_INTERVAL_MINUTES = 360;
 const DEFAULT_ONLINE_SUPPLEMENT_WORKFLOW = "youtube-enhanced";
 const DEFAULT_SUPPLEMENT_BATCH_SIZE = 4;
 const DEFAULT_LYRICS_LRCLIB_BASE_URL = "https://lrclib.net";
+export const DEFAULT_ASR_MODEL = "mlx-community/Qwen3-ASR-1.7B-4bit";
 const DEFAULT_DEMUCS_MODEL = "htdemucs";
 const DEFAULT_YOUTUBE_PLAYER_CLIENT = "android";
 const DEFAULT_ALIGNER_MODEL = "Qwen/Qwen3-ForcedAligner-0.6B";
@@ -150,6 +158,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     supplementImportRoot: readString(env.SUPPLEMENT_IMPORT_ROOT),
     supplementBatchSize: readPositiveInteger(env.SUPPLEMENT_BATCH_SIZE, DEFAULT_SUPPLEMENT_BATCH_SIZE),
     lyricsLrclibBaseUrl: readString(env.LYRICS_LRCLIB_BASE_URL) || DEFAULT_LYRICS_LRCLIB_BASE_URL,
+    asrBaseUrl: readString(env.KTV_ASR_BASE_URL),
+    asrModel: readString(env.KTV_ASR_MODEL) || DEFAULT_ASR_MODEL,
     ytDlpBin: readString(env.YT_DLP_BIN) || "yt-dlp",
     ytDlpArgs: readString(env.YT_DLP_ARGS),
     youtubePlayerClient: env.YOUTUBE_PLAYER_CLIENT !== undefined ? readString(env.YOUTUBE_PLAYER_CLIENT) : DEFAULT_YOUTUBE_PLAYER_CLIENT,
@@ -186,6 +196,8 @@ export function normalizeApiConfig(config: ApiConfigInput): ApiConfig {
     supplementImportRoot: config.supplementImportRoot ?? "",
     supplementBatchSize: config.supplementBatchSize ?? DEFAULT_SUPPLEMENT_BATCH_SIZE,
     lyricsLrclibBaseUrl: config.lyricsLrclibBaseUrl || DEFAULT_LYRICS_LRCLIB_BASE_URL,
+    asrBaseUrl: config.asrBaseUrl ?? "",
+    asrModel: config.asrModel || DEFAULT_ASR_MODEL,
     ytDlpBin: config.ytDlpBin ?? "yt-dlp",
     ytDlpArgs: config.ytDlpArgs ?? "",
     youtubePlayerClient: config.youtubePlayerClient ?? DEFAULT_YOUTUBE_PLAYER_CLIENT,

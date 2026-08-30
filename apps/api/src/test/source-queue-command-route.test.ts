@@ -395,6 +395,8 @@ function createConfig(): ApiConfig {
     supplementImportRoot: "",
     supplementBatchSize: 4,
     lyricsLrclibBaseUrl: "https://lrclib.net",
+    asrBaseUrl: "",
+    asrModel: "mlx-community/Qwen3-ASR-1.7B-4bit",
     ytDlpBin: "yt-dlp",
     ytDlpArgs: "",
     youtubePlayerClient: "android",
