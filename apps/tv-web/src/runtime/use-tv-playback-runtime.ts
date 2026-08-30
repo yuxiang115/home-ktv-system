@@ -32,6 +32,8 @@ export interface UseTvPlaybackRuntimeInput {
 
 export interface TvPlaybackRuntimeState {
   durationMs: number | null;
+  /** 实时读取当前播放位置(毫秒);引用稳定,供逐帧驱动的渲染层(歌词扫光 rAF)调用 */
+  getPositionMs(): number;
   firstPlayBlocked: boolean;
   handleFirstPlayPromptClick(): void;
   handleVideoEnded(event: SyntheticEvent<HTMLVideoElement>): void;
@@ -433,6 +435,17 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
     [client]
   );
 
+  // 实时位置读取:每次调用直接读 video.currentTime(经 pool),不受 runtime 200ms tick
+  // 的 render 时机限制;歌词扫光的 rAF 循环用它逐帧取位置。空依赖保证引用稳定,
+  // 无 pool 时的 fallback 走 latestSnapshotRef,不会闭包住旧快照。
+  const getPositionMs = useCallback((): number => {
+    const pool = videoPoolRef.current;
+    if (pool) {
+      return Math.max(0, pool.activePlaybackPositionMs());
+    }
+    return latestSnapshotRef.current?.currentTarget?.resumePositionMs ?? 0;
+  }, []);
+
   const snapshot = mergeLocalNotice(roomState.snapshot, localNotice);
   const currentTargetKey = playbackTargetKey(snapshot?.currentTarget ?? null);
   const activeVideo = videoPoolRef.current?.activeVideo ?? null;
@@ -445,6 +458,7 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
   return {
     durationMs,
     firstPlayBlocked,
+    getPositionMs,
     handleFirstPlayPromptClick: retryCurrentPlayback,
     handleVideoEnded,
     interactions: roomState.interactions,

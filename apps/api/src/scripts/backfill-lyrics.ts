@@ -1,10 +1,13 @@
 // 回填在线补歌的同步歌词:对 _online 目录里 lyric_file 为空的歌曲,按文件名
 // "歌手-歌名-语种-分类" 解析出歌手/歌名,查 LRCLIB,把 synced LRC 写到 mkv 旁
 // 并 UPDATE ktv_songs.lyric_file。尽力而为:单首失败不影响其他。
-// --with-karaoke:对 karaoke_lyrics_file 为空的歌,直接用库内 mkv 跑
-// Qwen3-ForcedAligner 生成逐字时间轴(需要 ALIGNER_BIN;align_lyrics.py 的
-// ffmpeg 会把 mkv 转 16k mono,混音对齐质量略降但时间轴准确)。仅当
-// KTV_BACKFILL_USE_DEMUCS=1 时才先重新 demucs 分离 vocals(质量最好但慢)。
+// --with-karaoke:对 karaoke_lyrics_file 为空的歌,用最优可用音源跑
+// Qwen3-ForcedAligner 生成逐字时间轴(需要 ALIGNER_BIN)。音源优先级:
+// 1) mkv 旁的 <stem>.vocals.m4a sidecar(index 阶段留的人声,质量与速度兼得);
+// 2) KTV_BACKFILL_USE_DEMUCS=1 且 DEMUCS_BIN 可用时重新 demucs 分离(质量最好
+//    但每首要多花分钟级);
+// 3) 库内 mkv 直接对齐(ffmpeg 转 16k mono,混音对齐质量最低,且可能被质量
+//    门禁拒绝后走 lrc 兜底)。
 // 用法: DATABASE_URL=... tsx src/scripts/backfill-lyrics.ts [--dry-run] [--with-karaoke] [--only-karaoke]
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
@@ -15,6 +18,7 @@ import { promisify } from "node:util";
 import { Pool } from "pg";
 import { artistTrackFromStem, fetchBestLrclibWithVariants } from "../modules/online-supplement/lrclib-client.js";
 import { alignerLanguageForSpecName } from "../modules/online-supplement/handlers/align-handler.js";
+import { VOCALS_SIDECAR_SUFFIX } from "../modules/online-supplement/handlers/index-handler.js";
 
 const execFileAsync = promisify(execFile);
 const LRCLIB_BASE_URL = process.env.LYRICS_LRCLIB_BASE_URL?.trim() || "https://lrclib.net";
@@ -123,7 +127,9 @@ async function backfillKaraoke(pool: Pool, rows: readonly BackfillRow[], dryRun:
     return;
   }
   console.log(
-    `[backfill-lyrics] karaoke audio source: ${USE_DEMUCS ? "demucs vocals (slow, best quality)" : "library mkv (direct)"}`
+    `[backfill-lyrics] karaoke audio source priority: <stem>${VOCALS_SIDECAR_SUFFIX} sidecar -> ${
+      USE_DEMUCS ? "demucs vocals (slow, best quality)" : "library mkv (direct)"
+    }`
   );
   console.log(`[backfill-lyrics] ${pending.length} song(s) without karaoke timing`);
   let filled = 0;
@@ -144,18 +150,32 @@ async function backfillKaraoke(pool: Pool, rows: readonly BackfillRow[], dryRun:
       filled += 1;
       console.log(`[backfill-lyrics] karaoke filled: ${stem}`);
     } catch (error) {
-      console.log(`[backfill-lyrics] karaoke failed for ${stem}: ${error instanceof Error ? error.message : String(error)}`);
+      // align_lyrics.py 质量门禁不达标时 exit 4 且不写输出:与普通失败一样跳过
+      // 该歌(lrc 兜底),但消息注明 quality-gate 便于排查
+      const detail = error instanceof Error ? error.message : String(error);
+      const qualityGate = isKaraokeQualityGateFailure(error);
+      console.log(
+        `[backfill-lyrics] karaoke ${qualityGate ? "quality-gate rejected" : "failed"} for ${stem}: ${detail.slice(0, 400)}`
+      );
     }
   }
   console.log(`[backfill-lyrics] karaoke done: ${filled}/${pending.length} filled`);
 }
 
-// 库内产物没有 vocals stem(index 后已清理)。默认直接用库内 mkv 对齐(mkv 直读,
-// ffmpeg 转 16k mono);KTV_BACKFILL_USE_DEMUCS=1 且 DEMUCS_BIN 可用时才重新分离
-// vocals 再对齐(质量最好,但每首要多花分钟级分离时间)。
+// 库内产物没有 vocals stem(index 后已清理,但会留 <stem>.vocals.m4a sidecar)。
+// 音源优先级:sidecar 人声(index 阶段压缩留存)→ KTV_BACKFILL_USE_DEMUCS=1 且
+// DEMUCS_BIN 可用时重新分离(最慢最好)→ 库内 mkv 直读(混音,最差)。
 const USE_DEMUCS = process.env.KTV_BACKFILL_USE_DEMUCS === "1";
 
 async function alignLibraryMkv(row: BackfillRow, karaokePath: string, stem: string): Promise<void> {
+  const vocalsSidecar = path.join(path.dirname(row.file_path), `${stem}${VOCALS_SIDECAR_SUFFIX}`);
+  if ((await stat(vocalsSidecar).catch(() => null)) != null) {
+    console.log(`[backfill-lyrics] using vocals sidecar for ${stem}: ${vocalsSidecar}`);
+    await runAligner(vocalsSidecar, row.lyric_file as string, karaokePath, stem);
+    await ensureKaraokeOutput(karaokePath);
+    return;
+  }
+
   if (!USE_DEMUCS) {
     await runAligner(row.file_path, row.lyric_file as string, karaokePath, stem);
     await ensureKaraokeOutput(karaokePath);
@@ -170,6 +190,17 @@ async function alignLibraryMkv(row: BackfillRow, karaokePath: string, stem: stri
   } finally {
     await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
   }
+}
+
+function isKaraokeQualityGateFailure(error: unknown): boolean {
+  // execFile 失败时 error.code = 子进程退出码;align_lyrics.py 质量门禁 = exit 4
+  // (stderr 里也会带 "alignment quality-gate failed: ..." 报告,双保险识别)
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === 4) {
+    return true;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return /quality[-_ ]?gate/u.test(message);
 }
 
 async function runAligner(

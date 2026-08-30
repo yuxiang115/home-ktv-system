@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, render } from "@testing-library/react";
 import { LyricsOverlay } from "../components/LyricsOverlay.js";
 import type { KaraokeLine } from "../runtime/karaoke.js";
 import { tvTheme } from "../theme.js";
@@ -118,5 +118,99 @@ describe("LyricsOverlay karaoke rendering", () => {
     );
     const sungAtEnd = wordSpans(end.container)[2];
     expect(sungAtEnd?.style.color).toBe(tvTheme.colors.accent);
+  });
+});
+
+describe("LyricsOverlay live position reader", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // mock rAF 成手动队列:测试可以精确决定"帧"何时发生
+  function mockRequestAnimationFrame(): { flush: () => void; queue: FrameRequestCallback[] } {
+    const queue: FrameRequestCallback[] = [];
+    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((callback) => {
+      queue.push(callback);
+      return queue.length;
+    });
+    vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => undefined);
+    return {
+      queue,
+      flush: () => {
+        for (const frame of queue.splice(0)) {
+          frame(0);
+        }
+      }
+    };
+  }
+
+  it("drives the sweep from getPositionMs on every animation frame", () => {
+    const frames = mockRequestAnimationFrame();
+    let livePositionMs = 10_000;
+    const { container } = render(
+      <LyricsOverlay
+        karaokeLines={englishLines}
+        lrcLines={[]}
+        positionMs={0}
+        getPositionMs={() => livePositionMs}
+      />
+    );
+
+    // 首帧之前退 positionMs prop(0):整行未唱
+    expect(wordSpans(container)[2]?.style.color).toBe(tvTheme.colors.textMuted);
+
+    // prop 不变,回调前进到 "think"(12_000..13_000)正中间 => 词内扫光 50%
+    livePositionMs = 12_500;
+    act(() => {
+      frames.flush();
+    });
+
+    const active = wordSpans(container)[2];
+    expect(active?.style.backgroundImage).toContain("50%");
+    expect(active?.style.color).toBe("transparent");
+  });
+
+  it("renders non-quantized sweep percentages for fractional progress", () => {
+    const frames = mockRequestAnimationFrame();
+    let livePositionMs = 10_000;
+    const { container } = render(
+      <LyricsOverlay
+        karaokeLines={englishLines}
+        lrcLines={[]}
+        positionMs={0}
+        getPositionMs={() => livePositionMs}
+      />
+    );
+
+    // "think" 起始后 1/3:词内进度 1/3 => 33.333...%,不做 0.1% 量化(量化值是 33.3%)
+    livePositionMs = 12_000 + 1_000 / 3;
+    act(() => {
+      frames.flush();
+    });
+
+    const active = wordSpans(container)[2];
+    expect(active?.style.backgroundImage).toMatch(/33\.3333\d*%/u);
+  });
+
+  it("stops the animation frame loop on unmount", () => {
+    const frames = mockRequestAnimationFrame();
+    let livePositionMs = 10_000;
+    const { unmount } = render(
+      <LyricsOverlay
+        karaokeLines={englishLines}
+        lrcLines={[]}
+        positionMs={0}
+        getPositionMs={() => livePositionMs}
+      />
+    );
+
+    unmount();
+
+    // 卸载后残留的已排队帧不能再排出新帧
+    livePositionMs = 12_500;
+    act(() => {
+      frames.flush();
+    });
+    expect(frames.queue).toHaveLength(0);
   });
 });

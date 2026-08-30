@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   activeKaraokeLineIndex,
   karaokeWordNeedsSpace,
@@ -14,32 +14,84 @@ export interface LyricsOverlayProps {
   karaokeLines: readonly KaraokeLine[] | null;
   lrcLines: readonly LrcLine[];
   positionMs: number;
+  /** 实时位置回调(优先于 positionMs):提供时组件按 rAF 每帧读取当帧位置,扫光连续推进 */
+  getPositionMs?: () => number;
 }
 
 // KTV 式同步歌词:有逐字时间轴时词内扫光(已唱亮色、未唱底色、正在唱的词按词内
-// 进度渐变);只有行级 LRC 时退化为整行扫光(行内线性插值)。100ms 自刷新跟随进度。
-export function LyricsOverlay({ karaokeLines, lrcLines, positionMs }: LyricsOverlayProps) {
+// 进度渐变);只有行级 LRC 时退化为整行扫光(行内线性插值)。提供 getPositionMs 时
+// 用 rAF 每帧实时读取位置(原生 KTV 的连续感);否则 100ms 自刷新跟随 positionMs。
+export function LyricsOverlay({ karaokeLines, lrcLines, positionMs, getPositionMs }: LyricsOverlayProps) {
   const totalLines = (karaokeLines?.length ?? 0) + lrcLines.length;
   const [, setFrame] = useState(0);
+  // rAF 路径的当帧位置;null = 首帧还没到/未提供回调,先退 positionMs prop
+  const [livePositionMs, setLivePositionMs] = useState<number | null>(null);
+  const getPositionMsRef = useRef(getPositionMs);
+  const hasReader = Boolean(getPositionMs);
+
+  useEffect(() => {
+    getPositionMsRef.current = getPositionMs;
+  }, [getPositionMs]);
 
   useEffect(() => {
     if (totalLines === 0) {
       return;
     }
-    const intervalId = globalThis.setInterval(() => {
-      setFrame((frame) => frame + 1);
-    }, 100);
+
+    // 兼容路径(未提供实时回调):保持原有 interval 自刷新,渲染读取 positionMs prop
+    if (!hasReader) {
+      const intervalId = globalThis.setInterval(() => {
+        setFrame((frame) => frame + 1);
+      }, 100);
+      return () => globalThis.clearInterval(intervalId);
+    }
+
+    const readPosition = () => {
+      const reader = getPositionMsRef.current;
+      if (reader) {
+        setLivePositionMs(reader());
+      }
+    };
+
+    // 实时路径:优先 rAF,每帧读当帧位置;测试环境无 rAF(或返回假句柄)时
+    // 退化为 interval 读取
+    if (typeof globalThis.requestAnimationFrame === "function") {
+      let frameHandle: number | null = null;
+      let stopped = false;
+      const tick = () => {
+        if (stopped) {
+          return;
+        }
+        readPosition();
+        frameHandle = globalThis.requestAnimationFrame(tick);
+      };
+      frameHandle = globalThis.requestAnimationFrame(tick);
+      if (frameHandle != null) {
+        return () => {
+          stopped = true;
+          if (frameHandle != null) {
+            globalThis.cancelAnimationFrame(frameHandle);
+          }
+        };
+      }
+      // rAF 返回假句柄:该环境不可用,停掉试探帧,落到 interval
+      stopped = true;
+    }
+
+    const intervalId = globalThis.setInterval(readPosition, 100);
     return () => globalThis.clearInterval(intervalId);
-  }, [totalLines]);
+  }, [totalLines, hasReader]);
 
   if (totalLines === 0) {
     return null;
   }
 
+  const effectivePositionMs = hasReader ? (livePositionMs ?? positionMs) : positionMs;
+
   if (karaokeLines && karaokeLines.length > 0) {
-    return <KaraokeOverlay lines={karaokeLines} positionMs={positionMs} />;
+    return <KaraokeOverlay lines={karaokeLines} positionMs={effectivePositionMs} />;
   }
-  return <LrcSweepOverlay lines={lrcLines} positionMs={positionMs} />;
+  return <LrcSweepOverlay lines={lrcLines} positionMs={effectivePositionMs} />;
 }
 
 // 词内扫光:当前行内已唱词纯亮色、未唱纯底色;正在唱的词按词内进度双色渐变扫过。
@@ -101,7 +153,8 @@ function KaraokeWordSpan({
     );
   }
 
-  const sweepPercent = Math.round(karaokeWordProgress(word, positionMs) * 1000) / 10;
+  // CSS 渐变百分比支持小数,保留浮点精度让扫光逐帧平滑(不量化到 0.1%)
+  const sweepPercent = karaokeWordProgress(word, positionMs) * 100;
   return (
     <span style={{ ...styles.word, ...wordSweepStyles(sweepPercent), ...styles.wordActive }}>
       {word.text}
@@ -118,7 +171,8 @@ function LrcSweepOverlay({ lines, positionMs }: { lines: readonly LrcLine[]; pos
 
   const span = current ? lyricLineSpan(lines, index >= 0 ? index : 0) : null;
   const progress = span ? lyricLineProgress(span, positionMs) : 0;
-  const sweepPercent = Math.round(progress * 1000) / 10;
+  // CSS 渐变百分比支持小数,保留浮点精度让扫光逐帧平滑(不量化到 0.1%)
+  const sweepPercent = progress * 100;
 
   return (
     <div aria-label="同步歌词" style={styles.overlay}>

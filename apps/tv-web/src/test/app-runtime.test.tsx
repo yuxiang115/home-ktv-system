@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useRef } from "react";
 import type { RoomSnapshot, SwitchTarget } from "@home-ktv/player-contracts";
+import { useTvPlaybackRuntime, type TvPlaybackRuntimeState } from "../runtime/use-tv-playback-runtime.js";
 
 type MockActivePlaybackResult = { status: "playing"; warning?: string } | { status: "blocked"; message: string };
 type MockSwitchRuntimeResult =
@@ -424,6 +426,62 @@ describe("tv app runtime", () => {
     mocks.roomSnapshot.mockImplementation(() => songBSnapshot);
 
     await waitFor(() => expect(screen.queryByText("舊")).toBeNull());
+  });
+
+  it("exposes a stable getPositionMs that reads the live pool position on each call", () => {
+    const playbackSnapshot = snapshot();
+    mocks.roomSnapshot.mockImplementation(() => playbackSnapshot);
+    mocks.createBrowserPlayerClient.mockReturnValue(createClient());
+    const pool = createPool({ activeTarget: playbackSnapshot.currentTarget, activePaused: false });
+    mocks.createBrowserVideoPool.mockReturnValue(pool);
+
+    const captured: { runtime: TvPlaybackRuntimeState | null } = { runtime: null };
+    function RuntimeProbe() {
+      const activeVideoRef = useRef<HTMLVideoElement>(null);
+      const standbyVideoRef = useRef<HTMLVideoElement>(null);
+      captured.runtime = useTvPlaybackRuntime({ activeVideoRef, standbyVideoRef });
+      return (
+        <>
+          <video ref={activeVideoRef} />
+          <video ref={standbyVideoRef} />
+        </>
+      );
+    }
+
+    render(<RuntimeProbe />);
+
+    const firstRuntime = captured.runtime;
+    const getPositionMs = firstRuntime?.getPositionMs;
+    expect(getPositionMs).toBeInstanceOf(Function);
+    expect(getPositionMs?.()).toBe(0);
+
+    // 不经过任何 re-render,每次调用都实时读当帧 video.currentTime
+    pool.activeVideo.currentTime = 12.5;
+    expect(getPositionMs?.()).toBe(12_500);
+
+    // 快进反馈触发重渲染后引用仍稳定(歌词 rAF 循环依赖它不被反复重建)
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(captured.runtime).not.toBe(firstRuntime);
+    expect(captured.runtime?.getPositionMs).toBe(getPositionMs);
+  });
+
+  it("falls back to the snapshot resume position when no video pool exists", () => {
+    const playbackSnapshot = snapshot();
+    mocks.roomSnapshot.mockImplementation(() => playbackSnapshot);
+    mocks.createBrowserPlayerClient.mockReturnValue(createClient());
+
+    const captured: { runtime: TvPlaybackRuntimeState | null } = { runtime: null };
+    // 不渲染 video 元素 => ref 一直为 null => runtime 无 pool
+    function NoVideoRuntimeProbe() {
+      const activeVideoRef = useRef<HTMLVideoElement>(null);
+      const standbyVideoRef = useRef<HTMLVideoElement>(null);
+      captured.runtime = useTvPlaybackRuntime({ activeVideoRef, standbyVideoRef });
+      return null;
+    }
+
+    render(<NoVideoRuntimeProbe />);
+
+    expect(captured.runtime?.getPositionMs()).toBe(playbackSnapshot.currentTarget?.resumePositionMs);
   });
 
   it("seeks forward in accumulating 10s steps when ArrowRight is pressed repeatedly", async () => {

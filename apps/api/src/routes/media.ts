@@ -37,6 +37,10 @@ export interface MediaRouteContext {
   asrTranscriber?: AsrTranscriber;
   /** remux 选轨流(切伴奏 fallback)用的 ffmpeg;缺省为 PATH 上的 ffmpeg */
   ffmpegBin?: string;
+  /** remux 选轨流 start 偏移探测用的 ffprobe;缺省由 ffmpegBin 同目录推导(或 PATH 上的 ffprobe) */
+  ffprobeBin?: string;
+  /** remux 选轨流 start 偏移探测步骤(默认 probeRemuxStartOffsetWithFfprobe);测试注入 fake */
+  remuxStartOffsetProber?: RemuxStartOffsetProber;
   log?: FastifyBaseLogger;
 }
 
@@ -46,6 +50,13 @@ export type AsrAudioExtractor = (input: {
   filePath: string;
   outputPath: string;
 }) => Promise<void>;
+
+/** remux 选轨流 start 偏移探测步骤:返回 "-c copy 回退 keyframe" 造成的流起点提前量(ms);探测不到返回 null */
+export type RemuxStartOffsetProber = (input: {
+  ffprobeBin: string;
+  filePath: string;
+  startMs: number;
+}) => Promise<number | null>;
 
 export async function registerMediaRoutes(fastify: FastifyInstance, context: MediaRouteContext): Promise<void> {
   fastify.get<{ Params: { "*": string } }>("/media/covers/nas/thumbs/*", async (request, reply) => {
@@ -251,7 +262,7 @@ export async function registerMediaRoutes(fastify: FastifyInstance, context: Med
     }
   );
 
-  fastify.get<{ Params: { assetId: string }; Querystring: { audio?: unknown; start?: unknown } }>(
+  fastify.get<{ Params: { assetId: string }; Querystring: { audio?: unknown; start?: unknown; offsetProbe?: unknown } }>(
     "/media/nas/:assetId",
     async (request, reply) => {
       if (!context.mediaGateway) {
@@ -270,6 +281,17 @@ export async function registerMediaRoutes(fastify: FastifyInstance, context: Med
     }
 
     if (audioTrackPos !== null) {
+      // 偏移探测请求(offsetProbe=1):只算 remux 流的 start 提前量并立即返回,
+      // 不启动 ffmpeg(客户端拿小 JSON 后再正常拉流,流式路径零额外延迟)。
+      if (parseBooleanQueryFlag(request.query.offsetProbe)) {
+        return sendRemuxStartOffsetProbe(reply, {
+          filePath: resolution.filePath,
+          startMs: startMs ?? 0,
+          ffprobeBin: context.ffprobeBin ?? defaultFfprobeBinFor(context.ffmpegBin ?? "ffmpeg"),
+          prober: context.remuxStartOffsetProber ?? probeRemuxStartOffsetWithFfprobe,
+          ...(context.log ? { log: context.log } : {})
+        });
+      }
       return sendRemuxedAudioTrackStream(reply, request.raw, {
         filePath: resolution.filePath,
         audioTrackPos,
@@ -519,6 +541,123 @@ function sendRemuxedAudioTrackStream(
     }
   });
   return reply;
+}
+
+// -c copy 下 -ss 的视频流会回退到 start 前最近的 keyframe(可达一个 GOP 数秒),
+// -avoid_negative_ts make_zero 再把所有流平移到最早包 t=0:流内音频要等到
+// (start - keyframe 时刻) 才真正开始。客户端若仍按"流 t=0 = 请求 start"计算
+// 进度会超前真实进度一个 GOP 内的提前量(切伴唱瞬间歌词高亮错位)。探测只读源
+// 文件 start 前 keyframe 窗口的包时间戳,算出提前量供客户端从位置基准扣除;
+// 探测失败(无 ffprobe/无 keyframe/超时)返回 null,客户端维持现状行为。
+const remuxProbeWindowSeconds = 20;
+const remuxProbeTimeoutMs = 4000;
+const remuxProbeMaxBufferBytes = 8 * 1024 * 1024;
+
+async function sendRemuxStartOffsetProbe(
+  reply: FastifyReply,
+  input: {
+    filePath: string;
+    startMs: number;
+    ffprobeBin: string;
+    prober: RemuxStartOffsetProber;
+    log?: FastifyBaseLogger;
+  }
+): Promise<FastifyReply> {
+  let startOffsetMs: number | null = null;
+  try {
+    startOffsetMs = await input.prober({
+      ffprobeBin: input.ffprobeBin,
+      filePath: input.filePath,
+      startMs: input.startMs
+    });
+  } catch (error) {
+    input.log?.warn({ error, filePath: input.filePath }, "audio-track remux start-offset probe failed");
+  }
+
+  const normalizedOffsetMs =
+    typeof startOffsetMs === "number" && Number.isFinite(startOffsetMs) && startOffsetMs >= 0
+      ? Math.trunc(startOffsetMs)
+      : null;
+
+  reply.header("cache-control", "no-store");
+  if (normalizedOffsetMs !== null && normalizedOffsetMs > 0) {
+    reply.header("x-ktv-start-offset-ms", String(normalizedOffsetMs));
+  }
+  return reply.status(200).send({ startOffsetMs: normalizedOffsetMs });
+}
+
+export async function probeRemuxStartOffsetWithFfprobe(input: {
+  ffprobeBin: string;
+  filePath: string;
+  startMs: number;
+}): Promise<number | null> {
+  const startSeconds = Math.max(0, input.startMs) / 1000;
+  const windowStartSeconds = Math.max(0, startSeconds - remuxProbeWindowSeconds);
+  const readDurationSeconds = startSeconds - windowStartSeconds + 1;
+  const { stdout } = await execFileAsync(
+    input.ffprobeBin,
+    [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "packet=pts_time,flags",
+      "-of",
+      "json",
+      "-read_intervals",
+      `${windowStartSeconds.toFixed(3)}%+${readDurationSeconds.toFixed(3)}`,
+      input.filePath
+    ],
+    { timeout: remuxProbeTimeoutMs, windowsHide: true, maxBuffer: remuxProbeMaxBufferBytes }
+  );
+  return startOffsetMsFromProbeOutput(stdout, input.startMs);
+}
+
+// ffprobe -show_packets(json) → start 前最近视频 keyframe 相对 start 的提前量(ms)。
+// 只认 pts 有效且 ≤ start、带 K flag 的包;窗口内没有 keyframe 或 JSON 不可解析 → null。
+export function startOffsetMsFromProbeOutput(stdout: string, startMs: number): number | null {
+  let packets: unknown;
+  try {
+    packets = (JSON.parse(stdout) as { packets?: unknown }).packets;
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(packets)) {
+    return null;
+  }
+
+  const startSeconds = Math.max(0, startMs) / 1000;
+  let lastKeyframeSeconds = -1;
+  for (const entry of packets) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const ptsSeconds = Number((entry as { pts_time?: unknown }).pts_time);
+    if (!Number.isFinite(ptsSeconds) || ptsSeconds < 0 || ptsSeconds > startSeconds + 0.001) {
+      continue;
+    }
+    const flags = String((entry as { flags?: unknown }).flags ?? "");
+    if (!flags.includes("K") || ptsSeconds <= lastKeyframeSeconds) {
+      continue;
+    }
+    lastKeyframeSeconds = ptsSeconds;
+  }
+
+  if (lastKeyframeSeconds < 0) {
+    return null;
+  }
+  return Math.max(0, Math.round((startSeconds - lastKeyframeSeconds) * 1000));
+}
+
+// ffmpegBin 同目录推导 ffprobe(自定义 ffmpeg 路径时不再依赖 PATH);推导不出则退回 PATH 上的 ffprobe。
+function defaultFfprobeBinFor(ffmpegBin: string): string {
+  const match = /^(.*)ffmpeg(\.exe)?$/iu.exec(ffmpegBin);
+  return match ? `${match[1]}ffprobe${match[2] ?? ""}` : "ffprobe";
+}
+
+function parseBooleanQueryFlag(value: unknown): boolean {
+  return value === true || value === "1" || value === "true";
 }
 
 async function sendNasCoverImage(

@@ -39,17 +39,21 @@ export interface SwitchControllerInput {
   client: SwitchRuntimeClient;
   videoPool: DualVideoPool;
   deviceId?: string;
+  /** remux 兜底流 start 提前量探测(入参为带 offsetProbe=1 的探测 URL,默认 fetch 拿头/JSON);测试注入 fake */
+  startOffsetProbe?: (probeUrl: string) => Promise<number | null>;
 }
 
 export class SwitchController {
   private readonly client: SwitchRuntimeClient;
   private readonly deviceId: string;
   private readonly videoPool: DualVideoPool;
+  private readonly startOffsetProbe: (probeUrl: string) => Promise<number | null>;
 
   constructor(input: SwitchControllerInput) {
     this.client = input.client;
     this.videoPool = input.videoPool;
     this.deviceId = input.deviceId ?? "tv-player";
+    this.startOffsetProbe = input.startOffsetProbe ?? probeRemuxStartOffsetMs;
   }
 
   async switchVocalMode(snapshot: RoomSnapshot): Promise<SwitchRuntimeResult> {
@@ -135,6 +139,11 @@ export class SwitchController {
     // 并把该进度记为流的位置基准(standby currentTime 从 0 起)。
     const positionMs = this.videoPool.activePlaybackPositionMs();
     const fallbackUrl = withStartPosition(switchTarget.fallbackPlaybackUrl ?? switchTarget.playbackUrl, positionMs);
+    // -c copy 的 remux 流里视频回退到 start 前最近 keyframe 再整体平移到 0,
+    // 音频在流内 (start - keyframe) 处才开始;先探测该提前量并从位置基准扣除,
+    // 否则 positionBaseMs + currentTime 会超前真实进度(歌词高亮错位)。
+    // 探测失败按 0 处理,维持现状行为。
+    const startOffsetMs = (await this.startOffsetProbe(withOffsetProbeParam(fallbackUrl)).catch(() => null)) ?? 0;
     const fallbackTarget: SwitchTarget = {
       ...switchTarget,
       playbackUrl: fallbackUrl,
@@ -142,7 +151,7 @@ export class SwitchController {
     };
 
     try {
-      this.videoPool.prepareStandby(fallbackTarget, { positionBaseMs: positionMs });
+      this.videoPool.prepareStandby(fallbackTarget, { positionBaseMs: Math.max(0, positionMs - startOffsetMs) });
       await this.videoPool.playStandbyUntilReady();
       this.videoPool.commitStandby();
       await this.reportSwitchCommitted(snapshot, switchTarget);
@@ -211,6 +220,45 @@ function withStartPosition(url: string, startMs: number): string {
   } catch {
     return url;
   }
+}
+
+const startOffsetProbeTimeoutMs = 2000;
+const remuxStartOffsetHeaderName = "x-ktv-start-offset-ms";
+
+// 向 remux 路由询问 "-c copy 回退 keyframe" 造成的流起点提前量(ms):
+// 探测 URL 已带 offsetProbe=1;响应头优先,缺失时读 JSON body 的 startOffsetMs。
+// 任何失败(网络/超时/字段异常)都返回 null,切换流程按无提前量继续,绝不阻断兜底切换。
+async function probeRemuxStartOffsetMs(probeUrl: string): Promise<number | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), startOffsetProbeTimeoutMs);
+  try {
+    const response = await fetch(probeUrl, {
+      signal: controller.signal,
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      return null;
+    }
+
+    const headerOffsetMs = Number(response.headers.get(remuxStartOffsetHeaderName));
+    if (Number.isFinite(headerOffsetMs) && headerOffsetMs > 0) {
+      return Math.trunc(headerOffsetMs);
+    }
+
+    const payload = (await response.json().catch(() => null)) as { startOffsetMs?: unknown } | null;
+    const bodyOffsetMs = payload?.startOffsetMs;
+    return typeof bodyOffsetMs === "number" && Number.isFinite(bodyOffsetMs) && bodyOffsetMs > 0
+      ? Math.trunc(bodyOffsetMs)
+      : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function withOffsetProbeParam(url: string): string {
+  return `${url}${url.includes("?") ? "&" : "?"}offsetProbe=1`;
 }
 
 function revertedMessageForAudioTrackSelection(result: Exclude<AudioTrackSelectionResult, { status: "selected" }>): string {

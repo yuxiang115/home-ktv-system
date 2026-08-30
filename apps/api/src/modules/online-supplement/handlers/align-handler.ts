@@ -43,14 +43,33 @@ const LANGUAGE_BY_MARKER: Record<string, string> = {
   葡萄牙语: "Portuguese"
 };
 
+// python 端 exit 4 = 对齐质量门禁不达标(输出未写):与普通失败同样按
+// best-effort 降级,但消息必须注明 quality-gate,便于区分"跑挂了"与"质量差"。
+const QUALITY_GATE_PATTERN = /quality[-_ ]?gate|exit=4/u;
+
+export function isAlignQualityGateFailure(message: string): boolean {
+  return QUALITY_GATE_PATTERN.test(message);
+}
+
 export function alignerLanguageForSpecName(specName: string | null): string {
   if (!specName) {
+    // 无规范名(实际流水线 align 前必经 rename,基本只剩测试/边界场景):维持
+    // 中文默认,与历史行为一致
     return "Chinese";
   }
   const parts = specName.split("-").map((part) => part.trim());
-  // 规范名常见繁体(國語/粵語/英語),先繁转简再查表;未知语种默认 Chinese
-  const marker = traditionalToSimplified(parts[2] ?? "").replaceAll("_", "").trim();
-  return LANGUAGE_BY_MARKER[marker] ?? "Chinese";
+  // 规范名常见繁体(國語/粵語/英語),先繁转简再查表;语种段可能由下划线拼
+  // 多个标记(如「國語_華語」),逐个查表取首个命中。未命中映射的语种段
+  // (「其他」/「火星语」等)不再默认 Chinese——英文歌按中文字符预算对齐会
+  // 词粘连、时长畸变,交给 python 端按 LRC 文本 CJK 占比自动判定("auto")
+  const marker = traditionalToSimplified(parts[2] ?? "");
+  for (const subMarker of marker.split("_")) {
+    const hit = LANGUAGE_BY_MARKER[subMarker.trim()];
+    if (hit) {
+      return hit;
+    }
+  }
+  return "auto";
 }
 
 // index 阶段按"文件存在"拷贝 sidecar,截断/空 JSON 会永久污染 ktv_songs 行且
@@ -147,10 +166,15 @@ export class AlignStageHandler implements StageHandler {
         );
         sidecarHandled = true;
         if (!response.ok) {
-          // 与单次脚本路径同语义:对齐失败不 fail 任务,lrc 兜底
+          // 与单次脚本路径同语义:对齐失败不 fail 任务,lrc 兜底;exit 4(质量
+          // 门禁)也走这里,消息注明 quality-gate
           await rm(out, { force: true }).catch(() => undefined);
-          const message = (response.error ?? "sidecar align failed").slice(0, 300);
-          return { status: "completed", message: `align failed (best-effort, lrc fallback): ${message}` };
+          const detail = (response.error ?? "sidecar align failed").slice(0, 300);
+          const qualityGate = isAlignQualityGateFailure(detail);
+          return {
+            status: "completed",
+            message: `align failed (best-effort${qualityGate ? " quality-gate" : ""}, lrc fallback): ${detail}`
+          };
         }
         input.log("align via sidecar ok", { out });
       } catch (error) {
@@ -184,10 +208,15 @@ export class AlignStageHandler implements StageHandler {
       try {
         await this.run(this.options.bin, args, timeoutMs);
       } catch (error) {
-        // 超时被 kill 时 python 可能已写了半截文件,删掉防止截断 JSON 入库
+        // 超时被 kill 时 python 可能已写了半截文件,删掉防止截断 JSON 入库;
+        // 质量门禁(exit 4)不写输出,同样删除兜底并注明 quality-gate
         await rm(out, { force: true }).catch(() => undefined);
-        const message = error instanceof Error ? error.message : String(error);
-        return { status: "completed", message: `align failed (best-effort, lrc fallback): ${message.slice(0, 300)}` };
+        const detail = error instanceof Error ? error.message : String(error);
+        const qualityGate = isAlignQualityGateFailure(detail);
+        return {
+          status: "completed",
+          message: `align failed (best-effort${qualityGate ? " quality-gate" : ""}, lrc fallback): ${detail.slice(0, 300)}`
+        };
       }
     }
 

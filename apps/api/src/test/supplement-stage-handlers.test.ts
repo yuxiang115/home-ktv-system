@@ -275,6 +275,29 @@ describe("AlignStageHandler", () => {
     expect(result.message).toContain("model download failed");
   });
 
+  it("degrades best-effort with a quality-gate note when the aligner exits 4 (quality gate)", async () => {
+    const workDir = await createWorkDir();
+    await prepareVocalsAndLyrics(workDir);
+    const handler = new AlignStageHandler({
+      ...handlerOptions,
+      run: async () => {
+        throw new Error(
+          "Command failed: python align_lyrics.py --audio x: exit=4 | alignment quality-gate failed: matched line coverage 45% < 80%"
+        );
+      }
+    });
+    const { input } = createInput(createTask({ stage: "align" }), workDir);
+    const out = karaokeJsonPath(workDir, "task-1");
+
+    const result = await handler.execute(input);
+
+    expect(result.status).toBe("completed");
+    expect(result.message).toContain("align failed (best-effort quality-gate, lrc fallback)");
+    expect(result.message).toContain("matched line coverage 45%");
+    // 质量门禁不达标时不留任何输出文件,TV 降级到行级 LRC
+    await expect(stat(out)).rejects.toThrow();
+  });
+
   it("skips when neither the vocals stem nor the downloaded asset exists", async () => {
     const workDir = await createWorkDir();
     await mkdir(path.join(workDir, "_lyrics"), { recursive: true });
@@ -340,7 +363,14 @@ describe("alignerLanguageForSpecName", () => {
     expect(alignerLanguageForSpecName("Adele-Hello-英语-流行")).toBe("English");
     expect(alignerLanguageForSpecName("X-Y-日语-流行")).toBe("Japanese");
     expect(alignerLanguageForSpecName(null)).toBe("Chinese");
-    expect(alignerLanguageForSpecName("X-Y-火星语-流行")).toBe("Chinese");
+  });
+
+  it("maps unknown markers (其他 etc.) to auto instead of Chinese", () => {
+    // 「其他」是 fallbackSpecName 对未知语种的默认段:按 Chinese 对齐英文歌会
+    // 走中文字符预算(词粘连/时长畸变),交给 python 端按 LRC 文本自动判定
+    expect(alignerLanguageForSpecName("X-Y-火星语-流行")).toBe("auto");
+    expect(alignerLanguageForSpecName("Justin_Bieber-Baby-其他-流行")).toBe("auto");
+    expect(alignerLanguageForSpecName("X-Y--流行")).toBe("auto");
   });
 
   it("maps traditional markers (the naming convention this repo actually uses)", () => {
@@ -807,6 +837,81 @@ describe("IndexStageHandler", () => {
     expect(result.status).toBe("completed");
     expect(result.message).toBe("indexed");
     await expect(stat(path.join(workDir, "_downloads", "task-1.mkv"))).rejects.toThrow();
+  });
+
+  it("清理前把 vocals stem 压缩成 _online/<safeName>.vocals.m4a sidecar", async () => {
+    const workDir = await createWorkDir();
+    await prepareDownload(workDir);
+    const vocalsDir = path.join(workDir, "_stems", "task-1", "htdemucs", "task-1");
+    await mkdir(vocalsDir, { recursive: true });
+    await writeFile(path.join(vocalsDir, "vocals.wav"), "pcm");
+    const db = createIndexDbMock({ probeTargets: [] });
+    const calls: Array<{ bin: string; args: string[] }> = [];
+    const handler = new IndexStageHandler({
+      db,
+      workDir,
+      ffmpegBin: "ffmpeg.exe",
+      run: async (bin, args) => {
+        calls.push({ bin, args: [...args] });
+      }
+    });
+    const { input, logs } = createInput(createTask({ stage: "index" }), workDir);
+
+    const result = await handler.execute(input);
+
+    expect(result.status).toBe("completed");
+    expect(result.message).toBe("indexed");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.bin).toBe("ffmpeg.exe");
+    // 源是 vocal_remove 的 vocals stem,产物是 16k mono aac 的人声 sidecar
+    expect(calls[0]?.args).toContain(path.join(vocalsDir, "vocals.wav"));
+    expect(calls[0]?.args).toContain("-ac");
+    expect(calls[0]?.args).toContain("1");
+    expect(calls[0]?.args).toContain("-ar");
+    expect(calls[0]?.args).toContain("16000");
+    expect(calls[0]?.args).toContain("-c:a");
+    expect(calls[0]?.args).toContain("aac");
+    expect(calls[0]?.args?.at(-1)).toBe(
+      path.join(workDir, "_online", "Some Official MV.vocals.m4a")
+    );
+    expect(logs).toContain("vocals sidecar saved");
+    // sidecar 保存后中间产物照常清理(说明它在清理前执行)
+    await expect(stat(path.join(workDir, "_stems", "task-1"))).rejects.toThrow();
+  });
+
+  it("无 vocals stem 时不跑 ffmpeg;ffmpeg 失败仅日志不影响入库", async () => {
+    const workDir = await createWorkDir();
+    await prepareDownload(workDir);
+    const db = createIndexDbMock({ probeTargets: [] });
+    const calls: Array<{ bin: string; args: string[] }> = [];
+    const handler = new IndexStageHandler({
+      db,
+      workDir,
+      run: async (bin, args) => {
+        calls.push({ bin, args: [...args] });
+        throw new Error("ffmpeg exploded");
+      }
+    });
+    const { input, logs } = createInput(createTask({ stage: "index" }), workDir);
+
+    // 无 stem:一次 ffmpeg 都不该起
+    await handler.execute(input);
+    expect(calls).toHaveLength(0);
+    expect(logs).toContain("vocals stem missing (skip sidecar)");
+
+    // 有 stem 但压缩失败:best-effort,任务仍 completed 且入库
+    // (首轮 execute 已清理 _downloads,重新准备下载产物)
+    await prepareDownload(workDir);
+    const vocalsDir = path.join(workDir, "_stems", "task-1", "htdemucs", "task-1");
+    await mkdir(vocalsDir, { recursive: true });
+    await writeFile(path.join(vocalsDir, "vocals.wav"), "pcm");
+    const second = createInput(createTask({ stage: "index" }), workDir);
+    const secondResult = await handler.execute(second.input);
+
+    expect(secondResult.status).toBe("completed");
+    expect(secondResult.message).toBe("indexed");
+    expect(calls).toHaveLength(1);
+    expect(second.logs).toContain("vocals sidecar save failed");
   });
 });
 

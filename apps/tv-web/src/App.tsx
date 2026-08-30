@@ -42,6 +42,7 @@ export function App() {
             karaokeLines={runtime.karaokeLines}
             lrcLines={runtime.lyricLines ?? []}
             positionMs={runtime.playbackPositionMs}
+            getPositionMs={runtime.getPositionMs}
           />
         ) : null}
         {isPlaybackScreen ? (

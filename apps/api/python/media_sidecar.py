@@ -15,9 +15,10 @@ Protocol (one JSON object per line, UTF-8):
   process.
 - Exits after IDLE_TIMEOUT_SECONDS without any message, and on EOF / empty line.
 
-cmd "align"   : same behavior as align_lyrics.py (LRC parse, ffmpeg chunking,
-                Qwen3 alignment, JSON out) — core functions are imported from
-                align_lyrics.py (same directory), so behavior stays in lockstep.
+cmd "align"   : same behavior as align_lyrics.py v2 (LRC parse, energy VAD
+                segmentation, per-line Qwen3 alignment, quality gate, JSON out) —
+                the whole flow is align_lyrics.align_file, imported from the same
+                directory, with the model reused from this sidecar's cache.
 cmd "demucs"  : prefers the demucs python API (demucs.api.Separator, demucs>=4.1,
                 initialized once and reused); falls back at runtime to a
                 subprocess running the demucs module CLI (tree-killed by this
@@ -33,7 +34,6 @@ import os
 import signal
 import subprocess
 import sys
-import tempfile
 import threading
 from pathlib import Path
 
@@ -124,67 +124,41 @@ def cmd_ping(args: dict) -> dict:
 
 
 def cmd_align(args: dict) -> dict:
-    from align_lyrics import (
-        CHUNK_LEAD_SECONDS,
-        assign_units_to_lines,
-        audio_duration,
-        chunk_lines,
-        cut_audio,
-        join_text,
-        parse_lrc,
-    )
+    from align_lyrics import QualityGateError, align_file
 
     audio_path = Path(args["audio"])
     lyrics_path = Path(args["lyrics"])
     out_path = Path(args["out"])
     language = args.get("language", "Chinese")
-    model = args.get("model", "Qwen/Qwen3-ForcedAligner-0.6B")
-    device = args.get("device", "cuda:0")
-    dtype = args.get("dtype", "bfloat16")
 
-    lines = parse_lrc(lyrics_path)
-    if not lines:
-        raise RuntimeError("no timestamped lyrics; skip")
-    if not audio_path.exists():
-        raise RuntimeError(f"audio not found: {audio_path}")
-
-    aligner = get_aligner(model, device, dtype)
+    # 核心流程(解析/VAD 分段/逐行对齐/质量门禁)全部在 align_lyrics.align_file,
+    # 与单次脚本路径共享同一实现;这里只负责复用已缓存的模型对象。
+    aligner = get_aligner(
+        args.get("model", "Qwen/Qwen3-ForcedAligner-0.6B"),
+        args.get("device", "cuda:0"),
+        args.get("dtype", "bfloat16"),
+    )
 
     try:
-        duration = audio_duration(audio_path)
-    except Exception:
-        duration = lines[-1][0] + 30.0
+        stats = align_file(
+            audio_path,
+            lyrics_path,
+            out_path,
+            language,
+            aligner,
+            log=log,
+        )
+    except QualityGateError as reason:
+        # 协议侧显式标注 quality-gate,TS 调用方据此在降级消息里注明原因
+        raise RuntimeError(f"quality-gate: {reason}") from reason
 
-    all_output: list[dict] = []
-    chunks = chunk_lines(lines)
-    with tempfile.TemporaryDirectory(prefix="ktv-sidecar-align-") as tmp:
-        for chunk_index, chunk in enumerate(chunks):
-            chunk_start = max(0.0, chunk[0][0] - CHUNK_LEAD_SECONDS)
-            chunk_end = duration if chunk_index == len(chunks) - 1 else chunk[-1][0] + 8.0
-            chunk_audio = Path(tmp) / f"chunk-{int(chunk_start)}.wav"
-            try:
-                cut_audio(audio_path, chunk_audio, chunk_start, chunk_end)
-            except subprocess.CalledProcessError as error:
-                log(f"ffmpeg cut failed: {error}")
-                continue
-
-            results = aligner.align(
-                audio=str(chunk_audio),
-                text=join_text(chunk, language),
-                language=language,
-            )
-            units = [
-                (unit.text, unit.start_time + chunk_start, unit.end_time + chunk_start)
-                for unit in (results[0] if results else [])
-            ]
-            all_output.extend(assign_units_to_lines(units, [text for _, text in chunk]))
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(
-        json.dumps({"lines": all_output}, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    log(f"aligned {len(all_output)} line(s) -> {out_path}")
-    return {"lines": len(all_output), "out": str(out_path)}
+    return {
+        "lines": stats["lineCount"],
+        "out": str(out_path),
+        "language": stats["language"],
+        "unmatched": stats["unmatchedLines"],
+        "segments": stats["segments"],
+    }
 
 
 def _save_demucs_outputs(separator, sources: dict, track_stem: str, out_dir: Path) -> list[str]:

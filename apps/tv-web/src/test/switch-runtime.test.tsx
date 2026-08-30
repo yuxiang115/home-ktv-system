@@ -157,6 +157,115 @@ describe("switch runtime", () => {
     ]);
   });
 
+  it("subtracts the probed remux keyframe lead from the fallback stream position base", async () => {
+    // 浏览器无 video.audioTracks → 单文件切轨失败,走服务端 remux 兜底流。
+    const activeVideo = new FakeVideo();
+    const standbyVideo = new FakeVideo();
+    const pool = new DualVideoPool(activeVideo, standbyVideo);
+    pool.primeActive(realMvPlaybackTarget());
+    activeVideo.currentTime = 82.4;
+    const target = audioTrackSwitchTarget({
+      resumePositionMs: 82400,
+      fallbackPlaybackUrl: "http://ktv.local/media/nas/asset-real-mv?audio=1&start=82400"
+    });
+    const client = new FakeSwitchClient({ status: "ready", switchTarget: target, reason: null });
+    const probedUrls: string[] = [];
+
+    const result = await new SwitchController({
+      client,
+      videoPool: pool,
+      startOffsetProbe: async (fallbackUrl) => {
+        probedUrls.push(fallbackUrl);
+        return 4400;
+      }
+    }).switchVocalMode(
+      snapshot({
+        currentTarget: realMvPlaybackTarget(),
+        switchTarget: target,
+        targetVocalMode: "instrumental"
+      })
+    );
+
+    expect(result.status).toBe("committed");
+    // 探测请求带 offsetProbe=1,start 已按当前进度重写
+    expect(probedUrls).toEqual([
+      "http://ktv.local/media/nas/asset-real-mv?audio=1&start=82400&offsetProbe=1"
+    ]);
+    // 兜底流成为 active;位置基准扣除 keyframe 提前量(82400 - 4400)
+    expect(pool.activeVideo.src).toBe("http://ktv.local/media/nas/asset-real-mv?audio=1&start=82400");
+    expect(pool.activeVideo.currentTime).toBe(0);
+    expect(pool.activePositionBaseMs).toBe(78000);
+    expect(standbyVideo.playCalls).toBe(1);
+    // 上报进度 = 基准 + currentTime,不再超前真实进度
+    expect(client.telemetry).toMatchObject([
+      {
+        eventType: "playing",
+        stage: "switch_committed",
+        playbackPositionMs: 78000,
+        assetId: "asset-real-mv"
+      }
+    ]);
+  });
+
+  it("keeps the uncalibrated position base when the offset probe is unavailable", async () => {
+    const activeVideo = new FakeVideo();
+    const standbyVideo = new FakeVideo();
+    const pool = new DualVideoPool(activeVideo, standbyVideo);
+    pool.primeActive(realMvPlaybackTarget());
+    activeVideo.currentTime = 82.4;
+    const target = audioTrackSwitchTarget({
+      resumePositionMs: 82400,
+      fallbackPlaybackUrl: "http://ktv.local/media/nas/asset-real-mv?audio=1&start=82400"
+    });
+    const client = new FakeSwitchClient({ status: "ready", switchTarget: target, reason: null });
+
+    const result = await new SwitchController({
+      client,
+      videoPool: pool,
+      startOffsetProbe: async () => null
+    }).switchVocalMode(
+      snapshot({
+        currentTarget: realMvPlaybackTarget(),
+        switchTarget: target,
+        targetVocalMode: "instrumental"
+      })
+    );
+
+    expect(result.status).toBe("committed");
+    expect(pool.activePositionBaseMs).toBe(82400);
+  });
+
+  it("still commits the fallback stream when the offset probe throws", async () => {
+    const activeVideo = new FakeVideo();
+    const standbyVideo = new FakeVideo();
+    const pool = new DualVideoPool(activeVideo, standbyVideo);
+    pool.primeActive(realMvPlaybackTarget());
+    activeVideo.currentTime = 82.4;
+    const target = audioTrackSwitchTarget({
+      resumePositionMs: 82400,
+      fallbackPlaybackUrl: "http://ktv.local/media/nas/asset-real-mv?audio=1&start=82400"
+    });
+    const client = new FakeSwitchClient({ status: "ready", switchTarget: target, reason: null });
+
+    const result = await new SwitchController({
+      client,
+      videoPool: pool,
+      startOffsetProbe: async () => {
+        throw new Error("probe network down");
+      }
+    }).switchVocalMode(
+      snapshot({
+        currentTarget: realMvPlaybackTarget(),
+        switchTarget: target,
+        targetVocalMode: "instrumental"
+      })
+    );
+
+    expect(result.status).toBe("committed");
+    expect(pool.activePositionBaseMs).toBe(82400);
+    expect(client.telemetry).toMatchObject([{ eventType: "playing", stage: "switch_committed" }]);
+  });
+
 });
 
 class FakeSwitchClient implements SwitchRuntimeClient {
@@ -294,6 +403,7 @@ function switchTarget(input: { resumePositionMs: number }): SwitchTarget {
 function audioTrackSwitchTarget(input: {
   resumePositionMs: number;
   selectedTrackRef?: SwitchTarget["selectedTrackRef"];
+  fallbackPlaybackUrl?: string;
 }): SwitchTarget {
   return {
     roomId: "living-room",
@@ -304,6 +414,7 @@ function audioTrackSwitchTarget(input: {
     fromAssetId: "asset-real-mv",
     toAssetId: "asset-real-mv",
     playbackUrl: "http://ktv.local/media/asset-real-mv",
+    ...(input.fallbackPlaybackUrl ? { fallbackPlaybackUrl: input.fallbackPlaybackUrl } : {}),
     switchFamily: "real-mv-audio-track",
     vocalMode: "instrumental",
     resumePositionMs: input.resumePositionMs,
