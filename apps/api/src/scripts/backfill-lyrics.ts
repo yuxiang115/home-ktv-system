@@ -209,6 +209,9 @@ async function runAligner(
   karaokePath: string,
   stem: string
 ): Promise<void> {
+  // KTV_ASR_BASE_URL / KTV_ASR_MODEL / KTV_ASR_TIMEOUT_S 经 execFile 继承的
+  // process.env 天然透传给 python 子进程(这里不显式构造 env),python 端按 env
+  // 决定 ASR 词级锚定可用性,不可用时自动回退 VAD 行段映射。
   await execFileAsync(
     ALIGNER_BIN,
     [

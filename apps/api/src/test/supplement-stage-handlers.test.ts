@@ -25,6 +25,7 @@ import { fallbackSpecName } from "../modules/online-supplement/handlers/rename-l
 import {
   AlignStageHandler,
   alignerLanguageForSpecName,
+  anchorModeFromStderr,
   karaokeJsonPath
 } from "../modules/online-supplement/handlers/align-handler.js";
 import { VocalRemoveStageHandler } from "../modules/online-supplement/handlers/vocal-remove-handler.js";
@@ -228,6 +229,56 @@ describe("AlignStageHandler", () => {
     expect(leaseCalls.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("surfaces the python anchor mode (asr|vad) parsed from the one-shot stderr report", async () => {
+    // align_lyrics.py v4 的报告行带 [anchor=asr, ...]:ASR 词级锚定走通时,
+    // 阶段消息必须能看出「这首走的是 ASR 锚定还是 VAD 兜底」(排障关键信息)。
+    const workDir = await createWorkDir();
+    await prepareVocalsAndLyrics(workDir);
+    const handler = new AlignStageHandler({
+      ...handlerOptions,
+      run: async (_bin, args) => {
+        const outIndex = args.indexOf("--out");
+        const out = outIndex >= 0 ? (args[outIndex + 1] ?? "") : "";
+        await mkdir(path.dirname(out), { recursive: true });
+        await writeFile(out, JSON.stringify({
+          lines: [{ start: 10, end: 12, text: "测试", words: [{ text: "测", start: 10, end: 11 }] }]
+        }), "utf8");
+        return {
+          stdout: "",
+          stderr: "aligned 29/29 line(s) [anchor=asr, coverage=100%, offset=+0s, Chinese, 52 unit(s)] -> out"
+        };
+      }
+    });
+    const { input } = createInput(createTask({ stage: "align" }), workDir);
+
+    const result = await handler.execute(input);
+
+    expect(result.status).toBe("completed");
+    expect(result.message).toBe("aligned (vocals, anchor=asr)");
+  });
+
+  it("keeps the plain message when the runner reports no stderr (sidecar/v0 python)", async () => {
+    const workDir = await createWorkDir();
+    await prepareVocalsAndLyrics(workDir);
+    const handler = new AlignStageHandler({
+      ...handlerOptions,
+      run: async (_bin, args) => {
+        const outIndex = args.indexOf("--out");
+        const out = outIndex >= 0 ? (args[outIndex + 1] ?? "") : "";
+        await mkdir(path.dirname(out), { recursive: true });
+        await writeFile(out, JSON.stringify({
+          lines: [{ start: 10, end: 12, text: "测试", words: [{ text: "测", start: 10, end: 11 }] }]
+        }), "utf8");
+      }
+    });
+    const { input } = createInput(createTask({ stage: "align" }), workDir);
+
+    const result = await handler.execute(input);
+
+    expect(result.status).toBe("completed");
+    expect(result.message).toBe("aligned (vocals)");
+  });
+
   it("aligns with the downloaded asset when the vocals stem is missing (basic workflow)", async () => {
     const workDir = await createWorkDir();
     await prepareDownloadedAndLyrics(workDir);
@@ -380,6 +431,16 @@ describe("AlignStageHandler", () => {
     expect(result.status).toBe("completed");
     expect(result.message).toContain("align output invalid");
     await expect(stat(out)).rejects.toThrow();
+  });
+});
+
+describe("anchorModeFromStderr", () => {
+  it("extracts asr/vad anchor mode from the python report line, null otherwise", () => {
+    expect(anchorModeFromStderr("aligned 29/29 line(s) [anchor=asr, coverage=97%, offset=+0s, Chinese, 52 unit(s)]")).toBe("asr");
+    expect(anchorModeFromStderr("aligned 20/29 line(s) [anchor=vad, coverage=69%, offset=+9s, Chinese, 52 segment(s)]")).toBe("vad");
+    expect(anchorModeFromStderr("no anchor mentioned")).toBeNull();
+    expect(anchorModeFromStderr(undefined)).toBeNull();
+    expect(anchorModeFromStderr(null)).toBeNull();
   });
 });
 

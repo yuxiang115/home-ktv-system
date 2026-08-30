@@ -48,18 +48,30 @@ New pipeline (v3 — LRC timestamps as COARSE anchors, not discarded):
      Failure => no output file, one-line report on stderr, exit code 4
      (= alignment quality below bar; callers degrade best-effort to LRC).
 
+v4 adds an ASR-anchored path on top of v3: when an ASR service is configured
+(KTV_ASR_BASE_URL), the vocals are transcribed once (Qwen3-ASR, whisper-style
+/v1/audio/transcriptions) and each LRC line is anchored by fuzzy text matching
+(difflib.SequenceMatcher over language-aware tokens) to its sung words. Word
+timestamps kill the "52 VAD segments vs 29 LRC lines" mismatch class outright
+(long breathy lines VAD shatters into fragments); per-line ForcedAligner still
+produces the char-level times inside each anchored window. ASR disabled /
+unreachable / anchor success rate < 50% => the v3 VAD path runs unchanged
+(fallback, not replacement). The quality gate is identical on both paths; the
+report line notes anchor=asr|vad.
+
 Invariant (regression-tested): output line start/end may ONLY originate from
-VAD segment boundaries and aligner unit times. LRC timestamps steer WHICH
-segment each line is paired with (global offset + per-line window) but never
-contribute a single output timestamp directly; a line that cannot be aligned
-to a segment is dropped from the output entirely (counted into coverage),
-NEVER backfilled with its LRC timestamp.
+VAD segment boundaries, ASR word times and aligner unit times. LRC timestamps
+steer WHICH segment each line is paired with (global offset + per-line window)
+but never contribute a single output timestamp directly; a line that cannot be
+aligned to a segment is dropped from the output entirely (counted into
+coverage), NEVER backfilled with its LRC timestamp.
 
 Exit codes: 0 ok / 3 skipped (no lyrics / audio missing) / 4 quality gate / 1 error.
 """
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import os
 import re
@@ -67,8 +79,11 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
+import uuid
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Callable, Mapping, NamedTuple, Sequence
 
 LRC_TS = re.compile(r"\[(\d{1,2}):(\d{1,2}(?:[.:]\d{1,3})?)\]")
 # 增强版(A2)行内逐字时间戳 <mm:ss.xx>:不参与对齐文本(否则污染字符预算),剥离
@@ -130,6 +145,23 @@ ABSORB_MAX_SEC_PER_CHAR = 0.8     # 吞并后的时长/行长 上限(与比例�
 LINE_MARGIN_SECONDS = 0.3  # 切段时两侧余量,VAD 边界切掉半个字时兜底
 MIN_CLIP_SECONDS = 0.2     # 短于该值的切片直接判 unmatched(模型对空切片不稳)
 
+# ---- Phase C: ASR 词级锚定 -------------------------------------------------
+# VAD 行段映射把「行↔段」当纯时间配对问题解:52段/29行类错配(换气密集的长
+# 吟唱行被 VAD 切碎)会整行配错段,进而被门禁拒绝(童话/江南/有何不可)。
+# ASR 词级时间戳回答「每个词什么时候被唱出来」,行锚定退化为文本模糊匹配,
+# 天然免疫段数错配。ASR 不可用/锚定成功率过低时完整回退 VAD 路径(不是替换)。
+ASR_DEFAULT_MODEL = "mlx-community/Qwen3-ASR-1.7B-4bit"
+ASR_DEFAULT_TIMEOUT_SECONDS = 600.0
+ASR_PROMPT_CHAR_BUDGET = 200    # 转写上下文偏置:歌词前 N 字(专有名词命中率)
+ASR_MIN_ANCHOR_COVERAGE = 0.5   # 锚定成功率低于该值 => 放弃 ASR,走 VAD 兜底
+# 行↔ASR 词序列模糊匹配阈值:匹配 token 数/行 token 数 < 该值 => 该行 unmatched
+# (整行没被唱 / 转写差异过大),不参与锚定成功率分子。
+ANCHOR_MIN_SIMILARITY = 0.5
+# 锚定 span 合理性上限(秒/非空白字符,与 OFFSET_RATIO_BAND 上界一致):副歌
+# 重复行的部分 token 可能吸到远处的重复出现,首/末词 span 被拉到几分钟长——
+# 这种锚定不可信,按 unmatched 丢弃,交给 VAD 兜底或逐行门禁。
+ANCHOR_MAX_SEC_PER_CHAR = 0.8
+
 # ---- Phase B: quality gate ------------------------------------------------
 # 门禁按真实 MV 数据(6 首含对白/吟唱/ad-lib 的门禁集)校准:覆盖率 80% 在
 # 「MV 里没人声的 LRC 行」面前过紧,60% 保住主体歌词;塌缩率 30% 在半念白
@@ -160,6 +192,14 @@ class AlignmentSkipped(RuntimeError):
 
 class QualityGateError(RuntimeError):
     """对齐质量不达标:输出文件不写,CLI 以 exit 4 退出。"""
+
+
+class AsrWord(NamedTuple):
+    """ASR 词级时间戳近似(段级转写在段时长内均匀展开;text 已归一:去标点/小写)。"""
+
+    text: str
+    start: float
+    end: float
 
 
 def ffmpeg_cmd() -> str:
@@ -463,7 +503,252 @@ def map_lines_to_segments_windowed(
     return result
 
 
-# ---- Phase B: per-line alignment --------------------------------------------
+# ---- Phase C: ASR 词级锚定 -----------------------------------------------------
+
+
+def _is_cjk_char(char: str) -> bool:
+    code = ord(char)
+    return any(low <= code <= high for low, high in CJK_RANGES)
+
+
+def tokenize_for_match(text: str) -> list[str]:
+    """(纯函数) 混合语种分词:CJK 逐字,连续非 CJK 字母数字合成一词(小写)。
+
+    空白/标点天然丢弃(归一);ASR 段文本与 LRC 行文本必须用同一分词器,
+    SequenceMatcher 的 token 相等比较才有可比粒度(中文按字、英文按词)。
+    """
+    tokens: list[str] = []
+    run: list[str] = []
+    for char in text:
+        if _is_cjk_char(char):
+            if run:
+                tokens.append("".join(run).lower())
+                run.clear()
+            tokens.append(char.lower())
+        elif char.isalnum():
+            run.append(char)
+        else:
+            if run:
+                tokens.append("".join(run).lower())
+                run.clear()
+    if run:
+        tokens.append("".join(run).lower())
+    return tokens
+
+
+def expand_asr_segments_to_words(
+    segments: Sequence[Mapping[str, object]],
+) -> list[AsrWord]:
+    """(纯函数) whisper 风格段级转写 -> 词级时间戳近似。
+
+    转写服务的 segments 是段级(通常 2-6s),不是词级:把每段 text 分词后在
+    段时长内均匀展开。近似对「行锚定」足够(行窗口再交 ForcedAligner 出字级),
+    均匀假设只在段内不跨段。输出按 start 排序,时间非降。
+    """
+    words: list[AsrWord] = []
+    for segment in segments:
+        text = str(segment.get("text") or "")
+        try:
+            start = float(segment.get("start"))  # type: ignore[arg-type]
+            end = float(segment.get("end"))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        tokens = tokenize_for_match(text)
+        if not tokens or end < start:
+            continue
+        step = (end - start) / len(tokens)
+        for position, token in enumerate(tokens):
+            words.append(AsrWord(token, start + position * step, start + (position + 1) * step))
+    words.sort(key=lambda word: word.start)
+    return words
+
+
+def anchor_lines_to_asr(
+    lrc_lines: Sequence[tuple[float, str]],
+    asr_words: Sequence[AsrWord],
+    min_similarity: float = ANCHOR_MIN_SIMILARITY,
+    max_sec_per_char: float = ANCHOR_MAX_SEC_PER_CHAR,
+) -> list[tuple[str, float, float] | None]:
+    """(纯函数) LRC 行 -> ASR 词序列模糊锚定:每行 (text, start, end) 或 None。
+
+    文本归一(tokenize_for_match:去空白/标点/小写,CJK 逐字)后,用
+    difflib.SequenceMatcher(标准库,零新依赖)把每行 token 序列与「剩余」ASR
+    词序列做模糊匹配:行时间 = 首个匹配词 start ~ 末个匹配词 end;行 token
+    覆盖率(匹配数/行 token 数)< min_similarity 或 span 超过
+    max_sec_per_char 秒/字 => None(unmatched)。游标只向后推进(在上一行末个
+    匹配词之后搜索),保证副歌重复行各自锚到自己的出现位置,而不是全部吸到
+    第一次出现;unmatched 行不推进游标,后续行仍可正常锚定。
+    """
+    anchors: list[tuple[str, float, float] | None] = []
+    cursor = 0
+    for _time, text in lrc_lines:
+        tokens = tokenize_for_match(text)
+        if not tokens or cursor >= len(asr_words):
+            anchors.append(None)
+            continue
+        matcher = difflib.SequenceMatcher(
+            None, tokens, [word.text for word in asr_words[cursor:]], autojunk=False
+        )
+        blocks = [block for block in matcher.get_matching_blocks() if block.size > 0]
+        if not blocks or sum(block.size for block in blocks) / len(tokens) < min_similarity:
+            anchors.append(None)
+            continue
+        first = cursor + min(block.b for block in blocks)
+        last = cursor + max(block.b + block.size for block in blocks) - 1
+        start, end = asr_words[first].start, asr_words[last].end
+        if (end - start) / max(line_weight(text), 1.0) > max_sec_per_char:
+            anchors.append(None)
+            continue
+        anchors.append((text, start, end))
+        cursor = last + 1
+    return anchors
+
+
+def asr_settings(env: Mapping[str, str] | None = None) -> tuple[str, str, float]:
+    """(纯函数) ASR 配置:KTV_ASR_BASE_URL(空=禁用,走 VAD 兜底)/
+    KTV_ASR_MODEL(默认 mlx-community/Qwen3-ASR-1.7B-4bit)/KTV_ASR_TIMEOUT_S
+    (默认 600s,非法值回退默认)。"""
+    source = os.environ if env is None else env
+    base_url = (source.get("KTV_ASR_BASE_URL") or "").strip().rstrip("/")
+    model = (source.get("KTV_ASR_MODEL") or "").strip() or ASR_DEFAULT_MODEL
+    raw_timeout = (source.get("KTV_ASR_TIMEOUT_S") or "").strip()
+    try:
+        timeout = float(raw_timeout) if raw_timeout else ASR_DEFAULT_TIMEOUT_SECONDS
+    except ValueError:
+        timeout = ASR_DEFAULT_TIMEOUT_SECONDS
+    return base_url, model, timeout
+
+
+# 探测 requests(装了就用,没装则 urllib 手写 multipart);导入失败不影响模块加载
+try:
+    import requests as _requests_module
+except Exception:  # pragma: no cover - depends on env
+    _requests_module = None  # type: ignore[assignment]
+
+
+def transcribe_via_asr(
+    vocals_path: Path,
+    lrclib_text: str,
+    base_url: str | None = None,
+    model: str | None = None,
+    timeout_s: float | None = None,
+    env: Mapping[str, str] | None = None,
+) -> list[AsrWord]:
+    """人声音频 -> ASR 词级时间戳近似(multipart POST {base}/v1/audio/transcriptions)。
+
+    音频先 ffmpeg 转 16k mono m4a(临时文件,上传后随临时目录删除);prompt 用
+    歌词前 ASR_PROMPT_CHAR_BUDGET 字做上下文偏置(提高专有名词命中)。任何失败
+    (ffmpeg/网络/超时/HTTP 非 200/解析失败/无词级可用)抛 RuntimeError,由上层
+    捕获后回退 VAD 锚定路径。
+    """
+    env_base, env_model, env_timeout = asr_settings(env)
+    base = (base_url if base_url is not None else env_base).strip().rstrip("/")
+    asr_model = (model if model is not None else env_model).strip() or ASR_DEFAULT_MODEL
+    timeout = env_timeout if timeout_s is None else timeout_s
+    if not base:
+        raise RuntimeError("KTV_ASR_BASE_URL is not configured")
+
+    prompt = re.sub(r"\s+", " ", lrclib_text or "").strip()[:ASR_PROMPT_CHAR_BUDGET]
+    with tempfile.TemporaryDirectory(prefix="ktv-asr-") as tmp_name:
+        m4a = Path(tmp_name) / "vocals-16k-mono.m4a"
+        subprocess.run(
+            [
+                ffmpeg_cmd(), "-y", "-nostdin",
+                "-i", str(vocals_path),
+                "-vn",
+                "-ac", "1", "-ar", str(SAMPLE_RATE),
+                "-c:a", "aac", str(m4a),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        payload = _post_transcription(base, asr_model, m4a, prompt, timeout)
+    words = expand_asr_segments_to_words(payload.get("segments") or [])
+    if not words:
+        excerpt = str(payload.get("text") or "")[:40]
+        raise RuntimeError(f"asr returned no word timestamps (text={excerpt!r})")
+    return words
+
+
+def _multipart_body(
+    fields: Mapping[str, str], file_field: str, file_name: str, file_bytes: bytes
+) -> tuple[bytes, str]:
+    """(纯函数) 手写 multipart/form-data 请求体(requests 未安装时的兜底)。
+
+    返回 (body, boundary):字段按给定顺序编码,file 字段以 audio/mp4 附上。
+    """
+    boundary = "----ktv-asr-" + uuid.uuid4().hex
+    parts: list[bytes] = []
+    for name, value in fields.items():
+        parts.append(
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+                f"{value}\r\n"
+            ).encode("utf-8")
+        )
+    parts.append(
+        (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="{file_field}"; filename="{file_name}"\r\n'
+            f"Content-Type: audio/mp4\r\n\r\n"
+        ).encode("utf-8")
+    )
+    parts.append(file_bytes + b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+    return b"".join(parts), boundary
+
+
+def _post_transcription(
+    base_url: str, model: str, m4a_path: Path, prompt: str, timeout: float
+) -> dict:
+    """POST 转写并解析 JSON 响应;requests 可用走 requests,否则 urllib 手写 multipart。"""
+    url = f"{base_url}/v1/audio/transcriptions"
+    if _requests_module is not None:
+        try:
+            with m4a_path.open("rb") as handle:
+                response = _requests_module.post(
+                    url,
+                    files={"file": (m4a_path.name, handle, "audio/mp4")},
+                    data={"model": model, "prompt": prompt},
+                    timeout=timeout,
+                )
+        except Exception as error:
+            raise RuntimeError(f"asr request failed: {error}") from error
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"asr http {response.status_code}: {response.text[:200]}"
+            )
+        try:
+            return response.json()
+        except ValueError as error:
+            raise RuntimeError(f"asr response is not JSON: {error}") from error
+
+    body, boundary = _multipart_body(
+        {"model": model, "prompt": prompt}, "file", m4a_path.name, m4a_path.read_bytes()
+    )
+    request = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            if response.status != 200:
+                raise RuntimeError(f"asr http {response.status}")
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        detail = error.read()[:200]
+        raise RuntimeError(f"asr http {error.code}: {detail!r}") from error
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as error:
+        raise RuntimeError(f"asr request failed: {error}") from error
+
+
+
+
+
+# ---- Phase B/C: per-line alignment (shared by VAD and ASR anchor paths) -------
 
 
 def align_single_line(
@@ -532,6 +817,55 @@ def collapsed_word_fraction(entry: dict, collapse_seconds: float = WORD_COLLAPSE
     return collapsed / len(words)
 
 
+def _align_lines_to_windows(
+    audio: "np.ndarray",
+    sr: int,
+    line_texts: Sequence[str],
+    language: str,
+    model,
+    windows: Sequence[tuple[float, float] | None],
+) -> tuple[list[dict], list[int], float | None]:
+    """逐行独立对齐 + 行内可信度校验 + 时间单调兜底(VAD/ASR 两路共用)。
+
+    windows[i] = 行 i 的对齐窗口 (start, end) 或 None(unmatched);VAD 路径传
+    「配对段」,ASR 路径传「锚定词 span」——两条路都只把窗口交给
+    align_single_line(内部再扩 ±LINE_MARGIN_SECONDS),输出时间只能来自窗口
+    内的 aligner unit 时间。返回 (输出行, unmatched 行号, 首个被采用窗口的
+    start —— 供质量门禁校验输出时间轴是否音频的)。
+    """
+    output_lines: list[tuple[int, dict]] = []
+    unmatched_lines: list[int] = []
+    first_window_start: float | None = None
+    for index, text in enumerate(line_texts):
+        window = windows[index] if index < len(windows) else None
+        if window is None:
+            unmatched_lines.append(index)
+            continue
+        entry = align_single_line(model, audio, sr, text, language, window)
+        if (
+            entry is None
+            or not line_within_segment(entry, window)
+            or collapsed_word_fraction(entry) > LINE_MAX_COLLAPSED_WORD_FRACTION
+        ):
+            unmatched_lines.append(index)
+            continue
+        if first_window_start is None:
+            first_window_start = window[0]
+        output_lines.append((index, entry))
+    # 时间单调兜底:相邻窗口重叠/切分毛刺可能让后一行 start <= 前一行。局部
+    # 毛刺按行丢弃(unmatched),不让整文件被「非严格递增」门禁拒掉;
+    # evaluate_quality 的递增校验保留作最后防线。
+    monotone_lines: list[dict] = []
+    previous_start: float | None = None
+    for index, entry in output_lines:
+        if previous_start is not None and entry["start"] <= previous_start:
+            unmatched_lines.append(index)
+            continue
+        previous_start = entry["start"]
+        monotone_lines.append(entry)
+    return monotone_lines, unmatched_lines, first_window_start
+
+
 def align_lines(
     audio: "np.ndarray",
     sr: int,
@@ -539,8 +873,8 @@ def align_lines(
     language: str,
     model,
 ) -> tuple[list[dict], list[int], list[tuple[float, float]], float | None, float]:
-    """对齐核心数据流(无文件 IO,便于回归测试):VAD 分段 -> 全局偏移估计 ->
-    窗口化行段配对 -> 逐行独立对齐 -> 行时间硬校验。
+    """对齐核心数据流(VAD 路径,无文件 IO,便于回归测试):VAD 分段 -> 全局偏移
+    估计 -> 窗口化行段配对 -> 逐行独立对齐 -> 行时间硬校验。
 
     lines 是 parse_lrc 的 (LRC时间, 文本) 对:LRC 时间只作粗锚点(估 d*、开行
     窗口),输出时间仍只来自段边界 + aligner unit 时间。unmatched 行(窗口内
@@ -557,38 +891,36 @@ def align_lines(
     weights = [line_weight(text) for text in line_texts]
     offset = estimate_global_offset(lrc_times, weights, segments)
     mapping = map_lines_to_segments_windowed(lrc_times, weights, segments, offset)
+    output_lines, unmatched_lines, first_segment_start = _align_lines_to_windows(
+        audio, sr, line_texts, language, model, mapping
+    )
+    return output_lines, unmatched_lines, segments, first_segment_start, offset
 
-    output_lines: list[tuple[int, dict]] = []
-    unmatched_lines: list[int] = []
-    first_segment_start: float | None = None
-    for index, text in enumerate(line_texts):
-        segment = mapping[index] if index < len(mapping) else None
-        if segment is None:
-            unmatched_lines.append(index)
-            continue
-        entry = align_single_line(model, audio, sr, text, language, segment)
-        if (
-            entry is None
-            or not line_within_segment(entry, segment)
-            or collapsed_word_fraction(entry) > LINE_MAX_COLLAPSED_WORD_FRACTION
-        ):
-            unmatched_lines.append(index)
-            continue
-        if first_segment_start is None:
-            first_segment_start = segment[0]
-        output_lines.append((index, entry))
-    # 时间单调兜底:相邻段窗口重叠/切分毛刺可能让后一行 start <= 前一行
-    # (Baby 实测 1 对)。局部毛刺按行丢弃(unmatched),不让整文件被
-    # 「非严格递增」门禁拒掉;evaluate_quality 的递增校验保留作最后防线。
-    monotone_lines: list[dict] = []
-    previous_start: float | None = None
-    for index, entry in output_lines:
-        if previous_start is not None and entry["start"] <= previous_start:
-            unmatched_lines.append(index)
-            continue
-        previous_start = entry["start"]
-        monotone_lines.append(entry)
-    return monotone_lines, unmatched_lines, segments, first_segment_start, offset
+
+def align_lines_asr(
+    audio: "np.ndarray",
+    sr: int,
+    lines: Sequence[tuple[float, str]],
+    language: str,
+    model,
+    asr_words: Sequence[AsrWord],
+) -> tuple[list[dict], list[int], list[tuple[str, float, float] | None], float, float | None]:
+    """对齐核心数据流(ASR 锚定路径):行 -> ASR 词序列模糊锚定 -> 逐行窗口对齐。
+
+    行窗口 = 锚定 (start, end)(align_single_line 内再扩 ±0.3s),逐行对齐与
+    校验和 VAD 路径共用 _align_lines_to_windows——质量门禁对两条路一视同仁。
+    LRC 时间戳完全不参与(锚定只看文本);unmatched 行(无锚定/对齐失败/越界/
+    塌缩)不输出。返回 (output_lines, unmatched_line_indexes, anchors,
+    anchor_success_rate, first_adopted_anchor_start)。
+    """
+    anchors = anchor_lines_to_asr(lines, asr_words)
+    matched = sum(1 for anchor in anchors if anchor is not None)
+    rate = matched / len(lines) if lines else 0.0
+    windows = [None if anchor is None else (anchor[1], anchor[2]) for anchor in anchors]
+    output_lines, unmatched_lines, first_anchor_start = _align_lines_to_windows(
+        audio, sr, [text for _, text in lines], language, model, windows
+    )
+    return output_lines, unmatched_lines, anchors, rate, first_anchor_start
 
 
 # ---- Phase B: quality gate ----------------------------------------------------
@@ -687,11 +1019,20 @@ def align_file(
     language: str,
     model,
     log: Callable[[str], None] = lambda message: print(message, file=sys.stderr),
+    transcribe: Callable[[Path, str], list[AsrWord]] | None = None,
+    asr_env: Mapping[str, str] | None = None,
 ) -> dict:
-    """对齐主流程:VAD 分段 -> 行段映射 -> 逐行独立对齐 -> 质量门禁 -> 写文件。
+    """对齐主流程:ASR 词级锚定(可用时优先)-> 逐行独立对齐 -> 质量门禁 -> 写文件。
 
     CLI 与 media_sidecar.cmd_align 共用;模型对象由调用方加载(sidecar 内复用
-    缓存)。质量不达标时抛 QualityGateError 且不写任何输出。
+    缓存)。ASR 路径:KTV_ASR_BASE_URL 已配置且转写成功且锚定成功率
+    >= ASR_MIN_ANCHOR_COVERAGE 时,行窗口来自 ASR 词锚定;否则(未配置/超时/
+    HTTP 错误/成功率低)完整回退 VAD 路径,回退原因记 stderr。质量不达标时抛
+    QualityGateError 且不写任何输出。
+
+    transcribe/asr_env 只为可测性注入(单测里塞假转写结果);生产调用不传,
+    走 transcribe_via_asr + 进程 env(align-handler/backfill 的子进程天然继承
+    KTV_ASR_* 三键)。stats["anchor"] = "asr" | "vad" 注明锚定路径。
     """
     lines = parse_lrc(lyrics)
     if not lines:
@@ -700,22 +1041,61 @@ def align_file(
         raise AlignmentSkipped(f"audio not found: {audio}")
 
     # LRC 时间自此只作粗锚点:估全局偏移 d* + 为每行开配对窗口(见 align_lines
-    # 不变式),输出行时间仍只能来自 VAD 段边界 + aligner unit 时间。
+    # 不变式),输出行时间仍只能来自 VAD 段边界 / ASR 词时间 + aligner unit 时间。
     line_texts = [text for _, text in lines]
     resolved_language = resolve_language(language, "\n".join(line_texts))
 
     with tempfile.TemporaryDirectory(prefix="ktv-align-") as tmp_name:
         audio_data, sr = load_audio_16k_mono(audio, Path(tmp_name))
-        output_lines, unmatched_lines, segments, first_segment_start, offset = align_lines(
-            audio_data, sr, lines, resolved_language, model
-        )
 
-    problems, stats = evaluate_quality(output_lines, len(line_texts), first_segment_start)
+        anchor_mode = "vad"
+        anchor_rate = 0.0
+        output_lines: list[dict] | None = None
+        unmatched_lines: list[int] = []
+        first_segment_start: float | None = None
+        segments: list[tuple[float, float]] = []
+        asr_word_count = 0
+
+        if asr_settings(asr_env)[0]:
+            transcriber = transcribe or (
+                lambda audio_path, lyric_text: transcribe_via_asr(audio_path, lyric_text, env=asr_env)
+            )
+            try:
+                asr_words = transcriber(audio, "\n".join(line_texts))
+            except Exception as reason:  # 网络/HTTP/ffmpeg/解析:按设计回退 VAD
+                log(f"asr anchor unavailable ({type(reason).__name__}: {reason}); falling back to vad")
+            else:
+                if asr_words:
+                    asr_word_count = len(asr_words)
+                    output_lines, unmatched_lines, _anchors, anchor_rate, first_segment_start = (
+                        align_lines_asr(audio_data, sr, lines, resolved_language, model, asr_words)
+                    )
+                    if anchor_rate >= ASR_MIN_ANCHOR_COVERAGE:
+                        anchor_mode = "asr"
+                    else:
+                        log(
+                            f"asr anchor success rate {anchor_rate:.0%} < {ASR_MIN_ANCHOR_COVERAGE:.0%};"
+                            " falling back to vad"
+                        )
+                        output_lines = None
+                else:
+                    log("asr returned no word timestamps; falling back to vad")
+
+        if anchor_mode == "vad":
+            output_lines, unmatched_lines, segments, first_segment_start, offset = align_lines(
+                audio_data, sr, lines, resolved_language, model
+            )
+        else:
+            offset = 0.0
+
+    problems, stats = evaluate_quality(output_lines or [], len(line_texts), first_segment_start)
     stats.update(
         language=resolved_language,
         unmatchedLines=len(unmatched_lines),
-        segments=len(segments),
+        segments=len(segments) if anchor_mode == "vad" else asr_word_count,
         offsetSeconds=offset,
+        anchor=anchor_mode,
+        anchorRate=round(anchor_rate, 3),
     )
     if problems:
         raise QualityGateError(
@@ -723,6 +1103,7 @@ def align_file(
             + f" (lines={stats['lineCount']}/{stats['totalLines']},"
             + f" unmatched={stats['unmatchedLines']}, segments={stats['segments']},"
             + f" offset={stats['offsetSeconds']:+.0f}s,"
+            + f" anchor={stats['anchor']},"
             + f" language={stats['language']})"
         )
 
@@ -732,8 +1113,9 @@ def align_file(
     )
     log(
         f"aligned {stats['lineCount']}/{stats['totalLines']} line(s)"
-        + f" [coverage={stats['coverage']:.0%}, offset={stats['offsetSeconds']:+.0f}s,"
-        + f" {stats['language']}, {stats['segments']} segment(s)] -> {out}"
+        + f" [anchor={stats['anchor']}, coverage={stats['coverage']:.0%},"
+        + f" offset={stats['offsetSeconds']:+.0f}s,"
+        + f" {stats['language']}, {stats['segments']} unit(s)] -> {out}"
     )
     return stats
 

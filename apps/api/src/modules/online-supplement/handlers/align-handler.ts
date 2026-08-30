@@ -85,6 +85,16 @@ export async function karaokeJsonLooksValid(file: string): Promise<boolean> {
 
 const traditionalToSimplified = OpenCC.Converter({ from: "t", to: "cn" });
 
+// python 端 stderr 报告行里的锚定路径标注(align_lyrics.py:"[anchor=asr, ..."):
+// asr = ASR 词级时间戳锚定,vad = 能量 VAD 行段映射(ASR 不可用/锚定率低时的兜底)。
+// 从单次脚本路径的 stderr 提取并透传到阶段消息,便于排查「这首走的是哪条锚定路」。
+const ANCHOR_MODE_PATTERN = /anchor=(asr|vad)/u;
+
+export function anchorModeFromStderr(stderr: string | undefined | null): string | null {
+  const match = ANCHOR_MODE_PATTERN.exec(stderr ?? "");
+  return match?.[1] ?? null;
+}
+
 export interface AlignStageHandlerOptions {
   /** python 解释器(qwen-asr 已安装);空 = 未配置,阶段自跳过 */
   bin: string;
@@ -150,6 +160,9 @@ export class AlignStageHandler implements StageHandler {
     // 回退单次脚本路径,sidecar 故障绝不阻塞管线
     const sidecar = this.options.sidecar;
     let sidecarHandled = false;
+    // 锚定路径(asr|vad):单次脚本路径从 python stderr 报告行提取;sidecar 协议
+    // 响应未含该字段(保持兼容),为 null 时不标注
+    let anchorMode: string | null = null;
     if (sidecar && !sidecar.isBroken()) {
       try {
         const response = await sidecar.align(
@@ -188,6 +201,9 @@ export class AlignStageHandler implements StageHandler {
     }
 
     if (!sidecarHandled) {
+      // KTV_ASR_BASE_URL / KTV_ASR_MODEL / KTV_ASR_TIMEOUT_S 经 spawn 继承的
+      // process.env 天然透传给 python 子进程(单次脚本与常驻 sidecar 两条路都
+      // 不显式构造 env),python 端按 env 决定 ASR 锚定可用性——这里无需传参。
       const args = [
         this.options.scriptPath,
         "--audio",
@@ -206,7 +222,8 @@ export class AlignStageHandler implements StageHandler {
         this.options.dtype
       ];
       try {
-        await this.run(this.options.bin, args, timeoutMs);
+        const runResult = await this.run(this.options.bin, args, timeoutMs);
+        anchorMode = anchorModeFromStderr(runResult?.stderr);
       } catch (error) {
         // 超时被 kill 时 python 可能已写了半截文件,删掉防止截断 JSON 入库;
         // 质量门禁(exit 4)不写输出,同样删除兜底并注明 quality-gate
@@ -230,8 +247,11 @@ export class AlignStageHandler implements StageHandler {
       return { status: "completed", message: "align output invalid (lrc fallback)" };
     }
 
-    input.log("align done", { out, audioSource });
+    input.log("align done", { out, audioSource, anchor: anchorMode ?? undefined });
     await input.reportProgress(95, "逐字对齐完成");
-    return { status: "completed", message: `aligned (${audioSource})` };
+    return {
+      status: "completed",
+      message: anchorMode ? `aligned (${audioSource}, anchor=${anchorMode})` : `aligned (${audioSource})`
+    };
   }
 }

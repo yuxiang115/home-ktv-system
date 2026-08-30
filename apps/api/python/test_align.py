@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """align_lyrics.py 单测(VAD 分段 / 行段映射 / auto 语种判定 / 质量门禁统计 /
-对齐核心数据流)。
+对齐核心数据流 / ASR 词级锚定)。
 
 node 测试管线跑不到 python,这里用零依赖的裸 assert 脚本(node vitest 之外的
 补充)。两种运行方式:
@@ -8,35 +8,48 @@ node 测试管线跑不到 python,这里用零依赖的裸 assert 脚本(node vi
     python test_align.py           # 逐个跑 test_* 函数,全过 exit 0
     python -m pytest test_align.py # 同样可用(pytest 风格命名)
 
-不需要 torch/qwen_asr/ffmpeg:被测函数都是纯函数;对齐核心(align_lines)
-用 stub aligner + numpy 合成波形覆盖,不加载模型。
+不需要 torch/qwen_asr/ffmpeg:被测函数都是纯函数;对齐核心(align_lines /
+align_lines_asr)用 stub aligner + numpy 合成波形覆盖,不加载模型;align_file
+的 ASR 路径用注入的假转写函数覆盖(load_audio_16k_mono 打桩,不做文件转换)。
 """
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import align_lyrics
+
 from align_lyrics import (  # noqa: E402
     ABSORB_MIN_SEC_PER_CHAR,
+    ANCHOR_MAX_SEC_PER_CHAR,
+    ASR_DEFAULT_MODEL,
+    ASR_DEFAULT_TIMEOUT_SECONDS,
     LINE_MATCH_WINDOW_SECONDS,
     OFFSET_MAX_SECONDS,
     OFFSET_MIN_SECONDS,
     VAD_MIN_GAP_SECONDS,
     VAD_MIN_SEGMENT_SECONDS,
     align_lines,
+    align_lines_asr,
+    anchor_lines_to_asr,
+    asr_settings,
     cjk_char_ratio,
     collapsed_word_fraction,
     estimate_global_offset,
     evaluate_quality,
+    expand_asr_segments_to_words,
     line_weight,
     line_within_segment,
     map_lines_to_segments_windowed,
     parse_lrc,
     resolve_language,
+    tokenize_for_match,
     voiced_segments_from_energy,
+    AsrWord,
 )
 
 
@@ -465,6 +478,296 @@ def test_line_within_segment_margins() -> None:
     assert line_within_segment({"start": 3.36, "end": 5.12}, (3.0, 5.5))
 
 
+# ---- Phase C: ASR word-level anchoring ------------------------------------------
+
+
+def test_tokenize_for_match_language_aware() -> None:
+    # 中文逐字(标点/空白丢弃)、英文按词(小写化、词内标点剥离)、混合各得其所
+    assert tokenize_for_match("忘了有多久") == ["忘", "了", "有", "多", "久"]
+    assert tokenize_for_match("Oh whoa, oh whoa!") == ["oh", "whoa", "oh", "whoa"]
+    assert tokenize_for_match("I'm OK") == ["i", "m", "ok"]  # 撇号断词(两侧仍可比)
+    assert tokenize_for_match("我爱baby") == ["我", "爱", "baby"]
+    assert tokenize_for_match("。。。  ") == []
+
+
+def test_expand_asr_segments_uniform_word_spread() -> None:
+    # 段级(2-6s)转写在段内均匀展开成词级近似:中文逐字、英文按词
+    words = expand_asr_segments_to_words(
+        [{"start": 10.0, "end": 12.0, "text": "忘了有多久"}]
+    )
+    assert [w.text for w in words] == ["忘", "了", "有", "多", "久"]
+    assert abs(words[0].start - 10.0) < 1e-9 and abs(words[-1].end - 12.0) < 1e-9
+    assert all(abs(w.end - w.start - 0.4) < 1e-9 for w in words)
+    assert all(words[i].end <= words[i + 1].start + 1e-9 for i in range(len(words) - 1))
+
+    english = expand_asr_segments_to_words(
+        [{"start": 0.0, "end": 3.0, "text": "You know you love me"}]
+    )
+    assert [w.text for w in english] == ["you", "know", "you", "love", "me"]
+    assert abs(english[0].start - 0.0) < 1e-9 and abs(english[-1].end - 3.0) < 1e-9
+
+    # 多段拼接按时间排序;纯标点段/缺时间字段段跳过;空输入 = []
+    mixed = expand_asr_segments_to_words(
+        [
+            {"start": 20.0, "end": 21.0, "text": "啊"},
+            {"start": 5.0, "end": 6.0, "text": "!!!"},
+            {"start": 8.0, "end": "bad", "text": "坏数据"},
+        ]
+    )
+    assert [(w.text, w.start) for w in mixed] == [("啊", 20.0)]
+    assert expand_asr_segments_to_words([]) == []
+
+
+def test_anchor_lines_chinese_exact_and_punct_tolerant() -> None:
+    # 行文本与 ASR 转写在标点/空白上差异不影响锚定;行时间=首/末匹配词时间
+    asr_words = expand_asr_segments_to_words(
+        [
+            {"start": 0.0, "end": 2.0, "text": "(前奏哼唱)"},
+            {"start": 12.0, "end": 15.0, "text": "忘了,有多久"},
+            {"start": 20.0, "end": 24.0, "text": "再没听到你 对我说 你爱的故事"},
+        ]
+    )
+    lines = [(10.0, "忘了有多久"), (21.0, "再没听到你,对我说,你爱的故事")]
+    anchors = anchor_lines_to_asr(lines, asr_words)
+    assert anchors[0] == ("忘了有多久", 12.0, 15.0)
+    assert anchors[1] == ("再没听到你,对我说,你爱的故事", 20.0, 24.0)
+
+
+def test_anchor_lines_english_and_partial_match() -> None:
+    # 英文按词匹配;转写丢词/换词时,行 token 覆盖率 >= 0.5 仍可锚定
+    asr_words = expand_asr_segments_to_words(
+        [
+            {"start": 15.8, "end": 21.0, "text": "Oh whoa oh whoa oh whoa"},
+            {"start": 24.0, "end": 30.0, "text": "You know love me I know care"},
+        ]
+    )
+    lines = [(3.41, "Oh whoa, oh whoa, oh whoa"), (14.64, "You know you love me, I know you care")]
+    anchors = anchor_lines_to_asr(lines, asr_words)
+    assert anchors[0] is not None and anchors[0][1:] == (15.8, 21.0)
+    # 第二行 9 词中 6 词命中(66% >= 50%):仍锚定,窗口就是转写段
+    assert anchors[1] is not None and anchors[1][1:] == (24.0, 30.0)
+
+
+def test_anchor_lines_no_match_returns_none() -> None:
+    # 完全不同的文本(MV 里没人声的 LRC 行/转写完全跑偏)=> None
+    asr_words = expand_asr_segments_to_words(
+        [{"start": 10.0, "end": 12.0, "text": " совершенно другой текст"}]
+    )
+    anchors = anchor_lines_to_asr([(0.0, " entirely different lyrics here")], asr_words)
+    assert anchors == [None]
+    # 空词序列 / 空行文本 => None
+    assert anchor_lines_to_asr([(0.0, "一句")], []) == [None]
+
+
+def test_anchor_lines_repeated_chorus_anchors_monotonically() -> None:
+    # 副歌重复行各自锚到自己的出现位置(游标只向后推进),不是全部吸到第一次
+    asr_words = expand_asr_segments_to_words(
+        [
+            {"start": 10.0, "end": 12.0, "text": "我爱你"},
+            {"start": 30.0, "end": 32.0, "text": "别的歌词内容"},
+            {"start": 50.0, "end": 52.0, "text": "我爱你"},
+        ]
+    )
+    anchors = anchor_lines_to_asr(
+        [(9.0, "我爱你"), (29.0, "别的歌词内容"), (49.0, "我爱你")], asr_words
+    )
+    assert anchors[0] is not None and anchors[0][1:] == (10.0, 12.0)
+    assert anchors[1] is not None and anchors[1][1:] == (30.0, 32.0)
+    assert anchors[2] is not None and anchors[2][1:] == (50.0, 52.0)
+
+
+def test_anchor_lines_unmatched_line_does_not_block_later_lines() -> None:
+    # 中间一行没被唱(unmatched 不推进游标),后续行仍正常锚定
+    asr_words = expand_asr_segments_to_words(
+        [{"start": 20.0, "end": 22.0, "text": "尾声一句"}]
+    )
+    anchors = anchor_lines_to_asr(
+        [(0.0, "没人唱的行"), (19.0, "尾声一句")], asr_words
+    )
+    assert anchors[0] is None
+    assert anchors[1] is not None and anchors[1][1:] == (20.0, 22.0)
+
+
+def test_anchor_lines_rejects_runaway_span() -> None:
+    # 部分匹配吸到远处重复出现,首/末词 span 被拉长到不成比例(> 0.8 s/字)
+    # => 锚定不可信,unmatched(交给 VAD 兜底/逐行门禁)
+    asr_words = expand_asr_segments_to_words(
+        [
+            {"start": 0.0, "end": 1.0, "text": "我爱你"},
+            {"start": 400.0, "end": 401.0, "text": "你爱他"},
+        ]
+    )
+    anchors = anchor_lines_to_asr([(0.0, "我爱你你爱他")], asr_words)
+    assert anchors == [None]
+
+
+def test_asr_settings_env_parsing() -> None:
+    # 空 base = 禁用(python 侧走 VAD 兜底);model/timeout 缺省与非法值回退
+    assert asr_settings({}) == ("", ASR_DEFAULT_MODEL, ASR_DEFAULT_TIMEOUT_SECONDS)
+    assert asr_settings({"KTV_ASR_BASE_URL": "http://mac:8000/"}) == (
+        "http://mac:8000", ASR_DEFAULT_MODEL, ASR_DEFAULT_TIMEOUT_SECONDS
+    )
+    assert asr_settings(
+        {"KTV_ASR_BASE_URL": "http://mac:8000", "KTV_ASR_MODEL": "other/asr", "KTV_ASR_TIMEOUT_S": "30"}
+    ) == ("http://mac:8000", "other/asr", 30.0)
+    assert asr_settings({"KTV_ASR_TIMEOUT_S": "not-a-number"})[2] == ASR_DEFAULT_TIMEOUT_SECONDS
+    assert ASR_DEFAULT_MODEL == "mlx-community/Qwen3-ASR-1.7B-4bit"
+
+
+# ---- Phase C: ASR-anchored alignment core ---------------------------------------
+
+
+def test_align_lines_asr_anchors_by_text_not_lrc_time() -> None:
+    # 52段/29行类错配的降维打击:VAD 行段配对被段数错配带偏,而 ASR 锚定只看
+    # 文本。LRC 时间轴(录音室)与音频时间轴差 +12s 时,输出仍锚在音频实际
+    # 演唱处(15.8s 起),绝不复刻 LRC 的 3.41s。
+    audio, sr = _baby_like_audio()
+    lines = [
+        (3.41, "Oh whoa, oh whoa, oh whoa"),
+        (14.64, "You know you love me, I know you care"),
+    ]
+    asr_words = expand_asr_segments_to_words(
+        [
+            {"start": 15.8, "end": 21.0, "text": "Oh whoa oh whoa oh whoa"},
+            {"start": 24.0, "end": 30.0, "text": "You know you love me I know you care"},
+        ]
+    )
+    output, unmatched, anchors, rate, first_anchor_start = align_lines_asr(
+        audio, sr, lines, "English", _StubAligner(), asr_words
+    )
+
+    assert rate == 1.0
+    assert unmatched == []
+    assert all(anchor is not None for anchor in anchors)
+    assert first_anchor_start == 15.8
+    first_start = output[0]["start"]
+    assert 15.5 <= first_start <= 17.8  # 音频段内(切片余量 -0.3),绝不是 3.41s
+    assert abs(first_start - 3.41) > 1.0
+    problems, stats = evaluate_quality(output, len(lines), first_anchor_start)
+    assert problems == []
+    assert stats["coverage"] == 1.0
+
+
+def test_align_lines_asr_partial_anchor_still_gates_per_line() -> None:
+    # 锚定成功但某行 ForcedAligner 塌缩(>50% 词 <20ms):该行 unmatched 丢弃,
+    # 与 VAD 路径同一套逐行门禁——ASR 锚定不豁免质量校验
+    audio, sr = _baby_like_audio()
+    lines = [
+        (3.41, "Oh whoa, oh whoa, oh whoa"),
+        (14.64, "You know you love me, I know you care"),
+    ]
+    asr_words = expand_asr_segments_to_words(
+        [
+            {"start": 15.8, "end": 21.0, "text": "Oh whoa oh whoa oh whoa"},
+            {"start": 24.0, "end": 30.0, "text": "You know you love me I know you care"},
+        ]
+    )
+    output, unmatched, anchors, rate, _first = align_lines_asr(
+        audio, sr, lines, "English", _StubAligner(collapsing=True), asr_words
+    )
+    assert output == [] and unmatched == [0, 1]  # 67%/78% 塌缩,两行都丢
+    assert rate == 1.0  # 锚定本身成功;丢弃发生在逐行对齐层
+
+
+def test_align_file_prefers_asr_and_falls_back_to_vad() -> None:
+    # align_file 主流程:ASR 可用且锚定成功率达标 => anchor=asr;转写抛错 =>
+    # 回退 VAD 路径 anchor=vad(消息注明原因);env 未配置 => 不发起 ASR。
+    # load_audio_16k_mono 打桩返回合成波形,不做真实文件转换(保持零 ffmpeg 依赖)。
+    audio, sr = _baby_like_audio()
+    asr_words = expand_asr_segments_to_words(
+        [
+            {"start": 15.8, "end": 21.0, "text": "Oh whoa oh whoa oh whoa"},
+            {"start": 24.0, "end": 30.0, "text": "You know you love me I know you care"},
+        ]
+    )
+    real_loader = align_lyrics.load_audio_16k_mono
+    align_lyrics.load_audio_16k_mono = lambda _src, _tmp: (audio, sr)
+    logs: list[str] = []
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            lrc = Path(tmp) / "baby.lrc"
+            lrc.write_text(
+                "[00:03.41] Oh whoa, oh whoa, oh whoa\n"
+                "[00:14.64] You know you love me, I know you care\n",
+                encoding="utf-8",
+            )
+            # 占位音频文件(内容无关:load_audio_16k_mono 已打桩返回合成波形)
+            fake_audio = Path(tmp) / "fake.wav"
+            fake_audio.write_bytes(b"stub")
+            out = Path(tmp) / "baby.karaoke.json"
+
+            # 1) ASR 可用:anchor=asr,输出首行锚在音频 15.8s
+            stats = align_lyrics.align_file(
+                fake_audio, lrc, out, "English", _StubAligner(),
+                transcribe=lambda _audio, _text: list(asr_words),
+                asr_env={"KTV_ASR_BASE_URL": "http://asr-stub"},
+                log=logs.append,
+            )
+            assert stats["anchor"] == "asr" and stats["anchorRate"] == 1.0
+            payload = json.loads(out.read_text(encoding="utf-8"))
+            assert 15.5 <= payload["lines"][0]["start"] <= 17.8
+            assert any("anchor=asr" in message for message in logs)
+
+            # 2) 转写失败(HTTP/超时类异常):回退 VAD 路径,anchor=vad,原因入日志
+            logs.clear()
+            out.unlink()
+            stats = align_lyrics.align_file(
+                fake_audio, lrc, out, "English", _StubAligner(),
+                transcribe=lambda _audio, _text: (_ for _ in ()).throw(RuntimeError("asr http 503")),
+                asr_env={"KTV_ASR_BASE_URL": "http://asr-stub"},
+                log=logs.append,
+            )
+            assert stats["anchor"] == "vad"
+            assert any("asr anchor unavailable" in message for message in logs)
+            vad_payload = json.loads(out.read_text(encoding="utf-8"))
+            assert 15.5 <= vad_payload["lines"][0]["start"] <= 17.8  # VAD 路径输出同样正确
+
+            # 3) env 未配置(KTV_ASR_BASE_URL 空 = 禁用):绝不发起 ASR 调用
+            def _fail(_audio: object, _text: object) -> list[AsrWord]:
+                raise AssertionError("asr must not be called when KTV_ASR_BASE_URL is empty")
+
+            stats = align_lyrics.align_file(
+                fake_audio, lrc, out, "English", _StubAligner(),
+                transcribe=_fail, asr_env={}, log=logs.append,
+            )
+            assert stats["anchor"] == "vad"
+    finally:
+        align_lyrics.load_audio_16k_mono = real_loader
+
+
+def test_align_file_asr_low_anchor_rate_falls_back_to_vad() -> None:
+    # 锚定成功率 < 50%(多数行没被唱/转写跑偏)=> 放弃 ASR 锚定走 VAD 兜底
+    audio, sr = _baby_like_audio()
+    asr_words = expand_asr_segments_to_words(
+        [{"start": 15.8, "end": 21.0, "text": "Oh whoa oh whoa oh whoa"}]
+    )
+    real_loader = align_lyrics.load_audio_16k_mono
+    align_lyrics.load_audio_16k_mono = lambda _src, _tmp: (audio, sr)
+    logs: list[str] = []
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            lrc = Path(tmp) / "baby.lrc"
+            lrc.write_text(
+                "[00:03.41] Oh whoa, oh whoa, oh whoa\n"
+                "[00:14.64] You know you love me, I know you care\n"
+                "[00:24.00] One more line nobody sings\n",
+                encoding="utf-8",
+            )
+            fake_audio = Path(tmp) / "fake.wav"
+            fake_audio.write_bytes(b"stub")
+            out = Path(tmp) / "baby.karaoke.json"
+            stats = align_lyrics.align_file(
+                fake_audio, lrc, out, "English", _StubAligner(),
+                transcribe=lambda _audio, _text: list(asr_words),
+                asr_env={"KTV_ASR_BASE_URL": "http://asr-stub"},
+                log=logs.append,
+            )
+            assert stats["anchor"] == "vad"
+            assert any("success rate 33%" in message for message in logs)
+    finally:
+        align_lyrics.load_audio_16k_mono = real_loader
+
+
 # ---- Phase B: quality gate ------------------------------------------------------
 
 
@@ -541,6 +844,11 @@ def test_defaults_are_sensible() -> None:
     # 吞并阈值取英文名义(~0.08-0.13)与中文名义(~0.15-0.45)之间:
     # 只吞并「连英文演唱都嫌短」的碎段,避免把中文行的下一行吞进来
     assert 0.08 < ABSORB_MIN_SEC_PER_CHAR < 0.13
+    # ASR 锚定:成功率门限不低于覆盖率门禁的一半(锚定失败还有 VAD 兜底),
+    # span 合理性上界与 OFFSET_RATIO_BAND 上界一致(秒/字符)
+    assert align_lyrics.ASR_MIN_ANCHOR_COVERAGE == 0.5
+    assert 0.5 <= ANCHOR_MAX_SEC_PER_CHAR <= 1.0
+    assert align_lyrics.ASR_PROMPT_CHAR_BUDGET == 200
 
 
 def _run_all() -> int:
