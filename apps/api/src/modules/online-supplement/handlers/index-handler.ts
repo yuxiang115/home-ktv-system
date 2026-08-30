@@ -1,15 +1,20 @@
-import { copyFile, mkdir, rm, stat } from "node:fs/promises";
+import { copyFile, mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import type { MediaPathMapping } from "../../assets/media-path-mapping.js";
 import type { QueryExecutor } from "../../../db/query-executor.js";
 import { buildKtvIndexAssetDraft, indexKtvAssetDrafts } from "../../ingest/ktv-full-index.js";
 import { KtvIndexTechnicalProbeService } from "../../ktv-index/ktv-index-technical-probe.js";
 import { downloadedAssetPath } from "./download-handler.js";
-import type { StageExecuteInput, StageExecuteResult, StageHandler } from "../supplement-orchestrator.js";
+import { karaokeJsonLooksValid } from "./align-handler.js";
+import {
+  cleanupSupplementIntermediates,
+  type StageExecuteInput,
+  type StageExecuteResult,
+  type StageHandler
+} from "../supplement-orchestrator.js";
 
 const ONLINE_SUBDIR = "_online";
 const MIXED_SUBDIR = "_mixed";
-const STEMS_SUBDIR = "_stems";
 const LYRICS_SUBDIR = "_lyrics";
 
 export interface IndexStageHandlerOptions {
@@ -36,9 +41,15 @@ export class IndexStageHandler implements StageHandler {
       : downloadedAssetPath(this.options.workDir, input.task.id);
 
     await input.reportProgress(20, "copying asset into library");
+    input.log("index copy start", { from: srcPath, to: finalFilePath });
     try {
       await copyFile(srcPath, finalFilePath);
     } catch (error) {
+      input.log("index copy failed", {
+        from: srcPath,
+        to: finalFilePath,
+        error: error instanceof Error ? error.message : String(error)
+      });
       return {
         status: "failed",
         failureReason: `index copy failed: ${error instanceof Error ? error.message : String(error)}`
@@ -46,6 +57,7 @@ export class IndexStageHandler implements StageHandler {
     }
 
     const stats = await stat(finalFilePath).catch(() => null);
+    input.log("index copy done", { finalFilePath, sizeBytes: stats?.size ?? null });
     await input.reportProgress(50, "indexing into ktv_songs");
     const draft = buildKtvIndexAssetDraft({
       sourcePath: finalFilePath,
@@ -67,10 +79,13 @@ export class IndexStageHandler implements StageHandler {
     );
     const readySongId = result.rows[0]?.id;
     if (!readySongId) {
+      input.log("indexed song not found by file_path", { finalFilePath });
       return { status: "failed", failureReason: "indexed song not found by file_path" };
     }
+    input.log("song indexed", { readySongId, finalFilePath });
 
     const finalLyricFile = await this.copyLyricIntoLibrary(input.task, onlineDir, safeName, readySongId);
+    await this.copyKaraokeIntoLibrary(input.task.id, onlineDir, safeName, readySongId, input.log);
 
     // 入库后立刻 ffprobe,填 technical_metadata;否则 compatibility 判为 unsupported、
     // 点歌链路 (isQueueablePlayableMedia) 会拒绝。
@@ -79,7 +94,26 @@ export class IndexStageHandler implements StageHandler {
       const probeService = new KtvIndexTechnicalProbeService(this.options.db, {
         ...(this.options.pathMappings ? { pathMappings: this.options.pathMappings } : {})
       });
-      await probeService.probeKtvIndexAssets({ assetId: readySongId, limit: 1 });
+      const probeResult = await probeService.probeKtvIndexAssets({ assetId: readySongId, limit: 1 });
+      // probe 内部消化单文件失败(technical_status='failed'),只有返回计数能暴露问题。
+      // 歌已入库所以任务仍算 completed,但 message 必须写明,否则 UI 显示完成、
+      // 点歌却被 SONG_NOT_QUEUEABLE 拒绝时无从排查。
+      if (probeResult.failed > 0) {
+        input.log("probe reported failures", {
+          readySongId,
+          failed: probeResult.failed,
+          selected: probeResult.selected,
+          probed: probeResult.probed,
+          skipped: probeResult.skipped
+        });
+        return {
+          status: "completed",
+          message: `indexed (probe failed ${probeResult.failed}/${probeResult.selected} — 该歌可能无法点播，请重跑 probe)`,
+          readySongId,
+          finalFilePath,
+          ...(finalLyricFile ? { lyricFile: finalLyricFile } : {})
+        };
+      }
     } catch (error) {
       return {
         status: "completed",
@@ -90,7 +124,8 @@ export class IndexStageHandler implements StageHandler {
       };
     }
 
-    await this.cleanupIntermediates(input.task.id);
+    await cleanupSupplementIntermediates(this.options.workDir, input.task.id);
+    input.log("intermediates cleaned", { taskId: input.task.id });
 
     return {
       status: "completed",
@@ -99,6 +134,44 @@ export class IndexStageHandler implements StageHandler {
       finalFilePath,
       ...(finalLyricFile ? { lyricFile: finalLyricFile } : {})
     };
+  }
+
+  // align 阶段产出按约定在 _lyrics/<taskId>.karaoke.json;拷为曲库 sidecar 并落
+  // ktv_songs.karaoke_lyrics_file。缺失(未配置 aligner/basic 工作流)静默跳过。
+  private async copyKaraokeIntoLibrary(
+    taskId: string,
+    onlineDir: string,
+    safeName: string,
+    readySongId: string,
+    log?: (message: string, meta?: Record<string, unknown>) => void
+  ): Promise<void> {
+    const source = path.join(this.options.workDir, LYRICS_SUBDIR, `${taskId}.karaoke.json`);
+    if (!(await stat(source).catch(() => null))) {
+      log?.("karaoke sidecar missing (skip)", { source });
+      return;
+    }
+    if (!(await karaokeJsonLooksValid(source))) {
+      // 半截/空 JSON 一旦入库,backfill 按 karaoke_lyrics_file IS NULL 过滤就永远不再修复
+      log?.("karaoke sidecar invalid (skip)", { source });
+      return;
+    }
+
+    const dest = path.join(onlineDir, `${safeName}.karaoke.json`);
+    try {
+      await copyFile(source, dest);
+      await this.options.db.query(
+        "UPDATE ktv_songs SET karaoke_lyrics_file = $1, updated_at = now() WHERE id = $2",
+        [dest, readySongId]
+      );
+      log?.("karaoke sidecar copied", { from: source, to: dest, readySongId });
+    } catch (error) {
+      // best-effort: 失败仅意味着 TV 降级到行级 LRC,但必须留痕
+      log?.("karaoke sidecar copy failed", {
+        from: source,
+        to: dest,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
 
   private async copyLyricIntoLibrary(
@@ -123,15 +196,6 @@ export class IndexStageHandler implements StageHandler {
       return null;
     }
     return lyricDest;
-  }
-
-  private async cleanupIntermediates(taskId: string): Promise<void> {
-    await Promise.all([
-      rm(path.join(this.options.workDir, "_downloads", `${taskId}.mkv`), { force: true }).catch(() => undefined),
-      rm(path.join(this.options.workDir, STEMS_SUBDIR, taskId), { recursive: true, force: true }).catch(() => undefined),
-      rm(path.join(this.options.workDir, MIXED_SUBDIR, `${taskId}.mkv`), { force: true }).catch(() => undefined),
-      rm(path.join(this.options.workDir, LYRICS_SUBDIR, `${taskId}.lrc`), { force: true }).catch(() => undefined)
-    ]);
   }
 }
 

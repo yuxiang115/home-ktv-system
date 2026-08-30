@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -203,7 +203,13 @@ async function stopService(service) {
   }
 
   try {
-    process.kill(-pid, "SIGTERM");
+    // Windows: shell:true 时 pid 是 cmd 的,子进程不在同一 kill 组;必须 taskkill /T
+    // 整树杀,否则 tsx/vite 子进程变孤儿(积多后新进程 0xC0000142)。
+    if (process.platform === "win32") {
+      spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
+    } else {
+      process.kill(-pid, "SIGTERM");
+    }
   } catch {
     try {
       process.kill(pid, "SIGTERM");

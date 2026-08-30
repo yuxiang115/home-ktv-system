@@ -2,9 +2,12 @@ import type { RoomSnapshot } from "@home-ktv/player-contracts";
 import type { CSSProperties } from "react";
 import { useRef } from "react";
 import { InteractionOverlay } from "./components/InteractionOverlay.js";
+import { LyricsOverlay } from "./components/LyricsOverlay.js";
+import { SeekHotzone, SeekNudgeOverlay } from "./components/SeekNudgeOverlay.js";
 import { IdleScreen } from "./screens/IdleScreen.js";
 import { PlayingScreen } from "./screens/PlayingScreen.js";
 import { useTvPlaybackRuntime } from "./runtime/use-tv-playback-runtime.js";
+import { SEEK_STEP_MS } from "./runtime/seek.js";
 import { deriveTvDisplayState, type TvDisplayState } from "./screens/tv-display-model.js";
 import { tvTheme } from "./theme.js";
 
@@ -34,6 +37,20 @@ export function App() {
           runtime.handleFirstPlayPromptClick,
           runtime.localPlaybackConfirmed
         )}
+        {isPlaybackScreen && (runtime.karaokeLines?.length || runtime.lyricLines?.length) ? (
+          <LyricsOverlay
+            karaokeLines={runtime.karaokeLines}
+            lrcLines={runtime.lyricLines ?? []}
+            positionMs={runtime.playbackPositionMs}
+          />
+        ) : null}
+        {isPlaybackScreen ? (
+          <>
+            <SeekHotzone side="left" onNudge={() => runtime.nudgeSeek(-SEEK_STEP_MS)} />
+            <SeekHotzone side="right" onNudge={() => runtime.nudgeSeek(SEEK_STEP_MS)} />
+            <SeekNudgeOverlay feedback={runtime.seekFeedback} />
+          </>
+        ) : null}
       </div>
       <InteractionOverlay interactions={runtime.interactions} />
     </main>

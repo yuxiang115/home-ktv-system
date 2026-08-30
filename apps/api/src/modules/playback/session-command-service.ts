@@ -557,6 +557,8 @@ async function executeMutatingCommand(
       return switchVocalMode(input, context);
     case "set-volume":
       return setVolume(input, context);
+    case "seek":
+      return seekPlayback(input, context);
     case "player-ended":
       return rejected(input.commandId, input.sessionVersion, "PLAYER_ENDED_IS_TELEMETRY_ONLY");
   }
@@ -787,6 +789,44 @@ async function setVolume(
   const updatedSession = await input.repositories.playbackSessions.setVolume({
     roomId: context.room.id,
     volumePercent
+  });
+  if (!updatedSession) {
+    return rejected(input.commandId, input.sessionVersion, "PLAYBACK_SESSION_NOT_FOUND");
+  }
+
+  const snapshot = await finishAcceptedSnapshotCommand(input, context, updatedSession.version);
+  return {
+    status: "accepted",
+    commandId: input.commandId,
+    sessionVersion: snapshot.sessionVersion,
+    snapshot: snapshot.snapshot,
+    controlSessionCookie: snapshot.controlSessionCookie
+  };
+}
+
+// 手机端快进/快退:payload.deltaMs(±10s 这类相对位移)。目标位置以服务端记录的
+// TV 心跳位置为基准(不信任 controller 本地进度),写回会话并递增 seek_seq,
+// TV 检测快照里 seekSeq 变化后应用到视频。
+async function seekPlayback(
+  input: ExecuteRoomCommandInput,
+  context: QueueMutationContext
+): Promise<CommandExecutionResult> {
+  const deltaMs = Number(input.payload.deltaMs);
+  if (!Number.isFinite(deltaMs) || Math.abs(deltaMs) > 600_000) {
+    return rejected(input.commandId, input.sessionVersion, "INVALID_SEEK_DELTA");
+  }
+  if (context.session.currentQueueEntryId == null) {
+    return rejected(input.commandId, input.sessionVersion, "NO_ACTIVE_PLAYBACK");
+  }
+  if (!input.repositories.playbackSessions.seekPlaybackPosition) {
+    return rejected(input.commandId, input.sessionVersion, "SEEK_CONTROL_UNAVAILABLE");
+  }
+
+  const basePositionMs = context.session.playerPositionMs;
+  const targetMs = Math.max(0, Math.trunc(basePositionMs + deltaMs));
+  const updatedSession = await input.repositories.playbackSessions.seekPlaybackPosition({
+    roomId: context.room.id,
+    playerPositionMs: targetMs
   });
   if (!updatedSession) {
     return rejected(input.commandId, input.sessionVersion, "PLAYBACK_SESSION_NOT_FOUND");

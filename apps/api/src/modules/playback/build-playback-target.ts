@@ -44,6 +44,7 @@ export async function buildPlaybackTarget(input: BuildPlaybackTargetInput): Prom
     queueEntry,
     sessionVersion: session.version,
     resumePositionMs: session.playerPositionMs,
+    seekSeq: session.seekSeq ?? 0,
     nextQueueEntryId: session.nextQueueEntryId
   });
 }
@@ -53,6 +54,7 @@ async function buildSourcePlaybackTarget(input: BuildPlaybackTargetInput & {
   queueEntry: QueueEntry;
   sessionVersion: number;
   resumePositionMs: number;
+  seekSeq: number;
   nextQueueEntryId: string | null;
 }): Promise<PlaybackTarget | null> {
   const source = sourceRefFromQueueEntry(input.queueEntry);
@@ -73,6 +75,7 @@ async function buildSourcePlaybackTarget(input: BuildPlaybackTargetInput & {
     currentQueueEntryPreview: queuePreviewFromPlayableMedia(input.queueEntry, asset),
     playbackUrl: input.mediaGateway.createPlaybackUrl(source),
     resumePositionMs: input.resumePositionMs,
+    seekSeq: input.seekSeq,
     vocalMode: effectiveVocalMode,
     switchFamily: switchFamilyForPlayableMedia(asset),
     playbackProfile: asset.playbackProfile,

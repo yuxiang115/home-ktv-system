@@ -35,12 +35,19 @@ export interface SetVolumeInput {
   volumePercent: number;
 }
 
+export interface SeekPlaybackPositionInput {
+  roomId: RoomId;
+  /** 已按服务端语义收敛好的目标位置(>=0);TV 端还会按流边界再收敛一次 */
+  playerPositionMs: number;
+}
+
 export interface PlaybackSessionRepository {
   findByRoomId(roomId: RoomId): Promise<PlaybackSession | null>;
   startQueueEntry(input: StartQueueEntryInput): Promise<PlaybackSession | null>;
   setIdle(roomId: RoomId): Promise<PlaybackSession | null>;
   requestSwitchTarget(input: RequestSwitchTargetInput): Promise<PlaybackSession | null>;
   setVolume?(input: SetVolumeInput): Promise<PlaybackSession | null>;
+  seekPlaybackPosition?(input: SeekPlaybackPositionInput): Promise<PlaybackSession | null>;
   bumpVersion?(roomId: RoomId): Promise<PlaybackSession | null>;
 }
 
@@ -66,6 +73,7 @@ interface PlaybackSessionRowWithVolume {
   target_vocal_mode: string;
   player_state: string;
   player_position_ms: number;
+  seek_seq?: number | null;
   next_queue_entry_id: string | null;
   version: number;
   volume_percent?: number | null;
@@ -82,6 +90,7 @@ function mapPlaybackSessionRow(row: PlaybackSessionRowWithVolume): PlaybackSessi
     targetVocalMode: row.target_vocal_mode as VocalMode,
     playerState: row.player_state as PlayerState,
     playerPositionMs: row.player_position_ms,
+    seekSeq: row.seek_seq ?? 0,
     volumePercent: row.volume_percent ?? DEFAULT_ROOM_VOLUME_PERCENT,
     mediaStartedAt: row.media_started_at?.toISOString() ?? null,
     version: row.version,
@@ -95,11 +104,11 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
   async findByRoomId(roomId: RoomId): Promise<PlaybackSession | null> {
     const result = await this.db.query<PlaybackSessionRowWithVolume>(
       `SELECT id AS room_id, current_queue_entry_id, target_vocal_mode,
-              player_state, player_position_ms, next_queue_entry_id, version,
+              player_state, player_position_ms, seek_seq, next_queue_entry_id, version,
               volume_percent, media_started_at, updated_at
        FROM (
          SELECT id, current_queue_entry_id, target_vocal_mode,
-                player_state, player_position_ms, next_queue_entry_id,
+                player_state, player_position_ms, seek_seq, next_queue_entry_id,
                 playback_version AS version, volume_percent, media_started_at,
                 playback_updated_at AS updated_at
          FROM rooms
@@ -129,7 +138,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
            playback_updated_at = now()
        WHERE id = $1
        RETURNING id AS room_id, current_queue_entry_id, target_vocal_mode,
-                 player_state, player_position_ms, next_queue_entry_id,
+                 player_state, player_position_ms, seek_seq, next_queue_entry_id,
                  playback_version AS version, volume_percent, media_started_at,
                  playback_updated_at AS updated_at`,
       [
@@ -159,7 +168,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
            playback_updated_at = now()
        WHERE id = $1
        RETURNING id AS room_id, current_queue_entry_id, target_vocal_mode,
-                 player_state, player_position_ms, next_queue_entry_id,
+                 player_state, player_position_ms, seek_seq, next_queue_entry_id,
                  playback_version AS version, volume_percent, media_started_at,
                  playback_updated_at AS updated_at`,
       [roomId]
@@ -178,7 +187,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
            playback_updated_at = now()
        WHERE id = $1
        RETURNING id AS room_id, current_queue_entry_id, target_vocal_mode,
-                 player_state, player_position_ms, next_queue_entry_id,
+                 player_state, player_position_ms, seek_seq, next_queue_entry_id,
                  playback_version AS version, volume_percent, media_started_at,
                  playback_updated_at AS updated_at`,
       [input.roomId, input.targetVocalMode, input.playerPositionMs ?? null]
@@ -196,7 +205,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
            playback_updated_at = now()
        WHERE id = $1
        RETURNING id AS room_id, current_queue_entry_id, target_vocal_mode,
-                 player_state, player_position_ms, next_queue_entry_id,
+                 player_state, player_position_ms, seek_seq, next_queue_entry_id,
                  playback_version AS version, volume_percent, media_started_at,
                  playback_updated_at AS updated_at`,
       [input.roomId, input.volumePercent]
@@ -206,14 +215,34 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
     return row ? mapPlaybackSessionRow(row) : null;
   }
 
-  async bumpVersion(roomId: RoomId): Promise<PlaybackSession | null> {
+  // seek 命令:写目标位置并递增 seek_seq(TV 靠它区分"seek 生效"与心跳滞后位置);
+  // bump playback_version 让 controller 端会话版本对账
+  async seekPlaybackPosition(input: SeekPlaybackPositionInput): Promise<PlaybackSession | null> {
     const result = await this.db.query<PlaybackSessionRowWithVolume>(
+      `UPDATE rooms
+       SET player_position_ms = $2,
+           seek_seq = seek_seq + 1,
+           playback_version = playback_version + 1,
+           playback_updated_at = now()
+       WHERE id = $1
+       RETURNING id AS room_id, current_queue_entry_id, target_vocal_mode,
+                 player_state, player_position_ms, seek_seq, next_queue_entry_id,
+                 playback_version AS version, volume_percent, media_started_at,
+                 playback_updated_at AS updated_at`,
+      [input.roomId, input.playerPositionMs]
+    );
+
+    const row = result.rows[0];
+    return row ? mapPlaybackSessionRow(row) : null;
+  }
+
+  async bumpVersion(roomId: RoomId): Promise<PlaybackSession | null> {    const result = await this.db.query<PlaybackSessionRowWithVolume>(
       `UPDATE rooms
        SET playback_version = playback_version + 1,
            playback_updated_at = now()
        WHERE id = $1
        RETURNING id AS room_id, current_queue_entry_id, target_vocal_mode,
-                 player_state, player_position_ms, next_queue_entry_id,
+                 player_state, player_position_ms, seek_seq, next_queue_entry_id,
                  playback_version AS version, volume_percent, media_started_at,
                  playback_updated_at AS updated_at`,
       [roomId]
@@ -232,7 +261,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
        WHERE id = $1
          AND ($4::text IS NULL OR current_queue_entry_id = $4)
        RETURNING id AS room_id, current_queue_entry_id, target_vocal_mode,
-                 player_state, player_position_ms, next_queue_entry_id,
+                 player_state, player_position_ms, seek_seq, next_queue_entry_id,
                  playback_version AS version, volume_percent, media_started_at,
                  playback_updated_at AS updated_at`,
       [input.roomId, input.playerPositionMs, input.playerState ?? null, input.currentQueueEntryId]
@@ -257,7 +286,7 @@ export class PgPlaybackSessionRepository implements PlaybackSessionRepository {
        WHERE id = $1
          AND current_queue_entry_id = $2
        RETURNING id AS room_id, current_queue_entry_id, target_vocal_mode,
-                 player_state, player_position_ms, next_queue_entry_id,
+                 player_state, player_position_ms, seek_seq, next_queue_entry_id,
                  playback_version AS version, volume_percent, media_started_at,
                  playback_updated_at AS updated_at`,
       [

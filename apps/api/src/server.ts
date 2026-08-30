@@ -109,28 +109,43 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
   });
   const broadcaster = new RoomSnapshotBroadcaster();
 
+  const broadcastSupplementSnapshot = async (): Promise<void> => {
+    const snapshot = await buildRoomControlSnapshot({
+      roomSlug: resolvedConfig.roomSlug,
+      config: resolvedConfig,
+      repositories,
+      ...(mediaGateway ? { mediaGateway } : {})
+    });
+    if (snapshot) {
+      broadcaster.broadcastRoomSnapshot(resolvedConfig.roomSlug, snapshot);
+    }
+  };
+
+  // Started in the background (the listener reconnects on its own if PG restarts);
+  // the promise is kept so onClose can stop the listener instead of leaking it.
+  const supplementProgressListener =
+    pool && resolvedConfig.onlineSupplementEnabled
+      ? startSupplementProgressListener({
+          databaseUrl: resolvedConfig.databaseUrl,
+          onProgress: broadcastSupplementSnapshot,
+          // Replay the same snapshot a client receives when it first subscribes,
+          // masking notifications missed while the LISTEN connection was down.
+          onResync: broadcastSupplementSnapshot,
+          onError: (error) => server.log.error({ error }, "supplement progress listener error")
+        }).catch((error) => {
+          server.log.error({ error }, "failed to start supplement progress listener");
+          return null;
+        })
+      : null;
+
   if (pool) {
     server.addHook("onClose", async () => {
+      const listener = await supplementProgressListener;
+      if (listener) {
+        await listener.stop();
+      }
       await pool.end();
     });
-  }
-
-  if (pool && resolvedConfig.onlineSupplementEnabled) {
-    startSupplementProgressListener({
-      databaseUrl: resolvedConfig.databaseUrl,
-      onProgress: async () => {
-        const snapshot = await buildRoomControlSnapshot({
-          roomSlug: resolvedConfig.roomSlug,
-          config: resolvedConfig,
-          repositories,
-          ...(mediaGateway ? { mediaGateway } : {})
-        });
-        if (snapshot) {
-          broadcaster.broadcastRoomSnapshot(resolvedConfig.roomSlug, snapshot);
-        }
-      },
-      onError: (error) => server.log.error({ error }, "supplement progress listener error")
-    }).catch((error) => server.log.error({ error }, "failed to start supplement progress listener"));
   }
 
   await server.register(websocket);
@@ -145,6 +160,7 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     coverRoot: resolvedConfig.mediaRoot ? join(resolvedConfig.mediaRoot, "covers") : "",
     mediaGateway,
     ffmpegBin: resolvedConfig.ffmpegBin,
+    lrclibBaseUrl: resolvedConfig.lyricsLrclibBaseUrl,
     log: server.log,
     ...(pool
       ? {
@@ -163,6 +179,7 @@ export async function createServer(config: ApiConfigInput = loadConfig(), option
     playbackSessions: repositories.playbackSessions,
     queueEntries: repositories.queueEntries,
     ...(repositories.playableMedia ? { playableMedia: repositories.playableMedia } : {}),
+    ...(repositories.supplementTasks ? { supplementTasks: repositories.supplementTasks } : {}),
     controlSessions: repositories.controlSessions,
     deviceSessions: repositories.deviceSessions,
     playbackEvents: repositories.playbackEvents,

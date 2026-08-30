@@ -15,13 +15,24 @@ function Stop-PortOwners {
     foreach ($c in $conns) {
       $procId = $c.OwningProcess
       if ($procId -and $procId -ne $PID) {
-        $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
-        if ($proc) {
-          Write-Host "  port $port <- PID $procId ($($proc.ProcessName)) -> kill"
-          Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
-        }
+        # taskkill /T 连进程树一起杀;Stop-Process 只杀单个进程,
+        # pnpm->tsx->node 的子进程会变孤儿,积累后拖垮会话资源(新进程 0xC0000142)
+        Write-Host "  port $port <- PID $procId -> taskkill /T"
+        taskkill /PID $procId /T /F 2>$null | Out-Null
       }
     }
+  }
+}
+
+# 兜底:清理本项目遗留的 node 僵尸(tsx watch / vite / pnpm / preflight)。
+# 之前多次重启只杀端口占用者,进程树残骸越积越多,最终 worker spawn python
+# 直接 0xC0000142(桌面堆耗尽),表现为"每次下载必失败"。
+function Stop-ProjectNodeZombies {
+  $zombies = Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+    Where-Object { $_.CommandLine -match [regex]::Escape($ROOT) -and $_.ProcessId -ne $PID }
+  foreach ($z in $zombies) {
+    Write-Host "  zombie node pid $($z.ProcessId) -> taskkill /T"
+    taskkill /PID $z.ProcessId /T /F 2>$null | Out-Null
   }
 }
 
@@ -30,6 +41,7 @@ Stop-PortOwners
 Push-Location $ROOT
 node scripts/dev-local.mjs stop | Out-Null
 Pop-Location
+Stop-ProjectNodeZombies
 Start-Sleep -Seconds 2
 
 Write-Host "==> [2/5] Ensuring PostgreSQL container (home-ktv-pg)..."
@@ -64,6 +76,12 @@ if ($py) {
 $ffCmd = Get-Command ffmpeg -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($ffCmd -and -not $env:FFMPEG_BIN) { $env:FFMPEG_BIN = $ffCmd.Source }
 if (-not $env:ONLINE_SUPPLEMENT_WORKFLOW) { $env:ONLINE_SUPPLEMENT_WORKFLOW = "youtube-enhanced" }
+# 逐字对齐:python 环境装了 qwen-asr 才启用(未装则 align 阶段自动跳过)
+if ($py -and -not $env:ALIGNER_BIN) {
+  & $py -c "import qwen_asr" 2>$null
+  if ($LASTEXITCODE -eq 0) { $env:ALIGNER_BIN = $py }
+}
+if (-not $env:ALIGNER_SCRIPT) { $env:ALIGNER_SCRIPT = "$ROOT\apps\api\python\align_lyrics.py" }
 Write-Host "  DATABASE_URL=$($env:DATABASE_URL)"
 Write-Host "  ONLINE_SUPPLEMENT_ENABLED=$($env:ONLINE_SUPPLEMENT_ENABLED) WORKFLOW=$($env:ONLINE_SUPPLEMENT_WORKFLOW)"
 Write-Host "  YT_DLP_BIN=$($env:YT_DLP_BIN) ARGS=$($env:YT_DLP_ARGS)"
@@ -88,7 +106,9 @@ if (-not $NoSupplement) {
   Write-Host "==> Starting supplement worker (fresh code, non-destructive)..."
   Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
     Where-Object { $_.CommandLine -match "supplement-worker" } |
-    ForEach-Object { Write-Host "  kill old worker pid $($_.ProcessId)"; Stop-Process -Id $_.ProcessId -Force }
+    # taskkill /T 树杀:worker 正在跑 demucs/aligner python 子进程,Stop-Process
+    # 单杀 node 会留孤儿 python(0xC0000142 根源之一)
+    ForEach-Object { Write-Host "  kill old worker pid $($_.ProcessId)"; taskkill /PID $_.ProcessId /T /F 2>$null | Out-Null }
   Start-Sleep -Seconds 1
   $env:SUPPLEMENT_IMPORT_ROOT = "$ROOT\home-ktv-media"
   # 有 NVIDIA GPU 时默认用 cuda 跑 demucs(RTX 3070 实测约 12x 实时;CPU 需数分钟/首)

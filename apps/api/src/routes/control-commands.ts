@@ -52,6 +52,10 @@ interface SetVolumeBody extends BaseCommandBody {
   volumePercent?: number;
 }
 
+interface SeekBody extends BaseCommandBody {
+  deltaMs?: number;
+}
+
 type CommandType = Parameters<typeof executeRoomCommand>[0]["type"];
 
 export async function registerControlCommandRoutes(
@@ -132,6 +136,15 @@ export async function registerControlCommandRoutes(
     async (request, reply) => {
       await handleCommand(request, reply, dependencies, "set-volume", {
         volumePercent: request.body.volumePercent
+      });
+    }
+  );
+
+  server.post<{ Params: { roomSlug: string }; Body: SeekBody }>(
+    "/rooms/:roomSlug/commands/seek",
+    async (request, reply) => {
+      await handleCommand(request, reply, dependencies, "seek", {
+        deltaMs: request.body.deltaMs
       });
     }
   );

@@ -96,6 +96,41 @@ describe("PlayerClient", () => {
 
     expect(client.createSnapshotSocketUrl()).toBe("wss://ktv.local/rooms/living-room/realtime?deviceId=tv+active&client=tv");
   });
+
+  it("returns null lyrics on 404 but propagates server errors (so callers do not cache them as missing)", async () => {
+    const client = new PlayerClient({
+      apiBaseUrl: "http://192.168.5.58:4000",
+      deviceId: "tv-active",
+      deviceName: "Living Room TV",
+      roomSlug: "living-room",
+      fetchImpl: (async (input: RequestInfo | URL) => {
+        if (String(input).includes("/asset-broken/")) {
+          return new Response("boom", { status: 500 });
+        }
+        return new Response("LYRICS_NOT_FOUND", { status: 404 });
+      }) as typeof fetch
+    });
+
+    await expect(client.fetchSongLyrics("asset-ok")).resolves.toBeNull();
+    await expect(client.fetchKaraokeLyrics("asset-ok")).resolves.toBeNull();
+    await expect(client.fetchSongLyrics("asset-broken")).rejects.toThrow("500");
+    await expect(client.fetchKaraokeLyrics("asset-broken")).rejects.toThrow("500");
+  });
+
+  it("propagates network failures instead of swallowing them into null", async () => {
+    const client = new PlayerClient({
+      apiBaseUrl: "http://192.168.5.58:4000",
+      deviceId: "tv-active",
+      deviceName: "Living Room TV",
+      roomSlug: "living-room",
+      fetchImpl: (async () => {
+        throw new TypeError("fetch failed");
+      }) as typeof fetch
+    });
+
+    await expect(client.fetchSongLyrics("asset-1")).rejects.toThrow("fetch failed");
+    await expect(client.fetchKaraokeLyrics("asset-1")).rejects.toThrow("fetch failed");
+  });
 });
 
 function roomSnapshot(): RoomSnapshot {

@@ -34,6 +34,8 @@ export interface PlaybackTarget {
   currentQueueEntryPreview: QueueEntryPreview;
   playbackUrl: string;
   resumePositionMs: number;
+  /** 服务端 seek 序列号(每次手机快进/快退 +1);TV 检测变化后把进度应用到 resumePositionMs。可选仅为兼容旧测试夹具,服务端构建总是携带 */
+  seekSeq?: number;
   vocalMode: VocalMode;
   switchFamily: SwitchFamily | null;
   playbackProfile?: PlaybackProfile;

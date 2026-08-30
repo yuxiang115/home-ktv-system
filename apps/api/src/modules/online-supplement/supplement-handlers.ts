@@ -7,6 +7,7 @@ import { DownloadStageHandler } from "./handlers/download-handler.js";
 import { RenameLlmStageHandler } from "./handlers/rename-llm-handler.js";
 import { LyricsStageHandler } from "./handlers/lyrics-handler.js";
 import { VocalRemoveStageHandler } from "./handlers/vocal-remove-handler.js";
+import { AlignStageHandler } from "./handlers/align-handler.js";
 import { MixStageHandler } from "./handlers/mix-handler.js";
 import { IndexStageHandler } from "./handlers/index-handler.js";
 
@@ -28,6 +29,13 @@ export interface SupplementHandlersOptions {
   demucsDevice: string;
   demucsModel: string;
   ffmpegBin?: string;
+  aligner?: {
+    bin: string;
+    scriptPath: string;
+    model: string;
+    device: string;
+    dtype: string;
+  };
 }
 
 export function buildSupplementHandlers(options: SupplementHandlersOptions): Map<SupplementTaskStage, StageHandler> {
@@ -46,6 +54,17 @@ export function buildSupplementHandlers(options: SupplementHandlersOptions): Map
       device: options.demucsDevice,
       model: options.demucsModel,
       workDir: options.workDir
+    })
+  );
+  handlers.set(
+    "align",
+    new AlignStageHandler({
+      bin: options.aligner?.bin ?? "",
+      scriptPath: options.aligner?.scriptPath ?? "",
+      model: options.aligner?.model ?? "Qwen/Qwen3-ForcedAligner-0.6B",
+      device: options.aligner?.device ?? "cuda:0",
+      dtype: options.aligner?.dtype ?? "bfloat16",
+      demucsModel: options.demucsModel
     })
   );
   handlers.set(

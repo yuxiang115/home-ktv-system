@@ -34,8 +34,23 @@ export interface ClaimBatchStageInput extends ClaimStageInput {
   batchSize: number;
 }
 
+/**
+ * 阶段写操作(updateStageProgress/completeStage/markReady/markFailed)的围栏结果。
+ *
+ * - `true`:写入成功,本 worker 仍持有该任务当前阶段的所有权;
+ * - `null`:围栏拦截(UPDATE 影响 0 行)——租约已被 `reclaimStaleLeases` 回收、
+ *   或任务已被其他 worker 重新认领,本 worker 已失去所有权。此时**没有写入任何
+ *   数据**,调用方应立即放弃该任务,不得再覆盖其状态(防止双跑 worker 互相踩写)。
+ *
+ * 向后兼容:这些方法历史上返回 `void`;现有调用方(orchestrator/worker/测试)只
+ * `await` 不消费返回值,因此改为返回 `true | null` 不破坏任何调用点。
+ */
+export type StageWriteOutcome = true | null;
+
 export interface CompleteStageInput {
   taskId: string;
+  /** 围栏令牌(认领该任务时的 workerId):传入则启用租约围栏,见接口方法注释 */
+  workerId?: string;
   nextStage: SupplementTaskStage;
   stageMessage?: string;
   llmRenamedTitle?: string | null;
@@ -46,6 +61,8 @@ export interface CompleteStageInput {
 
 export interface MarkReadyInput {
   taskId: string;
+  /** 围栏令牌(认领该任务时的 workerId):传入则启用租约围栏,见接口方法注释 */
+  workerId?: string;
   readySongId: string;
   finalFilePath: string;
   lyricFile: string | null;
@@ -54,6 +71,8 @@ export interface MarkReadyInput {
 
 export interface MarkFailedInput {
   taskId: string;
+  /** 围栏令牌(认领该任务时的 workerId):传入则启用租约围栏,见接口方法注释 */
+  workerId?: string;
   failureStage: SupplementTaskStage;
   reason: string;
   now: Date;
@@ -61,6 +80,8 @@ export interface MarkFailedInput {
 
 export interface UpdateProgressInput {
   taskId: string;
+  /** 围栏令牌(认领该任务时的 workerId):传入则启用租约围栏,见接口方法注释 */
+  workerId?: string;
   percent: number;
   message: string;
   now: Date;
@@ -78,10 +99,39 @@ export interface OnlineSupplementTaskRepository {
   claimForStage(input: ClaimStageInput): Promise<OnlineSupplementTask | null>;
   claimBatchForStage(input: ClaimBatchStageInput): Promise<OnlineSupplementTask[]>;
   renewLease(input: RenewLeaseInput): Promise<void>;
-  updateStageProgress(input: UpdateProgressInput): Promise<void>;
-  completeStage(input: CompleteStageInput): Promise<void>;
-  markReady(input: MarkReadyInput): Promise<void>;
-  markFailed(input: MarkFailedInput): Promise<void>;
+  /**
+   * 上报阶段进度。
+   *
+   * 租约围栏(H2):传入 `workerId` 时 UPDATE 附带
+   * `AND worker_id = $ AND stage_status = 'running'`。影响 0 行说明租约已被
+   * 回收/任务已被其他 worker 认领,本 worker 已失去所有权——不写入并返回
+   * `null`;写入成功返回 `true`。不传 `workerId` 时保持旧的无条件写入行为。
+   */
+  updateStageProgress(input: UpdateProgressInput): Promise<StageWriteOutcome>;
+  /**
+   * 完成当前阶段并推进到 nextStage。
+   *
+   * 租约围栏(H2):语义同 `updateStageProgress`——传 `workerId` 时围栏,
+   * 0 行受影响返回 `null`(所有权已丢失,任务状态未被本调用覆盖);
+   * 写入成功返回 `true`;不传 `workerId` 保持旧行为。
+   */
+  completeStage(input: CompleteStageInput): Promise<StageWriteOutcome>;
+  /**
+   * 标记任务 ready(终态)。
+   *
+   * 租约围栏(H2):语义同 `updateStageProgress`——传 `workerId` 时围栏,
+   * 0 行受影响返回 `null`(所有权已丢失,任务状态未被本调用覆盖);
+   * 写入成功返回 `true`;不传 `workerId` 保持旧行为。
+   */
+  markReady(input: MarkReadyInput): Promise<StageWriteOutcome>;
+  /**
+   * 标记任务 failed(终态)。
+   *
+   * 租约围栏(H2):语义同 `updateStageProgress`——传 `workerId` 时围栏,
+   * 0 行受影响返回 `null`(所有权已丢失,任务状态未被本调用覆盖);
+   * 写入成功返回 `true`;不传 `workerId` 保持旧行为。
+   */
+  markFailed(input: MarkFailedInput): Promise<StageWriteOutcome>;
   reclaimStaleLeases(now: Date): Promise<number>;
   listRecentByRoom(roomId: RoomId, limit: number): Promise<OnlineSupplementTaskSummary[]>;
   findById(taskId: string): Promise<OnlineSupplementTask | null>;
@@ -259,21 +309,30 @@ export class PgOnlineSupplementTaskRepository implements OnlineSupplementTaskRep
     );
   }
 
-  async updateStageProgress(input: UpdateProgressInput): Promise<void> {
+  async updateStageProgress(input: UpdateProgressInput): Promise<StageWriteOutcome> {
     const percent = Math.max(0, Math.min(100, Math.trunc(input.percent)));
-    await this.db.query(
+    const workerId = input.workerId;
+    const result = await this.db.query<{ ok: number }>(
       `UPDATE online_supplement_tasks
        SET stage_progress_percent = $2,
            stage_message = $3,
            status = 'processing',
            updated_at = now()
-       WHERE id = $1`,
-      [input.taskId, percent, input.message]
+       WHERE id = $1${workerId === undefined ? "" : " AND worker_id = $4 AND stage_status = 'running'"}
+       RETURNING 1 AS ok`,
+      [
+        input.taskId,
+        percent,
+        input.message,
+        ...(workerId === undefined ? [] : [workerId])
+      ]
     );
+    return result.rows.length > 0 ? true : null;
   }
 
-  async completeStage(input: CompleteStageInput): Promise<void> {
-    await this.db.query(
+  async completeStage(input: CompleteStageInput): Promise<StageWriteOutcome> {
+    const workerId = input.workerId;
+    const result = await this.db.query<{ ok: number }>(
       `UPDATE online_supplement_tasks
        SET stage = $2,
            stage_status = 'pending',
@@ -284,20 +343,24 @@ export class PgOnlineSupplementTaskRepository implements OnlineSupplementTaskRep
            lyric_file = COALESCE($6, lyric_file),
            status = 'processing',
            updated_at = now()
-       WHERE id = $1`,
+       WHERE id = $1${workerId === undefined ? "" : " AND worker_id = $7 AND stage_status = 'running'"}
+       RETURNING 1 AS ok`,
       [
         input.taskId,
         input.nextStage,
         input.stageMessage ?? "",
         input.llmRenamedTitle ?? null,
         input.finalFilePath ?? null,
-        input.lyricFile ?? null
+        input.lyricFile ?? null,
+        ...(workerId === undefined ? [] : [workerId])
       ]
     );
+    return result.rows.length > 0 ? true : null;
   }
 
-  async markReady(input: MarkReadyInput): Promise<void> {
-    await this.db.query(
+  async markReady(input: MarkReadyInput): Promise<StageWriteOutcome> {
+    const workerId = input.workerId;
+    const result = await this.db.query<{ ok: number }>(
       `UPDATE online_supplement_tasks
        SET status = 'ready',
            stage_status = 'done',
@@ -309,13 +372,23 @@ export class PgOnlineSupplementTaskRepository implements OnlineSupplementTaskRep
            worker_id = NULL,
            worker_lease_until = NULL,
            updated_at = now()
-       WHERE id = $1`,
-      [input.taskId, input.readySongId, input.finalFilePath, input.lyricFile, input.now]
+       WHERE id = $1${workerId === undefined ? "" : " AND worker_id = $6 AND stage_status = 'running'"}
+       RETURNING 1 AS ok`,
+      [
+        input.taskId,
+        input.readySongId,
+        input.finalFilePath,
+        input.lyricFile,
+        input.now,
+        ...(workerId === undefined ? [] : [workerId])
+      ]
     );
+    return result.rows.length > 0 ? true : null;
   }
 
-  async markFailed(input: MarkFailedInput): Promise<void> {
-    await this.db.query(
+  async markFailed(input: MarkFailedInput): Promise<StageWriteOutcome> {
+    const workerId = input.workerId;
+    const result = await this.db.query<{ ok: number }>(
       `UPDATE online_supplement_tasks
        SET status = 'failed',
            stage_status = 'failed',
@@ -325,9 +398,17 @@ export class PgOnlineSupplementTaskRepository implements OnlineSupplementTaskRep
            worker_id = NULL,
            worker_lease_until = NULL,
            updated_at = now()
-       WHERE id = $1`,
-      [input.taskId, input.failureStage, input.reason, input.now]
+       WHERE id = $1${workerId === undefined ? "" : " AND worker_id = $5 AND stage_status = 'running'"}
+       RETURNING 1 AS ok`,
+      [
+        input.taskId,
+        input.failureStage,
+        input.reason,
+        input.now,
+        ...(workerId === undefined ? [] : [workerId])
+      ]
     );
+    return result.rows.length > 0 ? true : null;
   }
 
   async reclaimStaleLeases(now: Date): Promise<number> {
@@ -522,10 +603,22 @@ export class InMemoryOnlineSupplementTaskRepository implements OnlineSupplementT
     });
   }
 
-  async updateStageProgress(input: UpdateProgressInput): Promise<void> {
+  // 租约围栏(H2):传入 workerId 时,只有"仍是本 worker 持有且阶段在 running"
+  // 才允许写入;否则视为围栏拦截(对应 Pg 版 UPDATE 影响 0 行)
+  private isFencedOut(
+    task: OnlineSupplementTask | undefined,
+    workerId: string | undefined
+  ): boolean {
+    if (workerId === undefined) {
+      return false;
+    }
+    return !task || task.workerId !== workerId || task.stageStatus !== "running";
+  }
+
+  async updateStageProgress(input: UpdateProgressInput): Promise<StageWriteOutcome> {
     const task = this.tasks.get(input.taskId);
-    if (!task) {
-      return;
+    if (this.isFencedOut(task, input.workerId) || !task) {
+      return null;
     }
     const percent = Math.max(0, Math.min(100, Math.trunc(input.percent)));
     this.tasks.set(input.taskId, {
@@ -535,12 +628,13 @@ export class InMemoryOnlineSupplementTaskRepository implements OnlineSupplementT
       status: "processing",
       updatedAt: input.now.toISOString()
     });
+    return true;
   }
 
-  async completeStage(input: CompleteStageInput): Promise<void> {
+  async completeStage(input: CompleteStageInput): Promise<StageWriteOutcome> {
     const task = this.tasks.get(input.taskId);
-    if (!task) {
-      return;
+    if (this.isFencedOut(task, input.workerId) || !task) {
+      return null;
     }
     this.tasks.set(input.taskId, {
       ...task,
@@ -554,12 +648,13 @@ export class InMemoryOnlineSupplementTaskRepository implements OnlineSupplementT
       status: "processing",
       updatedAt: input.now.toISOString()
     });
+    return true;
   }
 
-  async markReady(input: MarkReadyInput): Promise<void> {
+  async markReady(input: MarkReadyInput): Promise<StageWriteOutcome> {
     const task = this.tasks.get(input.taskId);
-    if (!task) {
-      return;
+    if (this.isFencedOut(task, input.workerId) || !task) {
+      return null;
     }
     this.tasks.set(input.taskId, {
       ...task,
@@ -574,12 +669,13 @@ export class InMemoryOnlineSupplementTaskRepository implements OnlineSupplementT
       workerLeaseUntil: null,
       updatedAt: input.now.toISOString()
     });
+    return true;
   }
 
-  async markFailed(input: MarkFailedInput): Promise<void> {
+  async markFailed(input: MarkFailedInput): Promise<StageWriteOutcome> {
     const task = this.tasks.get(input.taskId);
-    if (!task) {
-      return;
+    if (this.isFencedOut(task, input.workerId) || !task) {
+      return null;
     }
     this.tasks.set(input.taskId, {
       ...task,
@@ -592,6 +688,7 @@ export class InMemoryOnlineSupplementTaskRepository implements OnlineSupplementT
       workerLeaseUntil: null,
       updatedAt: input.now.toISOString()
     });
+    return true;
   }
 
   async reclaimStaleLeases(now: Date): Promise<number> {

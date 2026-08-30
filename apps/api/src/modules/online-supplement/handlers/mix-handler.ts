@@ -78,16 +78,24 @@ export class MixStageHandler implements StageHandler {
     ];
 
     await input.reportProgress(30, "mixing dual-track mkv");
+    // M3:ffmpeg 可能跑满整个超时窗口(默认 5min),执行前先把租约顶到窗口之外,
+    // 防止中途租约过期被 reclaim 后任务被其他 worker 重新认领导致双跑
+    await input.renewLease(new Date(Date.now() + 10 * 60 * 1000));
+    input.log("ffmpeg mix start", { original, accompaniment, output });
     try {
       await this.run(this.options.ffmpegBin ?? "ffmpeg", args, this.options.timeoutMs ?? 5 * 60 * 1000);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
+      input.log("ffmpeg mix failed", { output, error: msg });
       return { status: "failed", failureReason: `ffmpeg mix failed: ${msg}` };
     }
 
-    if (!(await stat(output).catch(() => null))) {
+    const outputStats = await stat(output).catch(() => null);
+    if (!outputStats) {
+      input.log("ffmpeg mix produced no output", { output });
       return { status: "failed", failureReason: `ffmpeg produced no output at ${output}` };
     }
+    input.log("ffmpeg mix done", { output, sizeBytes: outputStats.size });
 
     await input.reportProgress(95, "dual-track mixed");
     return { status: "completed", message: "mixed", finalFilePath: output };

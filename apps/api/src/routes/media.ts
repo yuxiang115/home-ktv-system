@@ -1,20 +1,26 @@
 import { createReadStream } from "node:fs";
-import { open, stat } from "node:fs/promises";
+import { open, readFile, stat, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
-import { join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import type { FastifyBaseLogger, FastifyInstance, FastifyReply } from "fastify";
 import { inferVideoContentType } from "../modules/media/content-type.js";
+import { artistTrackFromStem, fetchBestLrclibWithVariants } from "../modules/online-supplement/lrclib-client.js";
 import type { MediaPathResolver, MediaPathResolution } from "../modules/assets/media-path-resolver.js";
 import type { QueryExecutor } from "../db/query-executor.js";
 import type { MediaGateway, MediaGatewayResolution } from "../modules/media/media-gateway.js";
 
 const safeNasCoverFileName = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.jpg$/u;
+const defaultLrclibBaseUrl = "https://lrclib.net";
 
 export interface MediaRouteContext {
   coverRoot?: string;
   mediaGateway?: Pick<MediaGateway, "resolveForStreaming">;
   ktvIndexRawAssets?: KtvIndexRawAssetRepository;
   mediaPathResolver?: MediaPathResolver;
+  /** regenerate-lyrics 查 LRCLIB 用的基地址(默认 https://lrclib.net) */
+  lrclibBaseUrl?: string;
+  /** 注入 fetch 实现(测试用);缺省用全局 fetch */
+  lyricsFetchImpl?: typeof fetch;
   /** remux 选轨流(切伴奏 fallback)用的 ffmpeg;缺省为 PATH 上的 ffmpeg */
   ffmpegBin?: string;
   log?: FastifyBaseLogger;
@@ -76,6 +82,131 @@ export async function registerMediaRoutes(fastify: FastifyInstance, context: Med
         contentType: inferVideoContentType(row.filePath),
         rangeHeader: request.headers.range
       });
+    }
+  );
+
+  // 同步歌词(.lrc 纯文本)。TV 端按歌拉一次,404 = 该歌无歌词(静默处理)。
+  fastify.get<{ Params: { indexedAssetId: string } }>(
+    "/media/ktv-index/:indexedAssetId/lyrics",
+    async (request, reply) => {
+      if (!context.ktvIndexRawAssets || !context.mediaPathResolver) {
+        return reply.status(503).send({ error: "KTV_INDEX_RAW_MEDIA_UNAVAILABLE" });
+      }
+
+      const row = await context.ktvIndexRawAssets.findRawAssetById(request.params.indexedAssetId);
+      if (!row) {
+        return reply.status(404).send({ error: "KTV_INDEX_ASSET_NOT_FOUND" });
+      }
+      if (!row.lyricFile) {
+        return reply.status(404).send({ error: "LYRICS_NOT_FOUND" });
+      }
+
+      const resolved = await context.mediaPathResolver.resolveAssetFile(row.lyricFile);
+      if (!resolved.ok) {
+        return sendRawMediaPathError(reply, resolved);
+      }
+
+      try {
+        const content = await readFile(resolved.filePath, "utf8");
+        return reply
+          .type("text/plain; charset=utf-8")
+          .header("cache-control", "no-store")
+          .send(content);
+      } catch {
+        return reply.status(404).send({ error: "LYRICS_NOT_FOUND" });
+      }
+    }
+  );
+
+  // 逐字 karaoke 时间轴(align 阶段产出)。TV 优先用它做逐字点亮,404 = 降级行级 LRC。
+  fastify.get<{ Params: { indexedAssetId: string } }>(
+    "/media/ktv-index/:indexedAssetId/karaoke-lyrics",
+    async (request, reply) => {
+      if (!context.ktvIndexRawAssets || !context.mediaPathResolver) {
+        return reply.status(503).send({ error: "KTV_INDEX_RAW_MEDIA_UNAVAILABLE" });
+      }
+
+      const row = await context.ktvIndexRawAssets.findRawAssetById(request.params.indexedAssetId);
+      if (!row) {
+        return reply.status(404).send({ error: "KTV_INDEX_ASSET_NOT_FOUND" });
+      }
+      if (!row.karaokeLyricFile) {
+        return reply.status(404).send({ error: "KARAOKE_NOT_FOUND" });
+      }
+
+      const resolved = await context.mediaPathResolver.resolveAssetFile(row.karaokeLyricFile);
+      if (!resolved.ok) {
+        return sendRawMediaPathError(reply, resolved);
+      }
+
+      try {
+        const content = await readFile(resolved.filePath, "utf8");
+        return reply
+          .type("application/json; charset=utf-8")
+          .header("cache-control", "no-store")
+          .send(content);
+      } catch {
+        return reply.status(404).send({ error: "KARAOKE_NOT_FOUND" });
+      }
+    }
+  );
+
+  // 为 lyrics 阶段失败/LRCLIB 未命中的歌(多为在线补歌产物)单独重查歌词并落库,
+  // 不重跑下载/伴奏/对齐等其他阶段。文件名按 "歌手-歌名-语种-分类" 反查 LRCLIB
+  // (原文→简体变体),命中写 <stem>.lrc 到 mkv 旁并 UPDATE lyric_file。
+  fastify.post<{ Params: { assetId: string } }>(
+    "/media/ktv-index/:assetId/regenerate-lyrics",
+    async (request, reply) => {
+      if (!context.ktvIndexRawAssets || !context.mediaPathResolver) {
+        return reply.status(503).send({ error: "KTV_INDEX_RAW_MEDIA_UNAVAILABLE" });
+      }
+
+      const row = await context.ktvIndexRawAssets.findRawAssetById(request.params.assetId);
+      if (!row) {
+        return reply.status(404).send({ error: "KTV_INDEX_ASSET_NOT_FOUND" });
+      }
+
+      const stem = basename(row.filePath, extname(row.filePath));
+      const names = artistTrackFromStem(stem);
+      if (!names) {
+        return reply.status(422).send({ error: "UNPARSABLE_FILENAME" });
+      }
+
+      let matched: Awaited<ReturnType<typeof fetchBestLrclibWithVariants>>;
+      try {
+        matched = await fetchBestLrclibWithVariants({
+          artistName: names.artistName,
+          trackName: names.trackName,
+          baseUrl: context.lrclibBaseUrl?.trim() || defaultLrclibBaseUrl,
+          ...(context.lyricsFetchImpl ? { fetchImpl: context.lyricsFetchImpl } : {})
+        });
+      } catch (error) {
+        context.log?.warn({ error, assetId: request.params.assetId }, "regenerate-lyrics lrclib error");
+        return reply.status(502).send({ error: "LYRICS_PROVIDER_UNAVAILABLE" });
+      }
+
+      const synced = matched?.record.syncedLyrics?.trim();
+      if (!synced) {
+        return reply.status(200).send({ status: "not_found" });
+      }
+
+      // 写到 mkv 同目录:落盘用 mediaPathResolver 解析出的本机路径,库里存
+      // 与 file_path 同风格的原始路径(读取时同样过 resolver,与回填脚本一致)。
+      const resolved = await context.mediaPathResolver.resolveAssetFile(row.filePath);
+      if (!resolved.ok) {
+        return sendRawMediaPathError(reply, resolved);
+      }
+
+      const lyricPath = join(dirname(row.filePath), `${stem}.lrc`);
+      try {
+        await writeFile(join(dirname(resolved.filePath), `${stem}.lrc`), `${synced}\n`, "utf8");
+      } catch (error) {
+        context.log?.warn({ error, lyricPath }, "regenerate-lyrics write failed");
+        return reply.status(500).send({ error: "LYRIC_WRITE_FAILED" });
+      }
+
+      await context.ktvIndexRawAssets.updateLyricFile(row.id, lyricPath);
+      return reply.status(200).send({ status: "found", lyricFile: lyricPath });
     }
   );
 
@@ -281,10 +412,14 @@ function inferCoverImageContentTypeFromBytes(bytes: Buffer): string {
 export interface KtvIndexRawAssetRow {
   id: string;
   filePath: string;
+  lyricFile: string | null;
+  karaokeLyricFile: string | null;
 }
 
 export interface KtvIndexRawAssetRepository {
   findRawAssetById(indexedAssetId: string): Promise<KtvIndexRawAssetRow | null>;
+  /** regenerate-lyrics 命中后回写 lyric_file 并刷新 updated_at */
+  updateLyricFile(indexedAssetId: string, lyricFile: string): Promise<void>;
 }
 
 export class PgKtvIndexRawAssetRepository implements KtvIndexRawAssetRepository {
@@ -292,13 +427,20 @@ export class PgKtvIndexRawAssetRepository implements KtvIndexRawAssetRepository 
 
   async findRawAssetById(indexedAssetId: string): Promise<KtvIndexRawAssetRow | null> {
     const result = await this.db.query<KtvIndexRawAssetRow>(
-      `SELECT id, file_path AS "filePath"
+      `SELECT id, file_path AS "filePath", lyric_file AS "lyricFile", karaoke_lyrics_file AS "karaokeLyricFile"
        FROM ktv_songs
        WHERE id = $1 AND missing_at IS NULL
        LIMIT 1`,
       [indexedAssetId]
     );
     return result.rows[0] ?? null;
+  }
+
+  async updateLyricFile(indexedAssetId: string, lyricFile: string): Promise<void> {
+    await this.db.query(
+      `UPDATE ktv_songs SET lyric_file = $1, updated_at = now() WHERE id = $2`,
+      [lyricFile, indexedAssetId]
+    );
   }
 }
 

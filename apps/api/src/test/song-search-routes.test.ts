@@ -36,7 +36,8 @@ describe("song search routes", () => {
             category: "流行",
             queueState: "not_queued",
             canQueue: true,
-            disabledLabel: null
+            disabledLabel: null,
+            hasLyrics: false
           }
         ]
       })
@@ -86,7 +87,8 @@ describe("song search routes", () => {
               category: "流行",
               queueState: "queued",
               canQueue: true,
-              disabledLabel: null
+              disabledLabel: null,
+              hasLyrics: false
             }
           ]
         }

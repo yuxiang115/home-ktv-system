@@ -63,6 +63,12 @@ export interface OnlineSupplementRequestResponse {
   stage: string;
 }
 
+// POST /media/ktv-index/:assetId/regenerate-lyrics:查不到歌词不是错误
+export interface RegenerateLyricsResponse {
+  status: "found" | "not_found";
+  lyricFile?: string;
+}
+
 export class ControllerApiError extends Error {
   constructor(
     message: string,
@@ -261,6 +267,10 @@ export async function switchVocalMode(input: CommandBaseInput & { playbackPositi
   });
 }
 
+export async function seek(input: CommandBaseInput & { deltaMs: number }) {
+  return sendCommand(input, "seek", { deltaMs: input.deltaMs });
+}
+
 export async function setVolume(input: CommandBaseInput & { volumePercent: number }) {
   return sendCommand(input, "set-volume", {
     volumePercent: input.volumePercent
@@ -327,6 +337,17 @@ export async function requestOnlineSupplement(input: {
   );
 }
 
+export async function regenerateAssetLyrics(input: {
+  assetId: string;
+  signal?: AbortSignal;
+}): Promise<RegenerateLyricsResponse> {
+  const init: RequestInit = { method: "POST", ...(input.signal ? { signal: input.signal } : {}) };
+  return fetchController<RegenerateLyricsResponse>(
+    `/media/ktv-index/${encodeURIComponent(input.assetId)}/regenerate-lyrics`,
+    init
+  );
+}
+
 export function realtimeUrl(input: { roomSlug: string; deviceId: string }): string {
   const path = `/rooms/${encodeURIComponent(input.roomSlug)}/realtime?deviceId=${encodeURIComponent(
     input.deviceId
@@ -354,6 +375,19 @@ async function sendCommand(
       })
     }
   );
+}
+
+// 房间号加入:房间快照的 pairing 信息本来就是公开的(电视二维码同源数据),
+// 这里取 token 后由页面带 token 重新进入,复用既有的配对换会话流程
+export async function joinRoomByRoomNumber(roomSlug: string): Promise<string> {
+  const snapshot = await fetchController<{ pairing?: { token?: string } }>(
+    `/rooms/${encodeURIComponent(roomSlug)}/snapshot`
+  );
+  const token = snapshot.pairing?.token;
+  if (!token) {
+    throw new Error("房间不存在或暂不可加入");
+  }
+  return token;
 }
 
 async function fetchController<T>(path: string, init: RequestInit = {}): Promise<T> {

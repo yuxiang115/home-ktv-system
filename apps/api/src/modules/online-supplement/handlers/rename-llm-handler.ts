@@ -24,6 +24,7 @@ export class RenameLlmStageHandler implements StageHandler {
     const fallback = fallbackSpecName(input.task.title, input.task.artistName);
 
     if (!this.options.apiKey) {
+      input.log("rename fallback (no llm)", { fallback });
       return { status: "completed", message: "renamed (no LLM configured, fallback)", llmRenamedTitle: fallback };
     }
 
@@ -31,8 +32,13 @@ export class RenameLlmStageHandler implements StageHandler {
 
     let renamed: string;
     try {
+      input.log("rename llm call", { model: this.options.model });
       renamed = await this.callLlm(userPrompt);
     } catch (error) {
+      input.log("rename llm error (fallback)", {
+        error: error instanceof Error ? error.message : String(error),
+        fallback
+      });
       return {
         status: "completed",
         message: `renamed (LLM error, fallback): ${error instanceof Error ? error.message : String(error)}`,
@@ -42,8 +48,10 @@ export class RenameLlmStageHandler implements StageHandler {
 
     const cleaned = sanitizeSpecName(renamed);
     if (!cleaned) {
+      input.log("rename llm empty (fallback)", { fallback });
       return { status: "completed", message: "renamed (LLM empty, fallback)", llmRenamedTitle: fallback };
     }
+    input.log("rename llm ok", { renamed: cleaned });
     return { status: "completed", message: "renamed", llmRenamedTitle: cleaned };
   }
 
@@ -51,6 +59,8 @@ export class RenameLlmStageHandler implements StageHandler {
     const fetchImpl = this.options.fetchImpl ?? fetch;
     const response = await fetchImpl(`${this.options.baseUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
+      // LLM 接口偶发挂起不返回,没有超时会卡死整个 rename 阶段;20s 后中断走 fallback
+      signal: AbortSignal.timeout(20_000),
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${this.options.apiKey}`

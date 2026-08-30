@@ -5,7 +5,7 @@ import type {
   SongDiscoverySong,
   SongSearchNasResult
 } from "@home-ktv/domain";
-import type { RoomInteractionKind } from "@home-ktv/player-contracts";
+import type { RoomControlSnapshot, RoomInteractionKind } from "@home-ktv/player-contracts";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { fetchDiscoveryArtistSongs, fetchDiscoveryGenreSongs } from "./api/client.js";
 import {
@@ -15,6 +15,7 @@ import {
   useI18n,
   vocalModeName
 } from "./i18n.js";
+import { joinRoomByRoomNumber } from "./api/client.js";
 import { useRoomController, type RoomControllerState } from "./runtime/use-room-controller.js";
 
 export function App() {
@@ -129,6 +130,9 @@ function ControllerApp() {
   return (
     <main className={`app-shell app-shell--${activeTab}`} aria-label={t("app.aria")}>
       <AppNotices controller={controller} noticeMessage={noticeMessage} t={t} />
+      {controller.errorMessage && /配对码已失效|重新进入控制端/.test(controller.errorMessage) ? (
+        <PairingExpiredJoin />
+      ) : null}
 
       {activeTab === "home" ? (
         <HomeScreen
@@ -246,7 +250,29 @@ function AuthGate({ controller }: { controller: RoomControllerState }) {
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [pending, setPending] = useState(false);
+  const [roomNumber, setRoomNumber] = useState("");
+  const [joinPending, setJoinPending] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
   const isRegister = mode === "register";
+
+  // 电脑等无法扫码的设备:输入房间号换取配对 token 后带 token 重进,
+  // 之后的会话建立与扫码完全同一条链路
+  const joinByRoomNumber = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const slug = roomNumber.trim();
+    if (!slug || joinPending) {
+      return;
+    }
+    setJoinPending(true);
+    setJoinError(null);
+    try {
+      const token = await joinRoomByRoomNumber(slug);
+      window.location.replace(`/controller?token=${encodeURIComponent(token)}`);
+    } catch (error) {
+      setJoinError(error instanceof Error ? error.message : "加入房间失败");
+      setJoinPending(false);
+    }
+  };
   const canSubmit = phone.trim().length > 0 && password.length >= 5 && (!isRegister || displayName.trim().length > 0);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -314,6 +340,8 @@ function AuthGate({ controller }: { controller: RoomControllerState }) {
           {pending ? "处理中" : isRegister ? "注册并进入" : "登录"}
         </button>
       </form>
+      <div className="auth-divider" aria-hidden="true"><span>或</span></div>
+      <JoinRoomForm onJoin={joinByRoomNumber} roomNumber={roomNumber} setRoomNumber={setRoomNumber} pending={joinPending} error={joinError} hint="无法扫码时,输入电视端房间号直接加入" />
       <div className="auth-switch">
         <button className="secondary-button" type="button" onClick={() => setMode(isRegister ? "login" : "register")}>
           {isRegister ? "已有账号，去登录" : "没有账号，去注册"}
@@ -539,6 +567,8 @@ function HomeScreen({
         </button>
         {controller.songSearchStatus === "loading" ? <span className="search-status">{t("search.loading")}</span> : null}
       </section>
+
+      <HomeSupplementCard controller={controller} />
 
       <section className="home-category-section" aria-label={t("discovery.categories")}>
         <CategoryCard
@@ -1054,6 +1084,27 @@ function ControlScreen({
             onChange={(event) => controller.setVolumePercent(Number(event.currentTarget.value))}
           />
         </div>
+        <div className="seek-control">
+          <button
+            className="ghost-button"
+            type="button"
+            disabled={!current}
+            aria-label="快退 10 秒"
+            onClick={() => controller.nudgeSeek(-10_000)}
+          >
+            ‹‹ 10秒
+          </button>
+          <span className="seek-control__position">{formatPlaybackClock(current?.resumePositionMs ?? 0)}</span>
+          <button
+            className="ghost-button"
+            type="button"
+            disabled={!current}
+            aria-label="快进 10 秒"
+            onClick={() => controller.nudgeSeek(10_000)}
+          >
+            10秒 ››
+          </button>
+        </div>
         <div className="command-row">
           <button className="primary-button" type="button" disabled={!current} onClick={() => void controller.switchVocalMode()}>
             {switchLabel}
@@ -1372,11 +1423,6 @@ function OnlineSupplementSection({
   const status = controller.onlineSupplementStatus;
   const notice = controller.onlineSupplementNotice;
   const tasks = controller.snapshot?.onlineTasks?.tasks ?? [];
-  const activeTasks = tasks.filter(
-    (task) => task.status === "discovered" || task.status === "processing"
-  );
-  const failedTasks = tasks.filter((task) => task.status === "failed").slice(0, 3);
-  const readyCount = tasks.filter((task) => task.status === "ready").length;
 
   return (
     <section className="indexed-panel online-supplement-panel" aria-label="在线补歌">
@@ -1433,28 +1479,64 @@ function OnlineSupplementSection({
         </div>
       ) : null}
 
-      {activeTasks.length > 0 ? (
-        <div className="online-supplement-tasks">
-          <h4>处理中的补歌任务</h4>
-          {activeTasks.map((task) => (
-            <div className="online-supplement-task" key={task.taskId}>
-              <div className="compact-version-main">
-                <strong>{task.title}</strong>
-                <div className="compact-version-meta">
-                  <span>{supplementStageLabel(task.stage)}</span>
-                  {task.stageMessage ? <span>{task.stageMessage}</span> : null}
-                </div>
-              </div>
-              <div className="online-supplement-progress">
-                <div className="progress-bar" style={{ width: `${task.stageProgressPercent}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
+      <SupplementTasksPanel tasks={tasks} failedLimit={3} showReadySummary />
+    </section>
+  );
+}
+
+// 首页常驻的补歌任务卡:提交后无论用户在哪个页面,首页都能看到 workflow 进度。
+function HomeSupplementCard({ controller }: { controller: RoomControllerState }) {
+  const tasks = controller.snapshot?.onlineTasks?.tasks ?? [];
+  const activeCount = tasks.filter(
+    (task) => task.status === "discovered" || task.status === "processing"
+  ).length;
+  const failedCount = tasks.filter((task) => task.status === "failed").length;
+  if (activeCount === 0 && failedCount === 0) {
+    return null;
+  }
+
+  return (
+    <section className="indexed-panel online-supplement-panel home-supplement-card" aria-label="补歌任务进度">
+      <div className="panel-heading">
+        <h3>补歌任务</h3>
+        <span className="search-status loading">{activeCount > 0 ? "处理中" : "有失败"}</span>
+      </div>
+      <SupplementTasksPanel tasks={tasks} failedLimit={2} />
+    </section>
+  );
+}
+
+type SupplementTaskRow = NonNullable<RoomControlSnapshot["onlineTasks"]>["tasks"][number];
+
+// 补歌任务全 workflow 可视化:每个任务一条阶段链(下载→命名→歌词→伴奏→对齐→合成→入库),
+// 已完成打勾、当前阶段高亮+进度、失败标红并给原因。数据来自房间快照(WS 实时推)。
+function SupplementTasksPanel({
+  tasks,
+  failedLimit = 3,
+  showReadySummary = false
+}: {
+  tasks: readonly SupplementTaskRow[];
+  failedLimit?: number;
+  showReadySummary?: boolean;
+}) {
+  const activeTasks = tasks.filter(
+    (task) => task.status === "discovered" || task.status === "processing"
+  );
+  const failedTasks = tasks.filter((task) => task.status === "failed").slice(0, failedLimit);
+  const readyCount = tasks.filter((task) => task.status === "ready").length;
+
+  if (activeTasks.length === 0 && failedTasks.length === 0 && !(showReadySummary && readyCount > 0)) {
+    return null;
+  }
+
+  return (
+    <div className="online-supplement-tasks">
+      {activeTasks.map((task) => (
+        <SupplementTaskStageChain key={task.taskId} task={task} />
+      ))}
 
       {failedTasks.length > 0 ? (
-        <div className="online-supplement-tasks">
+        <>
           <h4>处理失败(重新搜索加入即可重试)</h4>
           {failedTasks.map((task) => (
             <div className="online-supplement-task failed" key={task.taskId}>
@@ -1467,13 +1549,62 @@ function OnlineSupplementSection({
               </div>
             </div>
           ))}
-        </div>
+        </>
       ) : null}
 
-      {readyCount > 0 && activeTasks.length === 0 && failedTasks.length === 0 ? (
+      {showReadySummary && readyCount > 0 && activeTasks.length === 0 && failedTasks.length === 0 ? (
         <p className="online-supplement-notice">最近 {readyCount} 首补歌已完成,可在本地搜索点播。</p>
       ) : null}
-    </section>
+    </div>
+  );
+}
+
+// 阶段顺序与 server 端 WORKFLOW_STAGES 保持一致(basic 无伴奏/对齐/合成)
+const SUPPLEMENT_WORKFLOW_STAGES: Record<string, readonly string[]> = {
+  "youtube-basic": ["download", "rename", "lyrics", "index"],
+  "youtube-enhanced": ["download", "rename", "lyrics", "vocal_remove", "align", "mix", "index"]
+};
+
+function SupplementTaskStageChain({ task }: { task: SupplementTaskRow }) {
+  const stages = SUPPLEMENT_WORKFLOW_STAGES[task.workflowId] ?? SUPPLEMENT_WORKFLOW_STAGES["youtube-enhanced"]!;
+  const currentIndex = Math.max(stages.indexOf(task.stage), 0);
+  const total = stages.length;
+  const doneCount = task.status === "ready" ? total : currentIndex;
+  const overallPercent = Math.min(
+    100,
+    Math.round(((doneCount + (task.status === "ready" ? 0 : task.stageProgressPercent / 100)) / total) * 100)
+  );
+
+  return (
+    <div className="online-supplement-task" key={task.taskId}>
+      <div className="compact-version-main">
+        <strong>{task.title}</strong>
+        <div className="compact-version-meta">
+          <span>
+            {task.status === "ready" ? "已完成" : `${supplementStageLabel(task.stage)} ${task.stageProgressPercent}%`}
+          </span>
+          {task.status !== "ready" && task.stageMessage ? <span>{task.stageMessage}</span> : null}
+        </div>
+      </div>
+      <div className="supplement-stage-chain" aria-label={`处理进度 ${overallPercent}%`}>
+        {stages.map((stage, index) => {
+          const state = index < doneCount || task.status === "ready"
+            ? "done"
+            : index === currentIndex
+              ? "current"
+              : "pending";
+          return (
+            <span key={stage} className={`supplement-stage-chip supplement-stage-chip--${state}`}>
+              {state === "done" ? "✓" : null}
+              {supplementStageLabel(stage)}
+            </span>
+          );
+        })}
+      </div>
+      <div className="online-supplement-progress">
+        <div className="progress-bar" style={{ width: `${task.status === "ready" ? 100 : overallPercent}%` }} />
+      </div>
+    </div>
   );
 }
 
@@ -1482,6 +1613,7 @@ function supplementStageLabel(stage: string): string {
     download: "下载",
     rename: "解析命名",
     vocal_remove: "生成伴奏",
+    align: "逐字对齐",
     mix: "合成双音轨",
     lyrics: "获取歌词",
     index: "入库"
@@ -1511,6 +1643,8 @@ function SearchNasSongRows({
         const isPending = controller.pendingNasAssetId === version.assetId;
         const buttonLabel = indexedVersionButtonLabel(version, isPending, t);
         const canClick = version.canQueue && !isPending;
+        const lyricsPending = controller.lyricsRegenerationPending.includes(version.assetId);
+        const lyricsOutcome = controller.lyricsRegenerationResults[version.assetId];
 
         return (
           <article className="song-row indexed-version-row compact-version-row" aria-label={version.displayName} key={version.assetId}>
@@ -1522,8 +1656,23 @@ function SearchNasSongRows({
                 {version.audioTrackCount === 1 ? (
                   <span className="single-track-badge">{t("search.singleAudioTrackSource")}</span>
                 ) : null}
+                {version.hasLyrics === false && lyricsOutcome ? (
+                  <span className="single-track-badge">
+                    {lyricsOutcome === "not_found" ? "未找到歌词" : "生成歌词失败"}
+                  </span>
+                ) : null}
               </div>
             </div>
+            {version.hasLyrics === false ? (
+              <button
+                className="secondary-button compact-queue-button"
+                type="button"
+                disabled={lyricsPending}
+                onClick={() => controller.regenerateLyrics(version.assetId)}
+              >
+                {lyricsPending ? "生成中…" : "生成歌词"}
+              </button>
+            ) : null}
             <button
               className="primary-button compact-queue-button"
               type="button"
@@ -1622,6 +1771,14 @@ function DiscoveryBrowseView({
 
     void loadDetailSongs(view, 0);
   }, [detailKey, detailPages, loadDetailSongs, view]);
+
+  // 补歌任务 ready 后曲库已整体刷新(runtime 会重拉 discovery/搜索),
+  // 浏览明细(歌手/风格歌曲列表)的本地缓存一并清空,当前视图自动重新加载。
+  useEffect(() => {
+    if (controller.songLibraryRefreshVersion > 0) {
+      setDetailPages({});
+    }
+  }, [controller.songLibraryRefreshVersion]);
 
   if (view.kind === "artists" || view.kind === "genres") {
     const isArtists = view.kind === "artists";
@@ -1873,4 +2030,81 @@ function indexedVersionButtonLabel(
     return version.disabledLabel ?? t("search.indexedUnreadable");
   }
   return version.disabledLabel ?? t("search.indexedStale");
+}
+
+// 服务端记录的播放位置(TV 心跳/seek 后)转 m:ss
+function formatPlaybackClock(positionMs: number): string {
+  const totalSeconds = Math.max(0, Math.trunc(positionMs / 1000));
+  return `${Math.trunc(totalSeconds / 60)}:`.concat(`${totalSeconds % 60}`.padStart(2, "0"));
+}
+
+function JoinRoomForm({
+  onJoin, roomNumber, setRoomNumber, pending, error, hint
+}: {
+  onJoin: (event: FormEvent<HTMLFormElement>) => void;
+  roomNumber: string;
+  setRoomNumber: (value: string) => void;
+  pending: boolean;
+  error: string | null;
+  hint?: string;
+}) {
+  return (
+    <form className="auth-form auth-join" onSubmit={(event) => void onJoin(event)}>
+      <label>
+        <span>房间号</span>
+        <input
+          autoComplete="off"
+          name="roomNumber"
+          placeholder="living-room"
+          type="text"
+          value={roomNumber}
+          onChange={(event) => setRoomNumber(event.target.value)}
+        />
+      </label>
+      <button className="secondary-button auth-submit" type="submit" disabled={!roomNumber.trim() || pending}>
+        {pending ? "加入中" : "通过房间号加入"}
+      </button>
+      {error ? <p className="auth-join__error" role="alert">{error}</p> : null}
+      {hint ? <p className="auth-join__hint">{hint}</p> : null}
+    </form>
+  );
+}
+
+// 配对失效(如 token 过期)时,不用回电视扫码,直接输房间号重新配对
+function PairingExpiredJoin() {
+  const [roomNumber, setRoomNumber] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const slug = roomNumber.trim();
+    if (!slug || pending) {
+      return;
+    }
+    setPending(true);
+    setError(null);
+    try {
+      const token = await joinRoomByRoomNumber(slug);
+      setDone(true);
+      window.location.replace(`/controller?token=${encodeURIComponent(token)}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "加入房间失败");
+      setPending(false);
+    }
+  };
+
+  return (
+    <section className="panel" aria-label="重新配对">
+      <JoinRoomForm
+        onJoin={(event) => void submit(event)}
+        roomNumber={roomNumber}
+        setRoomNumber={setRoomNumber}
+        pending={pending || done}
+        error={error}
+        hint="无需回电视扫码,输入电视端房间号即可重新配对(电视待机屏二维码下方有显示)"
+      />
+    </section>
+  );
 }

@@ -88,7 +88,8 @@ function toNasSearchResult(record: SongSearchIndexedResult): SongSearchNasResult
       category: version.category,
       queueState: version.queueState,
       canQueue: version.canQueue,
-      disabledLabel: version.disabledLabel
+      disabledLabel: version.disabledLabel,
+      ...(version.hasLyrics === undefined ? {} : { hasLyrics: version.hasLyrics })
     }))
   };
 }

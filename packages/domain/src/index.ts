@@ -49,6 +49,7 @@ export type ControlCommandType =
   | "skip-current"
   | "switch-vocal-mode"
   | "set-volume"
+  | "seek"
   | "player-ended";
 export type ControlCommandResultStatus = "accepted" | "duplicate" | "conflict" | "rejected";
 export type ImportScanRunId = EntityId;
@@ -276,6 +277,8 @@ export interface SongSearchIndexedVersionOption {
   queueState: SongSearchIndexedQueueState;
   canQueue: boolean;
   disabledLabel: string | null;
+  /** ktv_songs.lyric_file 是否已就绪;false = 可触发"生成歌词"重查 LRCLIB */
+  hasLyrics?: boolean;
 }
 
 export interface SongSearchIndexedResult {
@@ -309,6 +312,8 @@ export interface SongSearchNasVersionOption {
   queueState: SongSearchNasQueueState;
   canQueue: boolean;
   disabledLabel: string | null;
+  /** ktv_songs.lyric_file 是否已就绪;false = 可触发"生成歌词"重查 LRCLIB */
+  hasLyrics?: boolean;
 }
 
 export interface SongSearchNasResult {
@@ -629,7 +634,7 @@ export type SupplementTaskId = EntityId;
 export const supplementTaskStatuses = ["discovered", "processing", "ready", "failed"] as const;
 export type SupplementTaskStatus = (typeof supplementTaskStatuses)[number];
 
-export const supplementTaskStages = ["download", "rename", "vocal_remove", "mix", "lyrics", "index"] as const;
+export const supplementTaskStages = ["download", "rename", "vocal_remove", "align", "mix", "lyrics", "index"] as const;
 export type SupplementTaskStage = (typeof supplementTaskStages)[number];
 
 export const supplementStageStatuses = ["pending", "running", "done", "failed"] as const;
@@ -740,6 +745,7 @@ export interface PlaybackSession {
   targetVocalMode: VocalMode;
   playerState: PlayerState;
   playerPositionMs: number;
+  seekSeq?: number;
   volumePercent?: number;
   mediaStartedAt: string | null;
   version: number;

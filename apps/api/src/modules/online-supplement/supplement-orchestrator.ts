@@ -1,3 +1,5 @@
+import { rm } from "node:fs/promises";
+import path from "node:path";
 import type {
   OnlineSupplementTask,
   SupplementTaskStage,
@@ -5,9 +7,28 @@ import type {
 } from "@home-ktv/domain";
 import type { OnlineSupplementTaskRepository } from "./supplement-task-repository.js";
 
+const DOWNLOADS_SUBDIR = "_downloads";
+const STEMS_SUBDIR = "_stems";
+const MIXED_SUBDIR = "_mixed";
+const LYRICS_SUBDIR = "_lyrics";
+
+/**
+ * best-effort 清理任务中间产物(下载原片/分離人声产物/混音产物/歌词)。
+ * 每项独立吞错:清理失败只意味着磁盘残留,不应影响任务状态流转。
+ */
+export async function cleanupSupplementIntermediates(workDir: string, taskId: string): Promise<void> {
+  await Promise.all([
+    rm(path.join(workDir, DOWNLOADS_SUBDIR, `${taskId}.mkv`), { force: true }).catch(() => undefined),
+    rm(path.join(workDir, STEMS_SUBDIR, taskId), { recursive: true, force: true }).catch(() => undefined),
+    rm(path.join(workDir, MIXED_SUBDIR, `${taskId}.mkv`), { force: true }).catch(() => undefined),
+    rm(path.join(workDir, LYRICS_SUBDIR, `${taskId}.lrc`), { force: true }).catch(() => undefined),
+    rm(path.join(workDir, LYRICS_SUBDIR, `${taskId}.karaoke.json`), { force: true }).catch(() => undefined)
+  ]);
+}
+
 export const WORKFLOW_STAGES: Record<SupplementWorkflowId, readonly SupplementTaskStage[]> = {
   "youtube-basic": ["download", "rename", "lyrics", "index"],
-  "youtube-enhanced": ["download", "rename", "lyrics", "vocal_remove", "mix", "index"]
+  "youtube-enhanced": ["download", "rename", "lyrics", "vocal_remove", "align", "mix", "index"]
 };
 
 export const BATCH_STAGES: ReadonlySet<SupplementTaskStage> = new Set<SupplementTaskStage>([
@@ -41,6 +62,8 @@ export interface StageExecuteInput {
   workDir: string;
   renewLease: (leaseUntil: Date) => Promise<void>;
   reportProgress: (percent: number, message: string) => Promise<void>;
+  /** 阶段内详细日志(文件操作、重试等),由编排器统一带上 taskId 前缀输出 */
+  log: (message: string, meta?: Record<string, unknown>) => void;
 }
 
 export interface StageExecuteResult {
@@ -159,6 +182,9 @@ export class SupplementOrchestrator {
         now: this.now()
       });
     };
+    const stageLog = (message: string, meta?: Record<string, unknown>): void => {
+      this.log(message, { taskId: task.id, stage: task.stage, ...(meta ?? {}) });
+    };
 
     let result: StageExecuteResult;
     try {
@@ -168,7 +194,8 @@ export class SupplementOrchestrator {
         workerId: this.workerId,
         workDir: this.workDir,
         renewLease,
-        reportProgress
+        reportProgress,
+        log: stageLog
       });
     } catch (error) {
       result = {
@@ -177,6 +204,36 @@ export class SupplementOrchestrator {
       };
     }
 
+    try {
+      await this.persistStageOutcome(task, result, stageLog);
+    } catch (error) {
+      // 状态写回失败(DB 闪断、约束冲突等)绝不能抛出到 worker 循环,否则任务
+      // 永远停在 running,lease 过期后被反复回收重认领。做一次 markFailed 补救;
+      // 补救也失败就只留日志,让 lease 过期回收兜底。
+      const reason = `stage result persistence failed: ${error instanceof Error ? error.message : String(error)}`;
+      stageLog(`stage result persistence failed`, {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      try {
+        await this.repo.markFailed({
+          taskId: task.id,
+          failureStage: task.stage,
+          reason,
+          now: this.now()
+        });
+      } catch (rescueError) {
+        stageLog(`markFailed rescue failed; awaiting lease expiry reclaim`, {
+          error: rescueError instanceof Error ? rescueError.message : String(rescueError)
+        });
+      }
+    }
+  }
+
+  private async persistStageOutcome(
+    task: OnlineSupplementTask,
+    result: StageExecuteResult,
+    stageLog: (message: string, meta?: Record<string, unknown>) => void
+  ): Promise<void> {
     const now = this.now();
     if (result.status === "failed") {
       this.log(`stage FAILED`, {
@@ -185,12 +242,25 @@ export class SupplementOrchestrator {
         title: task.title,
         reason: result.failureReason ?? "handler reported failure"
       });
-      await this.repo.markFailed({
+      // 失败任务的中间产物无人认领;best-effort 清理,失败只留日志。
+      // download 阶段失败时没有产物,清理为空操作,无害。
+      try {
+        await cleanupSupplementIntermediates(this.workDir, task.id);
+      } catch (cleanupError) {
+        stageLog(`intermediates cleanup after failure failed`, {
+          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+        });
+      }
+      const failedOutcome = await this.repo.markFailed({
         taskId: task.id,
+        workerId: this.workerId,
         failureStage: task.stage,
         reason: result.failureReason ?? "handler reported failure",
         now
       });
+      if (failedOutcome === null) {
+        stageLog(`fenced out (lease lost to another worker); markFailed skipped`, { taskId: task.id });
+      }
       return;
     }
 
@@ -203,13 +273,17 @@ export class SupplementOrchestrator {
         readySongId: result.readySongId ?? "",
         finalFilePath: result.finalFilePath ?? task.finalFilePath ?? ""
       });
-      await this.repo.markReady({
+      const readyOutcome = await this.repo.markReady({
         taskId: task.id,
+        workerId: this.workerId,
         readySongId: result.readySongId ?? "",
         finalFilePath: result.finalFilePath ?? task.finalFilePath ?? "",
         lyricFile: result.lyricFile ?? task.lyricFile,
         now
       });
+      if (readyOutcome === null) {
+        stageLog(`fenced out (lease lost to another worker); markReady skipped`, { taskId: task.id });
+      }
       return;
     }
 
@@ -219,8 +293,9 @@ export class SupplementOrchestrator {
       nextStage,
       message: result.message ?? ""
     });
-    await this.repo.completeStage({
+    const completeOutcome = await this.repo.completeStage({
       taskId: task.id,
+      workerId: this.workerId,
       nextStage,
       ...(result.message !== undefined ? { stageMessage: result.message } : {}),
       ...(result.llmRenamedTitle !== undefined ? { llmRenamedTitle: result.llmRenamedTitle } : {}),
@@ -228,5 +303,8 @@ export class SupplementOrchestrator {
       ...(result.lyricFile !== undefined ? { lyricFile: result.lyricFile } : {}),
       now
     });
+    if (completeOutcome === null) {
+      stageLog(`fenced out (lease lost to another worker); completeStage skipped`, { taskId: task.id });
+    }
   }
 }

@@ -51,6 +51,35 @@ export class PlayerClient {
     return this.getJson<RoomSnapshot>(`/rooms/${encodeURIComponent(this.roomSlug)}/snapshot`);
   }
 
+  // 按歌拉同步歌词文本;404(该歌无歌词)返回 null,由调用方缓存避免反复请求。
+  // 网络/服务端错误原样抛出,调用方不得把它当"无歌词"缓存。
+  async fetchSongLyrics(assetId: string): Promise<string | null> {
+    return this.getText(`/media/ktv-index/${encodeURIComponent(assetId)}/lyrics`);
+  }
+
+  // 按歌拉逐字 karaoke 时间轴 JSON;404(未对齐)返回 null,降级到行级 LRC。
+  async fetchKaraokeLyrics(assetId: string): Promise<string | null> {
+    return this.getText(`/media/ktv-index/${encodeURIComponent(assetId)}/karaoke-lyrics`);
+  }
+
+  private async getText(path: string): Promise<string | null> {
+    // 悬挂的歌词请求会卡住整首歌的歌词链路;旧运行时(如测试环境的 jsdom)
+    // 没有 AbortSignal.timeout 时退化为无超时
+    const timeoutSignal =
+      typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(5000) : undefined;
+    const response = await this.fetchImpl(`${this.apiBaseUrl}${path}`, {
+      headers: { accept: "text/plain" },
+      ...(timeoutSignal ? { signal: timeoutSignal } : {})
+    });
+    if (response.status === 404) {
+      return null;
+    }
+    if (!response.ok) {
+      throw new Error(`TV lyrics request failed: ${response.status}`);
+    }
+    return response.text();
+  }
+
   createSnapshotSocketUrl(): string {
     const baseUrl = this.apiBaseUrl.replace(/^http:/u, "ws:").replace(/^https:/u, "wss:");
     const params = new URLSearchParams({

@@ -32,12 +32,20 @@ export function IdleScreen({ pairing }: IdleScreenProps) {
       </div>
       <div style={styles.qrColumn}>
         <PairingQr pairing={pairing} variant="large" />
+        <p style={styles.roomHint}>房间号：{pairing.roomSlug}（扫码或输入房间号加入）</p>
       </div>
     </section>
   );
 }
 
 const styles = {
+  roomHint: {
+    color: "#94a3b8",
+    fontSize: 20,
+    fontWeight: 700,
+    margin: "16px 0 0",
+    textAlign: "center"
+  },
   screen: {
     alignItems: "center",
     backgroundImage: "url('/home-ktv-idle-background.png')",

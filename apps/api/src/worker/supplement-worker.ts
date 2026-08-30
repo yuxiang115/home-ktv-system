@@ -1,4 +1,5 @@
 import { pathToFileURL } from "node:url";
+import path from "node:path";
 import { Pool } from "pg";
 import type { SupplementTaskStage } from "@home-ktv/domain";
 import { loadConfig } from "../config.js";
@@ -16,6 +17,10 @@ import {
   buildSupplementHandlers,
   type SupplementLlmConfig
 } from "../modules/online-supplement/supplement-handlers.js";
+import {
+  activeChildPids,
+  killProcessTree
+} from "../modules/online-supplement/handlers/vocal-remove-handler.js";
 import type { MediaPathMapping } from "../modules/assets/media-path-mapping.js";
 
 const ALL_STAGES: readonly SupplementTaskStage[] = Array.from(
@@ -97,6 +102,13 @@ interface HandlerDeps {
   demucsDevice: string;
   demucsModel: string;
   ffmpegBin?: string;
+  aligner: {
+    bin: string;
+    scriptPath: string;
+    model: string;
+    device: string;
+    dtype: string;
+  };
 }
 
 function buildStageHandlers(runtime: WorkerRuntimeOptions, deps: HandlerDeps): Map<SupplementTaskStage, StageHandler> {
@@ -121,7 +133,8 @@ function buildStageHandlers(runtime: WorkerRuntimeOptions, deps: HandlerDeps): M
     ...(deps.demucsArgs ? { demucsArgs: deps.demucsArgs } : {}),
     demucsDevice: deps.demucsDevice,
     demucsModel: deps.demucsModel,
-    ...(deps.ffmpegBin ? { ffmpegBin: deps.ffmpegBin } : {})
+    ...(deps.ffmpegBin ? { ffmpegBin: deps.ffmpegBin } : {}),
+    aligner: deps.aligner
   });
 }
 
@@ -133,14 +146,60 @@ interface StopSignal {
   stopped: boolean;
 }
 
-function installShutdownHandlers(): StopSignal {
-  const stop: StopSignal = { stopped: false };
+// worker 正在执行的 poll 轮次 promise:优雅退出时树杀子进程后等待它结束
+// (带上限),保证阶段失败原因落库后再退出。
+interface InFlightRound {
+  current: Promise<unknown> | null;
+}
+
+// 优雅退出时等待在跑阶段收尾的上限:树杀后阶段会快速失败返回,5s 只兜异常卡点。
+const GRACEFUL_STAGE_DRAIN_MS = 5000;
+
+// 安装 SIGINT/SIGTERM 处理:首个信号进入优雅退出(树杀全部活跃子进程 → 等
+// 在跑的轮次收尾);再次收到信号时不再等待,直接强制退出,避免卡死在不可杀的点。
+function installShutdownHandlers(stop: StopSignal, inFlight: InFlightRound): void {
   const handler = (): void => {
+    if (stop.stopped) {
+      console.log("[supplement-worker] repeated shutdown signal, forcing exit");
+      process.exit(1);
+    }
     stop.stopped = true;
+    void drainActiveChildren(inFlight);
   };
   process.on("SIGINT", handler);
   process.on("SIGTERM", handler);
-  return stop;
+}
+
+// 优雅退出主体:1) 对 activeChildPids 里每个 pid 做树杀(demucs/ffmpeg/对齐
+// python 及其全部孙进程);2) 等在跑的轮次 promise 结束(5s 上限),超时说明有
+// 不可收敛的卡点,强制退出,任务状态交给 lease 过期回收自愈。
+async function drainActiveChildren(inFlight: InFlightRound): Promise<void> {
+  const pids = Array.from(activeChildPids);
+  if (pids.length > 0) {
+    console.log(
+      `[supplement-worker] shutdown: tree-killing ${pids.length} active child process tree(s): ${pids.join(", ")}`
+    );
+  }
+  await Promise.allSettled(pids.map((pid) => killProcessTree(pid)));
+
+  const running = inFlight.current;
+  if (!running) {
+    return;
+  }
+  const drained = await Promise.race([
+    Promise.resolve(running).then(
+      () => true,
+      () => true
+    ),
+    sleep(GRACEFUL_STAGE_DRAIN_MS).then(() => false)
+  ]);
+  if (!drained) {
+    console.log(
+      `[supplement-worker] in-flight stage still running after ${GRACEFUL_STAGE_DRAIN_MS}ms, forcing exit ` +
+        "(task state recovers via lease expiry)"
+    );
+    process.exit(1);
+  }
 }
 
 export interface RunSupplementWorkerOptions {
@@ -188,7 +247,14 @@ export async function runSupplementWorker(options: RunSupplementWorkerOptions = 
     ...(config.demucsArgs ? { demucsArgs: config.demucsArgs } : {}),
     demucsDevice: config.demucsDevice,
     demucsModel: config.demucsModel,
-    ...(config.ffmpegBin ? { ffmpegBin: config.ffmpegBin } : {})
+    ...(config.ffmpegBin ? { ffmpegBin: config.ffmpegBin } : {}),
+    aligner: {
+      bin: config.alignerBin,
+      scriptPath: path.resolve(process.cwd(), config.alignerScript),
+      model: config.alignerModel,
+      device: config.alignerDevice,
+      dtype: config.alignerDtype
+    }
   });
   const orchestrator = new SupplementOrchestrator({
     repo,
@@ -197,17 +263,30 @@ export async function runSupplementWorker(options: RunSupplementWorkerOptions = 
     workerId: runtime.workerId,
     leaseDurationMs: runtime.leaseDurationMs,
     log: (message, meta) => {
-      console.log(`[supplement-worker] ${message}${meta ? ` ${JSON.stringify(meta)}` : ""}`);
+      const ts = new Date().toISOString();
+      console.log(`[supplement-worker ${ts}] ${message}${meta ? ` ${JSON.stringify(meta)}` : ""}`);
     }
   });
 
   console.log(
     `[supplement-worker] started (workerId=${runtime.workerId}, dryRun=${runtime.dryRun}, ` +
     `handlers=[${Array.from(handlers.keys()).join(",")}], ` +
+    `aligner=${config.alignerBin ? `${config.alignerModel}@${config.alignerDevice}` : "disabled"}, ` +
+    `demucs=${config.demucsBin || "demucs"}@${config.demucsDevice}, ` +
     `poll=${runtime.pollIntervalMs}ms, lease=${runtime.leaseDurationMs}ms)`
   );
 
-  const stop = installShutdownHandlers();
+  // 孤儿自清:子进程生命周期由父进程保证(runner 在 spawn 时登记 pid、exit 时
+  // 注销,worker 退出时整棵树击杀),子进程随父死,无需跨重启持久登记到文件/DB,
+  // 因此启动时 activeChildPids 必然为空——没有需要清理的历史孤儿。
+  console.log(
+    `[supplement-worker] startup orphan check: activeChildPids=${activeChildPids.size} ` +
+    "(child processes die with this worker by design; no persistent registry to clean)"
+  );
+
+  const stop: StopSignal = { stopped: false };
+  const inFlight: InFlightRound = { current: null };
+  installShutdownHandlers(stop, inFlight);
   try {
     await runPollLoop({
       orchestrator,
@@ -215,7 +294,8 @@ export async function runSupplementWorker(options: RunSupplementWorkerOptions = 
       pool,
       batchSize: config.supplementBatchSize,
       pollIntervalMs: runtime.pollIntervalMs,
-      stop
+      stop,
+      inFlight
     });
   } finally {
     if (ownsPool) {
@@ -232,37 +312,52 @@ interface PollLoopInput {
   batchSize: number;
   pollIntervalMs: number;
   stop: StopSignal;
+  inFlight: InFlightRound;
 }
 
 async function runPollLoop(input: PollLoopInput): Promise<void> {
   while (!input.stop.stopped) {
-    try {
-      const reclaimed = await input.repo.reclaimStaleLeases(new Date());
-      if (reclaimed > 0) {
-        console.log(`[supplement-worker] reclaimed ${reclaimed} stale lease(s)`);
-      }
+    // 把当前轮次的 promise 挂到 inFlight,优雅退出时树杀后能等到它收尾
+    input.inFlight.current = runPollRound(input);
+    await input.inFlight.current;
+    input.inFlight.current = null;
+    if (input.stop.stopped) {
+      // 信号已到达:不再多睡一个 poll 间隔,尽快退出
+      break;
+    }
+    await sleep(input.pollIntervalMs);
+  }
+}
 
-      const affectedRooms = new Set<string>();
-      for (const stage of ALL_STAGES) {
-        if (!input.orchestrator.hasHandlerFor(stage)) {
-          continue;
-        }
-        const summary = isBatchStage(stage)
-          ? await input.orchestrator.processBatchStage(stage, input.batchSize)
-          : await input.orchestrator.processSerialStage(stage);
-        for (const task of summary.processedTasks) {
-          affectedRooms.add(task.roomId);
-        }
-      }
-
-      for (const roomId of affectedRooms) {
-        await notifySupplementProgress(input.pool, roomId);
-      }
-    } catch (error) {
-      console.error("[supplement-worker] poll iteration failed:", error);
+async function runPollRound(input: PollLoopInput): Promise<void> {
+  try {
+    const reclaimed = await input.repo.reclaimStaleLeases(new Date());
+    if (reclaimed > 0) {
+      console.log(`[supplement-worker] reclaimed ${reclaimed} stale lease(s)`);
     }
 
-    await sleep(input.pollIntervalMs);
+    for (const stage of ALL_STAGES) {
+      if (!input.orchestrator.hasHandlerFor(stage)) {
+        continue;
+      }
+      const summary = isBatchStage(stage)
+        ? await input.orchestrator.processBatchStage(stage, input.batchSize)
+        : await input.orchestrator.processSerialStage(stage);
+      // Notify right after each stage call instead of waiting for the whole
+      // round: a single slow stage (e.g. a ~15min demucs run) must not freeze
+      // progress for every other task in the room.
+      const stageRooms = new Set(summary.processedTasks.map((task) => task.roomId));
+      for (const roomId of stageRooms) {
+        try {
+          await notifySupplementProgress(input.pool, roomId);
+        } catch (error) {
+          // A failed notify must not abort the remaining stages of this round.
+          console.error(`[supplement-worker] progress notify failed for room ${roomId}:`, error);
+        }
+      }
+    }
+  } catch (error) {
+    console.error("[supplement-worker] poll iteration failed:", error);
   }
 }
 

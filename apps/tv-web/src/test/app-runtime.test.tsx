@@ -388,12 +388,85 @@ describe("tv app runtime", () => {
     expect(screen.queryByText("当前 MV 暂不可播放，请先预处理后再重试。")).toBeNull();
     expect(screen.queryByText("点击电视开始播放")).toBeNull();
   });
+
+  it("clears the previous song's karaoke lyrics when the next song has no karaoke timing", async () => {
+    const songASnapshot = snapshot();
+    const songBSnapshot = snapshot({
+      currentTarget: {
+        ...songASnapshot.currentTarget!,
+        queueEntryId: "queue-next",
+        songId: "song-next",
+        assetId: "asset-next",
+        playbackUrl: "http://ktv.local/media/asset-next"
+      }
+    });
+    mocks.roomSnapshot.mockImplementation(() => songASnapshot);
+    const songAKaraoke = JSON.stringify({
+      lines: [{ start: 1, end: 2, text: "舊", words: [{ text: "舊", start: 1, end: 2 }] }]
+    });
+    mocks.createBrowserPlayerClient.mockReturnValue(
+      createClient({
+        fetchKaraokeLyrics: vi.fn(async (assetId: string) =>
+          assetId === "asset-original" ? songAKaraoke : null
+        ),
+        fetchSongLyrics: vi.fn(async () => null)
+      })
+    );
+    mocks.createBrowserVideoPool.mockReturnValue(
+      createPool({ activeTarget: songASnapshot.currentTarget })
+    );
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("舊")).toBeTruthy());
+
+    // 切到没有逐字轴的下一首:旧歌词必须消失,不能整首残留
+    mocks.roomSnapshot.mockImplementation(() => songBSnapshot);
+
+    await waitFor(() => expect(screen.queryByText("舊")).toBeNull());
+  });
+
+  it("seeks forward in accumulating 10s steps when ArrowRight is pressed repeatedly", async () => {
+    const playbackSnapshot = snapshot();
+    mocks.roomSnapshot.mockImplementation(() => playbackSnapshot);
+    mocks.createBrowserPlayerClient.mockReturnValue(createClient());
+    const pool = createPool({ activeTarget: playbackSnapshot.currentTarget, activePaused: false });
+    mocks.createBrowserVideoPool.mockReturnValue(pool);
+
+    render(<App />);
+
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(screen.getByText("快进 20秒")).toBeTruthy();
+    // 停顿期内不生效,提交窗口过后一次性 seek
+    expect(pool.activeVideo.currentTime).toBe(0);
+
+    await waitFor(() => expect(pool.activeVideo.currentTime).toBe(20), { timeout: 2500 });
+  });
+
+  it("clamps backward seeks to the start of the stream", async () => {
+    const playbackSnapshot = snapshot();
+    mocks.roomSnapshot.mockImplementation(() => playbackSnapshot);
+    mocks.createBrowserPlayerClient.mockReturnValue(createClient());
+    const pool = createPool({ activeTarget: playbackSnapshot.currentTarget, activePaused: false });
+    mocks.createBrowserVideoPool.mockReturnValue(pool);
+
+    render(<App />);
+
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    expect(screen.getByText("快退 10秒")).toBeTruthy();
+
+    await waitFor(() => expect(pool.activeVideo.currentTime).toBe(0), { timeout: 2500 });
+    expect(screen.getByText("0:00 → 0:00")).toBeTruthy();
+  });
 });
 
 function createClient(overrides: Record<string, unknown> = {}) {
   return {
     deviceId: "tv-player-1",
     fetchSnapshot: vi.fn(),
+    fetchSongLyrics: vi.fn(async () => null),
+    fetchKaraokeLyrics: vi.fn(async () => null),
     requestSwitchTransition: vi.fn(),
     sendHeartbeat: vi.fn(),
     sendTelemetry: vi.fn(),

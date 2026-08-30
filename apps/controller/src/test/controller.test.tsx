@@ -16,7 +16,7 @@ import {
   undoDeleteQueueEntry
 } from "../api/client.js";
 import { App } from "../App.js";
-import { fallbackPollingIntervalMs, sessionRefreshIntervalMs, useRoomController } from "../runtime/use-room-controller.js";
+import { fallbackPollingIntervalMs, sessionRefreshIntervalMs, songSearchCacheTtlMs, useRoomController } from "../runtime/use-room-controller.js";
 
 type RequestRecord = {
   url: string;
@@ -677,6 +677,113 @@ describe("mobile controller runtime", () => {
     expect(requests.some((request) => request.url === "/rooms/living-room/songs/search?q=qlx&limit=30")).toBe(true);
   });
 
+  it("refetches discovery and the current search when an online supplement task becomes ready", async () => {
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))]
+    });
+    const sockets = installWebSocketMock();
+    const controller = renderControllerProbe();
+    await flush();
+
+    act(() => {
+      controller.current?.setSongSearchQuery("新歌");
+      controller.current?.submitSongSearch();
+    });
+    await flush();
+    requests.length = 0;
+
+    // processing 阶段的快照不应触发曲库重拉
+    act(() => {
+      sockets[0]?.emitSnapshot(
+        roomSnapshot({
+          onlineTasks: { counts: { processing: 1 }, tasks: [supplementTask({ status: "processing", stageProgressPercent: 40 })] }
+        })
+      );
+    });
+    await flush();
+    expect(requests.filter((request) => request.url.startsWith("/rooms/living-room/songs/discovery?"))).toHaveLength(0);
+    expect(requests.filter((request) => request.url.includes("/songs/search?"))).toHaveLength(0);
+
+    // 任务转为 ready(新歌落库)后,discovery 与当前查询的搜索结果都要重拉
+    act(() => {
+      sockets[0]?.emitSnapshot(
+        roomSnapshot({
+          onlineTasks: { counts: { ready: 1 }, tasks: [supplementTask({ status: "ready", readySongId: "song-online-new" })] }
+        })
+      );
+    });
+    await flush();
+
+    expect(requests.some((request) => request.url.startsWith("/rooms/living-room/songs/discovery?"))).toBe(true);
+    expect(requests.some((request) => request.url === "/rooms/living-room/songs/search?q=%E6%96%B0%E6%AD%8C&limit=30")).toBe(true);
+    expect(controller.current?.songLibraryRefreshVersion).toBe(1);
+  });
+
+  it("serves repeated identical submits from the search cache until the TTL expires", async () => {
+    vi.useFakeTimers();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))]
+    });
+    installWebSocketMock();
+    const controller = renderControllerProbe();
+    await flush();
+
+    const qlxSearchRequests = () => requests.filter((request) => request.url === "/rooms/living-room/songs/search?q=qlx&limit=30");
+
+    act(() => {
+      controller.current?.setSongSearchQuery("qlx");
+      controller.current?.submitSongSearch();
+    });
+    await flush();
+    expect(qlxSearchRequests()).toHaveLength(1);
+
+    requests.length = 0;
+    act(() => {
+      controller.current?.submitSongSearch();
+    });
+    await flush();
+    expect(qlxSearchRequests()).toHaveLength(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(songSearchCacheTtlMs + 1);
+    });
+    act(() => {
+      controller.current?.submitSongSearch();
+    });
+    await flush();
+    expect(qlxSearchRequests()).toHaveLength(1);
+  });
+
+  it("reloads the artist browse list after a supplement task becomes ready", async () => {
+    const user = userEvent.setup();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))]
+    });
+    const sockets = installWebSocketMock();
+
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /歌手点歌/u }));
+    await user.click(await screen.findByRole("button", { name: /周杰伦 2 首歌/u }));
+    expect(await screen.findByText("周杰伦详情歌1")).toBeTruthy();
+
+    const artistDetailRequests = () =>
+      requests.filter((request) => request.url.startsWith("/rooms/living-room/songs/discovery/artists/")).length;
+    const beforeReady = artistDetailRequests();
+
+    act(() => {
+      sockets[0]?.emitSnapshot(
+        roomSnapshot({
+          onlineTasks: { counts: { ready: 1 }, tasks: [supplementTask({ status: "ready", readySongId: "song-online-new" })] }
+        })
+      );
+    });
+    await flush();
+
+    await waitFor(() => expect(artistDetailRequests()).toBeGreaterThan(beforeReady));
+    expect(await screen.findByText("周杰伦详情歌1")).toBeTruthy();
+  });
+
   it("sends selected assetId when adding a song version", async () => {
     const { requests } = installControllerFetchMock({
       restoreResponses: [json(sessionResponse(roomSnapshot()))]
@@ -693,6 +800,51 @@ describe("mobile controller runtime", () => {
       sourceType: "nas",
       assetId: "asset-ready-alt"
     });
+  });
+
+  it("regenerates lyrics from a search result row without lyrics", async () => {
+    const user = userEvent.setup();
+    const { requests } = installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))],
+      songSearchResponse: noLyricsSongSearchResponse
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    const dialog = await typeSearchQuery(user, "演員");
+    const row = await within(dialog).findByRole("article", { name: "薛之謙_Joker_Xue-演員-國語-流行.mkv" });
+    await user.click(within(row).getByRole("button", { name: "生成歌词" }));
+
+    await waitFor(() =>
+      expect(
+        requests.some(
+          (request) => request.method === "POST" && request.url === "/media/ktv-index/asset-actor-online/regenerate-lyrics"
+        )
+      ).toBe(true)
+    );
+    // found:该行就地变为有歌词,「生成歌词」按钮消失
+    await waitFor(() => expect(within(row).queryByRole("button", { name: "生成歌词" })).toBeNull());
+    expect(within(row).queryByText("未找到歌词")).toBeNull();
+  });
+
+  it("shows an inline notice when the lyrics provider has no match", async () => {
+    const user = userEvent.setup();
+    installControllerFetchMock({
+      restoreResponses: [json(sessionResponse(roomSnapshot()))],
+      songSearchResponse: noLyricsSongSearchResponse,
+      regenerateLyricsResponse: () => ({ status: "not_found" })
+    });
+    installWebSocketMock();
+
+    render(<App />);
+
+    const dialog = await typeSearchQuery(user, "演員");
+    const row = await within(dialog).findByRole("article", { name: "薛之謙_Joker_Xue-演員-國語-流行.mkv" });
+    await user.click(within(row).getByRole("button", { name: "生成歌词" }));
+
+    expect(await within(row).findByText("未找到歌词")).toBeTruthy();
+    expect(within(row).getByRole("button", { name: "生成歌词" })).toBeTruthy();
   });
 
   it("requires duplicate confirmation before re-adding a queued song version", async () => {
@@ -1679,6 +1831,7 @@ function installControllerFetchMock(options: {
   commandResponses?: Record<string, MockResponse | MockResponse[]>;
   controllerHistoryResponse?: unknown;
   songSearchResponse?: (query: string) => unknown;
+  regenerateLyricsResponse?: (assetId: string) => unknown;
   songDiscoveryResponse?: (seed: string) => unknown;
   discoveryArtistSongsResponse?: (artistId: string, offset: number, limit: number) => unknown;
   discoveryGenreSongsResponse?: (genre: string, offset: number, limit: number) => unknown;
@@ -1778,6 +1931,12 @@ function installControllerFetchMock(options: {
 
       if (method === "POST" && requestUrl.pathname.includes("/commands/")) {
         return json({ status: "accepted", snapshot: roomSnapshot({ sessionVersion: 2 }) });
+      }
+
+      const regenerateLyricsMatch = requestUrl.pathname.match(/\/media\/ktv-index\/([^/]+)\/regenerate-lyrics$/u);
+      if (method === "POST" && regenerateLyricsMatch) {
+        const assetId = decodeURIComponent(regenerateLyricsMatch[1] ?? "");
+        return json(options.regenerateLyricsResponse?.(assetId) ?? { status: "found", lyricFile: `/media/_online/${assetId}.lrc` });
       }
 
       return json({ code: "NOT_FOUND" }, 404);
@@ -1926,6 +2085,43 @@ function songSearchResponse(query: string) {
       ]
     },
     online: { status: "disabled", message: "本地未入库，补歌功能后续可用", candidates: [] }
+  };
+}
+
+// 在线补歌产物风格的搜索结果:单个版本、hasLyrics: false(可触发"生成歌词")
+function noLyricsSongSearchResponse(query: string) {
+  return {
+    query,
+    nas: {
+      status: "available",
+      message: "找到 NAS 曲库结果",
+      results: [
+        {
+          songId: "song-actor",
+          title: "演員",
+          artistName: "薛之謙",
+          category: "流行",
+          sourceLabel: "NAS曲库",
+          matchReason: query ? "title" : "default",
+          versions: [
+            {
+              assetId: "asset-actor-online",
+              displayName: "薛之謙_Joker_Xue-演員-國語-流行.mkv",
+              sourceLabel: "NAS曲库",
+              extension: ".mkv",
+              sizeBytes: 12345678,
+              audioTrackCount: 2,
+              category: "流行",
+              queueState: "not_queued",
+              canQueue: true,
+              disabledLabel: null,
+              hasLyrics: false
+            }
+          ]
+        }
+      ]
+    },
+    online: { status: "disabled", message: "暂不启用线上补歌", candidates: [] }
   };
 }
 
@@ -2184,6 +2380,7 @@ function roomSnapshot(options: {
   sessionVersion?: number;
   tvOnlineCount?: number;
   volumePercent?: number;
+  onlineTasks?: RoomControlSnapshot["onlineTasks"];
 } = {}): RoomControlSnapshot {
   const queueStatus = options.queueStatus ?? "queued";
   const queueLength = options.queueLength ?? 1;
@@ -2195,6 +2392,7 @@ function roomSnapshot(options: {
     sessionVersion: options.sessionVersion ?? 1,
     state: "playing",
     volumePercent: options.volumePercent ?? DEFAULT_ROOM_VOLUME_PERCENT,
+    onlineTasks: options.onlineTasks ?? null,
     pairing: {
       roomSlug: "living-room",
       controllerUrl: "http://ktv.local/controller?token=living-room.test",
@@ -2268,6 +2466,32 @@ function controllerUser(overrides: Partial<{ phone: string; displayName: string 
   return {
     phone: "13800138000",
     displayName: "阿飞",
+    ...overrides
+  };
+}
+
+function supplementTask(
+  overrides: Partial<NonNullable<RoomControlSnapshot["onlineTasks"]>["tasks"][number]> = {}
+): NonNullable<RoomControlSnapshot["onlineTasks"]>["tasks"][number] {
+  return {
+    taskId: "task-online-1",
+    roomId: "living-room",
+    provider: "youtube",
+    providerCandidateId: "yt-candidate-1",
+    title: "在线新歌",
+    artistName: "在线歌手",
+    durationMs: 240000,
+    workflowId: "youtube-basic",
+    status: "processing",
+    stage: "download",
+    stageProgressPercent: 0,
+    stageMessage: "",
+    failureReason: null,
+    llmRenamedTitle: null,
+    readySongId: null,
+    lyricFile: null,
+    createdAt: "2026-05-04T10:00:00.000Z",
+    updatedAt: "2026-05-04T10:00:00.000Z",
     ...overrides
   };
 }

@@ -422,14 +422,19 @@ describe("runCollectSourcesCli", () => {
     process.env.INIT_CWD = repoRoot;
 
     try {
-      const exitCode = await runCollectSourcesCli([
-        "--manifest",
-        "packages/hot-songs/fixtures/manifests/default.fixture.json",
-        "--out",
-        outDir,
-        "--source",
-        "cavca-golden-mic-manual"
-      ]);
+      const exitCode = await runCollectSourcesCli(
+        [
+          "--manifest",
+          "packages/hot-songs/fixtures/manifests/default.fixture.json",
+          "--out",
+          outDir,
+          "--source",
+          "cavca-golden-mic-manual"
+        ],
+        // fixture 的 sourcePublishedAt 写死在 2026-05 上旬;注入同期 generatedAt,
+        // staleness(45 天)判定才不会随真实时间流逝把 fixture 判成 stale
+        { generatedAt }
+      );
 
       expect(exitCode).toBe(0);
       expect(logSpy).toHaveBeenCalledWith(

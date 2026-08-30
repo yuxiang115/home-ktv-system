@@ -19,14 +19,16 @@ import {
   loginControllerUser,
   logoutControllerUser,
   promoteQueueEntry,
-  registerControllerUser,
   realtimeUrl,
+  regenerateAssetLyrics,
+  registerControllerUser,
   restoreControlSession,
   searchOnlineSupplement,
   searchSongs,
   sendRoomInteraction,
   requestOnlineSupplement,
   type OnlineSupplementCandidate,
+  seek as seekCommand,
   setVolume,
   shuffleQueue,
   skipCurrent,
@@ -38,6 +40,13 @@ import { getOrCreateDeviceId } from "../api/client.js";
 
 export const fallbackPollingIntervalMs = 5000;
 export const sessionRefreshIntervalMs = 15 * 60 * 1000;
+// 搜索结果按 query 缓存的 TTL:同一 query 在窗口内重复提交直接复用当前结果,
+// 超时或补歌任务 ready(曲库变化)后缓存失效,重新请求
+export const songSearchCacheTtlMs = 60_000;
+
+// 「生成歌词」单资产行内结果:found 时按钮直接消失(hasLyrics 就地置 true),
+// 只有这两个结局需要留在行内提示
+export type LyricsRegenerationOutcome = "not_found" | "error";
 
 interface ControllerCommandInput {
   roomSlug: string;
@@ -64,12 +73,17 @@ export interface RoomControllerState {
   pendingNasAssetId: string | null;
   pendingInteractionKind: RoomInteractionKind | null;
   pendingUndo: { queueEntryId: string; undoExpiresAt: string } | null;
+  /** 正在重查歌词的 assetId(按钮 pending 态,防连点) */
+  lyricsRegenerationPending: readonly string[];
+  /** 每个 assetId 最近一次生成歌词的失败结局(not_found/错误),行内提示用 */
+  lyricsRegenerationResults: Readonly<Record<string, LyricsRegenerationOutcome>>;
   roomSlug: string;
   skipConfirmOpen: boolean;
   songDiscovery: SongDiscoveryResponse | null;
   songDiscoveryStatus: "idle" | "loading" | "success" | "error";
   songHistory: ControllerSongHistoryEntry[];
   songHistoryStatus: "idle" | "loading" | "success" | "error";
+  songLibraryRefreshVersion: number;
   songSearch: SongSearchResponse | null;
   songSearchQuery: string;
   songSearchStatus: "idle" | "loading" | "success" | "error";
@@ -89,6 +103,7 @@ export interface RoomControllerState {
   shuffleQueue(): Promise<void>;
   requestAddSongVersion(songId: string, assetId: string, title: string, queueState: SongSearchQueueState): boolean;
   requestAddNasAsset(assetId: string, title: string, queueState: SongSearchNasQueueState): boolean;
+  regenerateLyrics(assetId: string): void;
   sendInteraction(kind: RoomInteractionKind, message: string): Promise<void>;
   requestSkip(): void;
   refreshSongDiscovery(): void;
@@ -98,6 +113,7 @@ export interface RoomControllerState {
   requestOnlineSupplementCandidate(candidate: OnlineSupplementCandidate): Promise<void>;
   clearOnlineSupplementSearch(): void;
   setVolumePercent(volumePercent: number): void;
+  nudgeSeek(deltaMs: number): void;
   submitSongSearch(): void;
   switchVocalMode(): Promise<void>;
   undoDelete(queueEntryId: string): Promise<void>;
@@ -133,6 +149,9 @@ export function useRoomControllerRuntime(): RoomControllerState {
   const [pendingInteractionKind, setPendingInteractionKind] = useState<RoomInteractionKind | null>(null);
   const [pendingUndo, setPendingUndo] = useState<{ queueEntryId: string; undoExpiresAt: string } | null>(null);
   const [pendingVolumePercent, setPendingVolumePercent] = useState<number | null>(null);
+  const [lyricsRegenerationPending, setLyricsRegenerationPending] = useState<string[]>([]);
+  const [lyricsRegenerationResults, setLyricsRegenerationResults] = useState<Record<string, LyricsRegenerationOutcome>>({});
+  const [songLibraryRefreshVersion, setSongLibraryRefreshVersion] = useState(0);
   const snapshotRef = useRef<RoomControlSnapshot | null>(null);
   const songSearchQueryRef = useRef("");
   const searchRequestIdRef = useRef(0);
@@ -140,6 +159,8 @@ export function useRoomControllerRuntime(): RoomControllerState {
   const discoveryAbortRef = useRef<AbortController | null>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const volumeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const songSearchCacheRef = useRef<{ query: string; fetchedAtMs: number } | null>(null);
+  const readySupplementTaskIdsRef = useRef<readonly string[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -210,6 +231,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
         if (searchRequestIdRef.current === requestId && response.query === songSearchQueryRef.current) {
           setSongSearch(response);
           setSongSearchStatus("success");
+          songSearchCacheRef.current = { query, fetchedAtMs: Date.now() };
         }
       } catch (error) {
         if (abortController.signal.aborted) {
@@ -525,6 +547,28 @@ export function useRoomControllerRuntime(): RoomControllerState {
     }
   }, [pendingVolumePercent, snapshot?.volumePercent]);
 
+  // 在线补歌任务 ready(processing→ready,歌曲已落库)时,本地曲库数据需要失效重拉:
+  // 首页 discovery、当前搜索结果、浏览明细都不随快照自动更新,不处理就会出现
+  // "新歌搜不到/列表不显示,必须手动刷新页面"。对比上一次快照的 ready 任务集合,
+  // 只有出现新的 ready 任务才触发,避免每条快照都重复请求。
+  useEffect(() => {
+    const readyTaskIds = (snapshot?.onlineTasks?.tasks ?? [])
+      .filter((task) => task.status === "ready")
+      .map((task) => task.taskId);
+    const previousReadyTaskIds = readySupplementTaskIdsRef.current;
+    readySupplementTaskIdsRef.current = readyTaskIds;
+    if (previousReadyTaskIds === null || !readyTaskIds.some((taskId) => !previousReadyTaskIds.includes(taskId))) {
+      return;
+    }
+
+    songSearchCacheRef.current = null;
+    setSongLibraryRefreshVersion((version) => version + 1);
+    void runSongDiscovery(createDiscoverySeed());
+    if (songSearchQueryRef.current) {
+      void runSongSearch(songSearchQueryRef.current);
+    }
+  }, [runSongDiscovery, runSongSearch, snapshot?.onlineTasks]);
+
   const runCommand = useCallback(
     async <TResponse extends ControllerCommandResponse>(
       command: (input: ControllerCommandInput) => Promise<TResponse>,
@@ -616,6 +660,58 @@ export function useRoomControllerRuntime(): RoomControllerState {
     [deviceId, initial.roomSlug, runCommand, runSongHistory, runSongSearch]
   );
 
+  // 「生成歌词」:只重查该资产的 LRCLIB 歌词并落库,不重跑下载/伴奏/对齐。
+  // found 时把当前搜索结果里该版本的 hasLyrics 就地置 true(不重跑整个搜索);
+  // not_found/网络错误留在行内提示,重试前先清掉旧提示。
+  const regenerateLyrics = useCallback(
+    (assetId: string) => {
+      if (lyricsRegenerationPending.includes(assetId)) {
+        return;
+      }
+
+      setLyricsRegenerationPending((current) => [...current, assetId]);
+      setLyricsRegenerationResults((current) => {
+        if (!(assetId in current)) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[assetId];
+        return next;
+      });
+
+      void regenerateAssetLyrics({ assetId })
+        .then((response) => {
+          if (response.status === "found") {
+            setSongSearch((current) =>
+              current
+                ? {
+                    ...current,
+                    nas: {
+                      ...current.nas,
+                      results: current.nas.results.map((result) => ({
+                        ...result,
+                        versions: result.versions.map((version) =>
+                          version.assetId === assetId ? { ...version, hasLyrics: true } : version
+                        )
+                      }))
+                    }
+                  }
+                : current
+            );
+            return;
+          }
+          setLyricsRegenerationResults((current) => ({ ...current, [assetId]: "not_found" }));
+        })
+        .catch(() => {
+          setLyricsRegenerationResults((current) => ({ ...current, [assetId]: "error" }));
+        })
+        .finally(() => {
+          setLyricsRegenerationPending((current) => current.filter((id) => id !== assetId));
+        });
+    },
+    [lyricsRegenerationPending]
+  );
+
   const sendInteraction = useCallback(
     async (kind: RoomInteractionKind, message: string) => {
       const normalizedMessage = message.trim();
@@ -642,6 +738,10 @@ export function useRoomControllerRuntime(): RoomControllerState {
   );
 
   const submitSongSearch = useCallback(() => {
+    const cached = songSearchCacheRef.current;
+    if (cached && cached.query === songSearchQueryRef.current && Date.now() - cached.fetchedAtMs < songSearchCacheTtlMs) {
+      return;
+    }
     void runSongSearch(songSearchQueryRef.current);
   }, [runSongSearch]);
 
@@ -661,6 +761,20 @@ export function useRoomControllerRuntime(): RoomControllerState {
     [runCommand]
   );
 
+  // 手机端快进/快退:每次点按立即发命令(服务端以心跳位置为基准算目标,
+  // commandId 幂等),连点即连发,无需电视端那种停顿合并
+  const nudgeSeek = useCallback(
+    (deltaMs: number) => {
+      if (!Number.isFinite(deltaMs) || deltaMs === 0) {
+        return;
+      }
+      void runCommand((input) => seekCommand({ ...input, deltaMs }))
+        .then(() => setErrorMessage(null))
+        .catch((error: unknown) => setErrorMessage(errorMessageFrom(error, "快进/快退失败")));
+    },
+    [runCommand]
+  );
+
   return {
     authStatus,
     authUser,
@@ -671,12 +785,15 @@ export function useRoomControllerRuntime(): RoomControllerState {
     pendingNasAssetId,
     pendingInteractionKind,
     pendingUndo,
+    lyricsRegenerationPending,
+    lyricsRegenerationResults,
     roomSlug: initial.roomSlug,
     skipConfirmOpen,
     songDiscovery,
     songDiscoveryStatus,
     songHistory,
     songHistoryStatus,
+    songLibraryRefreshVersion,
     songSearch,
     songSearchQuery,
     songSearchStatus,
@@ -721,6 +838,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
         setSongHistoryStatus("idle");
         setSongSearchQueryState("");
         songSearchQueryRef.current = "";
+        songSearchCacheRef.current = null;
         setErrorMessage(null);
       }
     },
@@ -777,6 +895,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
       void addNasAsset(assetId);
       return true;
     },
+    regenerateLyrics,
     sendInteraction,
     requestSkip: () => setSkipConfirmOpen(true),
     refreshSongDiscovery: () => {
@@ -791,6 +910,7 @@ export function useRoomControllerRuntime(): RoomControllerState {
         void runSongSearch(query);
       }, 250);
     },
+    nudgeSeek,
     setVolumePercent: (volumePercent) => {
       const normalized = normalizeVolumePercent(volumePercent);
       setPendingVolumePercent(normalized);

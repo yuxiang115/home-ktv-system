@@ -104,6 +104,7 @@ interface IndexedSearchRow {
   parse_confidence: number | string;
   technical_metadata: unknown;
   missing_at: Date | string | null;
+  lyric_file: string | null;
 }
 
 interface LatestRunRow {
@@ -609,7 +610,8 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
               s.size_bytes,
               s.parse_confidence,
               s.technical_metadata,
-              s.missing_at
+              s.missing_at,
+              s.lyric_file
        FROM ktv_songs s
        WHERE s.missing_at IS NULL
          AND (
@@ -648,7 +650,8 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
               s.size_bytes,
               s.parse_confidence,
               s.technical_metadata,
-              s.missing_at
+              s.missing_at,
+              s.lyric_file
        FROM ktv_songs s
        WHERE s.missing_at IS NULL
          AND $1 = ANY(
@@ -689,7 +692,8 @@ export class PgKtvIndexReadRepository implements KtvIndexReadRepository {
               s.size_bytes,
               s.parse_confidence,
               s.technical_metadata,
-              s.missing_at
+              s.missing_at,
+              s.lyric_file
        FROM ktv_songs s
        WHERE s.missing_at IS NULL
          ${genreWhere}
@@ -1251,7 +1255,8 @@ function mapIndexedSearchRows(
       category: displayCategory(row.style_tags),
       queueState: unreadable ? "file_unreadable" : queued ? "queued" : "not_queued",
       canQueue: !unreadable,
-      disabledLabel: unreadable ? "文件不可读" : null
+      disabledLabel: unreadable ? "文件不可读" : null,
+      hasLyrics: row.lyric_file != null
     };
   });
 }

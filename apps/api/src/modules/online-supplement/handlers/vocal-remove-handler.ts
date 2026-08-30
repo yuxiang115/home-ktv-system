@@ -1,26 +1,28 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { downloadedAssetPath } from "./download-handler.js";
 import type { StageExecuteInput, StageExecuteResult, StageHandler } from "../supplement-orchestrator.js";
+import { defaultStageCommandRunner, type StageCommandRunner } from "../process-runner.js";
 
-const execFileAsync = promisify(execFile);
+// 子进程执行与进程树生命周期管理(spawn 版 runner)已抽到共享模块 process-runner:
+// 下载阶段的 yt-dlp provider 与 mix/align handler 均经由同一 runner 执行外部命令。
+// 这里重新导出保持既有导入路径兼容(mix-handler / align-handler / worker / 测试
+// 仍从 vocal-remove-handler 引 defaultStageCommandRunner、activeChildPids 等)。
+export {
+  activeChildPids,
+  buildTreeKillCommand,
+  defaultStageCommandRunner,
+  killProcessTree,
+  runStageCommand
+} from "../process-runner.js";
+export type {
+  StageCommandOutput,
+  StageCommandRunner,
+  TreeKillCommand
+} from "../process-runner.js";
+
 const STEMS_SUBDIR = "_stems";
 const DEFAULT_MODEL = "htdemucs";
-
-export type StageCommandRunner = (
-  bin: string,
-  args: readonly string[],
-  timeoutMs: number
-) => Promise<void>;
-
-export const defaultStageCommandRunner: StageCommandRunner = async (bin, args, timeoutMs) => {
-  await execFileAsync(bin, args as string[], {
-    timeout: timeoutMs,
-    maxBuffer: 20 * 1024 * 1024
-  });
-};
 
 export interface VocalRemoveStageHandlerOptions {
   bin: string;
@@ -75,11 +77,15 @@ export class VocalRemoveStageHandler implements StageHandler {
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       await input.renewLease(new Date(Date.now() + 15 * 60 * 1000));
       try {
+        input.log(`demucs attempt ${attempt}/2`, { src, outDir, model, device: this.options.device });
         await this.run(this.options.bin, args, timeoutMs);
         lastError = null;
         break;
       } catch (error) {
         lastError = error;
+        input.log(`demucs attempt ${attempt}/2 failed`, {
+          error: error instanceof Error ? error.message : String(error)
+        });
         if (attempt < 2) {
           await new Promise((resolve) => setTimeout(resolve, 2000));
         }

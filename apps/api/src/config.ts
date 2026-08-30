@@ -13,7 +13,6 @@ export interface ApiConfig {
   onlineSupplementWorkflow: string;
   supplementImportRoot: string;
   supplementBatchSize: number;
-  supplementBatchTimeoutSec: number;
   lyricsLrclibBaseUrl: string;
   ytDlpBin: string;
   ytDlpArgs: string;
@@ -24,6 +23,11 @@ export interface ApiConfig {
   demucsArgs: string;
   demucsDevice: string;
   demucsModel: string;
+  alignerBin: string;
+  alignerModel: string;
+  alignerDevice: string;
+  alignerDtype: string;
+  alignerScript: string;
   ffmpegBin: string;
   publicBaseUrl: string;
   roomSlug: string;
@@ -42,7 +46,6 @@ export type ApiConfigInput = Omit<
   | "onlineSupplementWorkflow"
   | "supplementImportRoot"
   | "supplementBatchSize"
-  | "supplementBatchTimeoutSec"
   | "lyricsLrclibBaseUrl"
   | "ytDlpBin"
   | "ytDlpArgs"
@@ -53,6 +56,11 @@ export type ApiConfigInput = Omit<
   | "demucsArgs"
   | "demucsDevice"
   | "demucsModel"
+  | "alignerBin"
+  | "alignerModel"
+  | "alignerDevice"
+  | "alignerDtype"
+  | "alignerScript"
   | "ffmpegBin"
   | "scanIntervalMinutes"
 > & {
@@ -64,7 +72,6 @@ export type ApiConfigInput = Omit<
   onlineSupplementWorkflow?: string;
   supplementImportRoot?: string;
   supplementBatchSize?: number;
-  supplementBatchTimeoutSec?: number;
   lyricsLrclibBaseUrl?: string;
   ytDlpBin?: string;
   ytDlpArgs?: string;
@@ -75,6 +82,11 @@ export type ApiConfigInput = Omit<
   demucsArgs?: string;
   demucsDevice?: string;
   demucsModel?: string;
+  alignerBin?: string;
+  alignerModel?: string;
+  alignerDevice?: string;
+  alignerDtype?: string;
+  alignerScript?: string;
   ffmpegBin?: string;
   scanIntervalMinutes?: number;
 };
@@ -85,10 +97,13 @@ const DEFAULT_HOST = "0.0.0.0";
 const DEFAULT_SCAN_INTERVAL_MINUTES = 360;
 const DEFAULT_ONLINE_SUPPLEMENT_WORKFLOW = "youtube-enhanced";
 const DEFAULT_SUPPLEMENT_BATCH_SIZE = 4;
-const DEFAULT_SUPPLEMENT_BATCH_TIMEOUT_SEC = 30;
 const DEFAULT_LYRICS_LRCLIB_BASE_URL = "https://lrclib.net";
 const DEFAULT_DEMUCS_MODEL = "htdemucs";
 const DEFAULT_YOUTUBE_PLAYER_CLIENT = "android";
+const DEFAULT_ALIGNER_MODEL = "Qwen/Qwen3-ForcedAligner-0.6B";
+const DEFAULT_ALIGNER_DEVICE = "cuda:0";
+const DEFAULT_ALIGNER_DTYPE = "bfloat16";
+const DEFAULT_ALIGNER_SCRIPT = "python/align_lyrics.py";
 
 function readString(value: string | undefined): string {
   return value?.trim() ?? "";
@@ -130,7 +145,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     onlineSupplementWorkflow: readString(env.ONLINE_SUPPLEMENT_WORKFLOW) || DEFAULT_ONLINE_SUPPLEMENT_WORKFLOW,
     supplementImportRoot: readString(env.SUPPLEMENT_IMPORT_ROOT),
     supplementBatchSize: readPositiveInteger(env.SUPPLEMENT_BATCH_SIZE, DEFAULT_SUPPLEMENT_BATCH_SIZE),
-    supplementBatchTimeoutSec: readPositiveInteger(env.SUPPLEMENT_BATCH_TIMEOUT_SEC, DEFAULT_SUPPLEMENT_BATCH_TIMEOUT_SEC),
     lyricsLrclibBaseUrl: readString(env.LYRICS_LRCLIB_BASE_URL) || DEFAULT_LYRICS_LRCLIB_BASE_URL,
     ytDlpBin: readString(env.YT_DLP_BIN) || "yt-dlp",
     ytDlpArgs: readString(env.YT_DLP_ARGS),
@@ -141,6 +155,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     demucsArgs: readString(env.DEMUCS_ARGS),
     demucsDevice: readString(env.DEMUCS_DEVICE) || "cpu",
     demucsModel: readString(env.DEMUCS_MODEL) || DEFAULT_DEMUCS_MODEL,
+    alignerBin: readString(env.ALIGNER_BIN),
+    alignerModel: readString(env.ALIGNER_MODEL) || DEFAULT_ALIGNER_MODEL,
+    alignerDevice: readString(env.ALIGNER_DEVICE) || DEFAULT_ALIGNER_DEVICE,
+    alignerDtype: readString(env.ALIGNER_DTYPE) || DEFAULT_ALIGNER_DTYPE,
+    alignerScript: readString(env.ALIGNER_SCRIPT) || DEFAULT_ALIGNER_SCRIPT,
     ffmpegBin: readString(env.FFMPEG_BIN) || "ffmpeg",
     publicBaseUrl: readString(env.PUBLIC_BASE_URL),
     roomSlug: readString(env.TV_ROOM_SLUG) || DEFAULT_ROOM_SLUG,
@@ -161,7 +180,6 @@ export function normalizeApiConfig(config: ApiConfigInput): ApiConfig {
     onlineSupplementWorkflow: config.onlineSupplementWorkflow || DEFAULT_ONLINE_SUPPLEMENT_WORKFLOW,
     supplementImportRoot: config.supplementImportRoot ?? "",
     supplementBatchSize: config.supplementBatchSize ?? DEFAULT_SUPPLEMENT_BATCH_SIZE,
-    supplementBatchTimeoutSec: config.supplementBatchTimeoutSec ?? DEFAULT_SUPPLEMENT_BATCH_TIMEOUT_SEC,
     lyricsLrclibBaseUrl: config.lyricsLrclibBaseUrl || DEFAULT_LYRICS_LRCLIB_BASE_URL,
     ytDlpBin: config.ytDlpBin ?? "yt-dlp",
     ytDlpArgs: config.ytDlpArgs ?? "",
@@ -172,6 +190,11 @@ export function normalizeApiConfig(config: ApiConfigInput): ApiConfig {
     demucsArgs: config.demucsArgs ?? "",
     demucsDevice: config.demucsDevice ?? "cpu",
     demucsModel: config.demucsModel || DEFAULT_DEMUCS_MODEL,
+    alignerBin: config.alignerBin ?? "",
+    alignerModel: config.alignerModel || DEFAULT_ALIGNER_MODEL,
+    alignerDevice: config.alignerDevice || DEFAULT_ALIGNER_DEVICE,
+    alignerDtype: config.alignerDtype || DEFAULT_ALIGNER_DTYPE,
+    alignerScript: config.alignerScript || DEFAULT_ALIGNER_SCRIPT,
     ffmpegBin: config.ffmpegBin ?? "ffmpeg",
     scanIntervalMinutes: config.scanIntervalMinutes ?? DEFAULT_SCAN_INTERVAL_MINUTES
   };

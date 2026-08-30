@@ -10,10 +10,10 @@
 $ErrorActionPreference = "SilentlyContinue"
 $ROOT = (Resolve-Path "$PSScriptRoot/..").Path
 
-Write-Host "==> [1/4] kill old worker..."
+Write-Host "==> [1/4] kill old worker (process tree)..."
 Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
   Where-Object { $_.CommandLine -match "supplement-worker" } |
-  ForEach-Object { Write-Host "  kill pid $($_.ProcessId)"; Stop-Process -Id $_.ProcessId -Force }
+  ForEach-Object { Write-Host "  kill pid $($_.ProcessId) (tree)"; taskkill /PID $_.ProcessId /T /F 2>$null | Out-Null }
 Start-Sleep -Seconds 2
 
 Write-Host "==> [2/4] reset failed tasks -> discovered..."
@@ -35,7 +35,13 @@ $py = (Get-ChildItem "$env:USERPROFILE\.pyenv\pyenv-win\versions\*\python.exe" -
 if ($py) {
   if (-not $env:YT_DLP_BIN) { $env:YT_DLP_BIN = $py; $env:YT_DLP_ARGS = "-m yt_dlp" }
   if (-not $env:DEMUCS_BIN) { $env:DEMUCS_BIN = $py; $env:DEMUCS_ARGS = "-m demucs" }
+  if (-not $env:ALIGNER_BIN) {
+    & $py -c "import qwen_asr" 2>$null
+    if ($LASTEXITCODE -eq 0) { $env:ALIGNER_BIN = $py }
+  }
 }
+# 相对路径按 worker 进程 cwd 解析,显式给绝对路径最稳
+if (-not $env:ALIGNER_SCRIPT) { $env:ALIGNER_SCRIPT = "$ROOT\apps\api\python\align_lyrics.py" }
 if (-not $env:DEMUCS_DEVICE) { $env:DEMUCS_DEVICE = if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) { "cuda" } else { "cpu" } }
 Write-Host "  YT_DLP_BIN=$($env:YT_DLP_BIN)"
 Write-Host "  DEMUCS_BIN=$($env:DEMUCS_BIN)  DEVICE=$($env:DEMUCS_DEVICE)"

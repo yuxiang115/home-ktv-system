@@ -23,7 +23,7 @@ export const enumValues = {
   clientType: ["tv", "controller"],
   playerState: ["idle", "preparing", "loading", "playing", "paused", "recovering", "error"],
   supplementTaskStatus: ["discovered", "processing", "ready", "failed"],
-  supplementTaskStage: ["download", "rename", "vocal_remove", "mix", "lyrics", "index"],
+  supplementTaskStage: ["download", "rename", "vocal_remove", "align", "mix", "lyrics", "index"],
   supplementStageStatus: ["pending", "running", "done", "failed"]
 } as const;
 
@@ -168,6 +168,7 @@ CREATE TABLE IF NOT EXISTS rooms (
   target_vocal_mode text NOT NULL DEFAULT 'instrumental' CHECK (target_vocal_mode IN ('original', 'instrumental', 'dual', 'unknown')),
   player_state text NOT NULL DEFAULT 'idle' CHECK (player_state IN ('idle', 'preparing', 'loading', 'playing', 'paused', 'recovering', 'error')),
   player_position_ms integer NOT NULL DEFAULT 0 CHECK (player_position_ms >= 0),
+  seek_seq integer NOT NULL DEFAULT 0 CHECK (seek_seq >= 0),
   next_queue_entry_id text,
   playback_version integer NOT NULL DEFAULT 1 CHECK (playback_version > 0),
   volume_percent integer NOT NULL DEFAULT 50 CHECK (volume_percent >= 0 AND volume_percent <= 100),
@@ -302,6 +303,7 @@ CREATE TABLE IF NOT EXISTS ktv_songs (
   cover_image_url text,
   cover_updated_at timestamptz,
   lyric_file text,
+  karaoke_lyrics_file text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -346,7 +348,7 @@ CREATE TABLE IF NOT EXISTS online_supplement_tasks (
   provider_payload jsonb NOT NULL DEFAULT '{}'::jsonb,
   workflow_id text NOT NULL DEFAULT 'youtube-enhanced' CHECK (workflow_id IN ('youtube-basic', 'youtube-enhanced')),
   status text NOT NULL DEFAULT 'discovered' CHECK (status IN ('discovered', 'processing', 'ready', 'failed')),
-  stage text NOT NULL DEFAULT 'download' CHECK (stage IN ('download', 'rename', 'vocal_remove', 'mix', 'lyrics', 'index')),
+  stage text NOT NULL DEFAULT 'download' CHECK (stage IN ('download', 'rename', 'vocal_remove', 'align', 'mix', 'lyrics', 'index')),
   stage_status text NOT NULL DEFAULT 'pending' CHECK (stage_status IN ('pending', 'running', 'done', 'failed')),
   stage_progress_percent integer NOT NULL DEFAULT 0 CHECK (stage_progress_percent >= 0 AND stage_progress_percent <= 100),
   stage_message text NOT NULL DEFAULT '',

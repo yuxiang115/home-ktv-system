@@ -103,7 +103,8 @@ describe("room status view", () => {
     await user.click(screen.getByRole("button", { name: "刷新配对 token" }));
 
     expect(requests.some((request) => request.method === "POST" && request.url === "/admin/rooms/living-room/pairing-token/refresh")).toBe(true);
-    expect(await screen.findByText("2026-05-04 18:30:45")).toBeTruthy();
+    // 组件按本地时区渲染时间;期望值用同一逻辑计算,测试才能跨时区稳定
+    expect(await screen.findByText(formatLocalTime("2026-05-04T10:30:45.000Z"))).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "刷新房间状态" }));
 
@@ -414,4 +415,11 @@ function json(body: unknown, status = 200): Response {
     headers: { "Content-Type": "application/json" },
     status
   });
+}
+
+// 与 RoomStatusView 的 formatTime 相同的本地时间格式化(YYYY-MM-DD HH:mm:ss)
+function formatLocalTime(iso: string): string {
+  const date = new Date(iso);
+  const pad = (value: number) => `${value}`.padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }

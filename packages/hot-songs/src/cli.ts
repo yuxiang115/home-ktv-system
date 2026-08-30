@@ -85,7 +85,13 @@ export function parseCollectSourcesArgs(argv: string[]): CollectSourcesArgs {
   };
 }
 
-export async function runCollectSourcesCli(argv: string[]): Promise<number> {
+// options.generatedAt:注入固定生成时间(测试用),否则用当前时间。fixture 快照
+// 的 sourcePublishedAt 是写死的,staleness 判定依赖 generatedAt,不注入的话测试
+// 会随真实时间流逝而变红。
+export async function runCollectSourcesCli(
+  argv: string[],
+  options?: { generatedAt?: string }
+): Promise<number> {
   try {
     const args = parseCollectSourcesArgs(argv);
     if (args.help) {
@@ -108,7 +114,8 @@ export async function runCollectSourcesCli(argv: string[]): Promise<number> {
         adapters: buildAdapters({ fixture: args.fixture, runRoot }),
         sourceIds: args.sourceIds,
         runRoot,
-        timeoutMs: args.timeoutMs
+        timeoutMs: args.timeoutMs,
+        ...(options?.generatedAt ? { generatedAt: options.generatedAt } : {})
       });
       await writeRunArtifacts(outDir, result);
 

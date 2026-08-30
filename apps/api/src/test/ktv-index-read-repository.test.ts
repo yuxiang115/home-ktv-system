@@ -36,7 +36,8 @@ describe("PgKtvIndexReadRepository", () => {
         category: "流行",
         queueState: "not_queued",
         canQueue: true,
-        disabledLabel: null
+        disabledLabel: null,
+        hasLyrics: false
       }
     ]);
     expect(JSON.stringify(results)).not.toContain("filePath");

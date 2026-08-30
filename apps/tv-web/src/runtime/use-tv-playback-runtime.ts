@@ -9,6 +9,18 @@ import { RecoveryController } from "./recovery-controller.js";
 import { SwitchController } from "./switch-controller.js";
 import { useRoomSnapshot, type RoomSnapshotState } from "./use-room-snapshot.js";
 import { createBrowserVideoPool, type DualVideoPool, type KtvVideoElement } from "./video-pool.js";
+import { parseLrc, type LrcLine } from "./lrc.js";
+import { parseKaraokeLyrics, type KaraokeLine } from "./karaoke.js";
+import {
+  advanceSeekBurst,
+  resolveSeekTargetMs,
+  SEEK_COMMIT_DELAY_MS,
+  SEEK_FEEDBACK_TTL_MS,
+  SEEK_STEP_MS,
+  type SeekBounds,
+  type SeekBurst,
+  type SeekFeedback
+} from "./seek.js";
 
 const HEARTBEAT_INTERVAL_MS = 10_000;
 const TRANSIENT_NOTICE_TTL_MS = 5_000;
@@ -24,7 +36,15 @@ export interface TvPlaybackRuntimeState {
   handleFirstPlayPromptClick(): void;
   handleVideoEnded(event: SyntheticEvent<HTMLVideoElement>): void;
   interactions: readonly RoomInteractionEvent[];
+  /** 当前歌的同步歌词(无歌词为 null);跟随 playbackPositionMs 渲染 */
+  lyricLines: readonly LrcLine[] | null;
+  /** 当前歌的逐字 karaoke 时间轴(无则 null);优先于 lyricLines 渲染 */
+  karaokeLines: readonly KaraokeLine[] | null;
   localPlaybackConfirmed: boolean;
+  /** 快进/快退累积反馈(无进行中的快进快退为 null) */
+  seekFeedback: SeekFeedback | null;
+  /** 累积一次 ±步长;停顿后统一提交到视频(键盘/热区共用入口) */
+  nudgeSeek(deltaMs: number): void;
   playbackPositionMs: number;
   roomState: RoomSnapshotState;
   snapshot: RoomSnapshot | null;
@@ -40,7 +60,17 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
   const [localNotice, setLocalNotice] = useState<PlaybackNotice | null>(null);
   const [firstPlayBlocked, setFirstPlayBlocked] = useState(false);
   const [confirmedPlaybackTargetKey, setConfirmedPlaybackTargetKey] = useState<string | null>(null);
+  const [lyrics, setLyrics] = useState<{ assetId: string; lines: LrcLine[] } | null>(null);
+  const [karaoke, setKaraoke] = useState<{ assetId: string; lines: KaraokeLine[] } | null>(null);
+  const lyricsCacheRef = useRef<Map<string, LrcLine[]>>(new Map());
+  const karaokeCacheRef = useRef<Map<string, KaraokeLine[]>>(new Map());
   const [, setPlaybackFrame] = useState(0);
+  const [seekFeedback, setSeekFeedback] = useState<SeekFeedback | null>(null);
+  const seekBurstRef = useRef<SeekBurst | null>(null);
+  const seekCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seekHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 最近一次已应用的服务端 seek 序列号;心跳只更新位置不动 seekSeq,故无回环
+  const appliedSeekSeqRef = useRef<number | null>(null);
 
   useEffect(() => {
     latestSnapshotRef.current = roomState.snapshot;
@@ -97,12 +127,69 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
       return;
     }
 
+    // 200ms 驱动进度显示(时钟 + KTV 歌词跟随);1s 粒度歌词会一顿一顿
     const intervalId = globalThis.setInterval(() => {
       setPlaybackFrame((frame) => frame + 1);
-    }, 1000);
+    }, 200);
 
     return () => globalThis.clearInterval(intervalId);
   }, [roomState.snapshot?.currentTarget?.queueEntryId]);
+
+  // 按歌拉歌词:先试逐字 karaoke JSON,拿不到再退行级 LRC(各自缓存,404 也缓存,
+  // 避免对同一首歌反复请求;网络/服务端错误不缓存,下次进歌重试)。
+  const currentAssetId = roomState.snapshot?.currentTarget?.assetId ?? null;
+  useEffect(() => {
+    if (!currentAssetId) {
+      setLyrics(null);
+      setKaraoke(null);
+      return;
+    }
+
+    // 换歌先清旧词:加载窗口和"新歌无逐字轴"期间绝不能残留上一首的歌词
+    setKaraoke(null);
+    setLyrics(null);
+
+    let cancelled = false;
+    const cachedKaraoke = karaokeCacheRef.current.get(currentAssetId);
+    const cachedLrc = lyricsCacheRef.current.get(currentAssetId);
+    if (cachedKaraoke) {
+      setKaraoke({ assetId: currentAssetId, lines: cachedKaraoke });
+    }
+    if (cachedLrc) {
+      setLyrics(cachedLrc.length > 0 ? { assetId: currentAssetId, lines: cachedLrc } : null);
+    }
+    if (cachedKaraoke || cachedLrc) {
+      return;
+    }
+
+    // 请求失败(非 404)时保持已清空的歌词且不写缓存,避免一次网络抖动把该歌
+    // 在整个会话内判成"无歌词"
+    void client.fetchKaraokeLyrics(currentAssetId)
+      .then((karaokeJson) => {
+        const parsed = karaokeJson ? parseKaraokeLyrics(karaokeJson) : null;
+        karaokeCacheRef.current.set(currentAssetId, parsed ?? []);
+        if (cancelled) {
+          return;
+        }
+        if (parsed) {
+          setKaraoke({ assetId: currentAssetId, lines: parsed });
+          return;
+        }
+        void client.fetchSongLyrics(currentAssetId)
+          .then((lrcContent) => {
+            const lrcLines = lrcContent ? parseLrc(lrcContent) : [];
+            lyricsCacheRef.current.set(currentAssetId, lrcLines);
+            if (!cancelled) {
+              setLyrics(lrcLines.length > 0 ? { assetId: currentAssetId, lines: lrcLines } : null);
+            }
+          })
+          .catch(() => undefined);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [client, currentAssetId]);
 
   const retryCurrentPlayback = useCallback(() => {
     const pool = videoPoolRef.current;
@@ -146,6 +233,138 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
     const intervalId = globalThis.setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
     return () => globalThis.clearInterval(intervalId);
   }, [client]);
+
+  const commitSeekBurst = useCallback((burst: SeekBurst) => {
+    const pool = videoPoolRef.current;
+    if (!pool) {
+      setSeekFeedback(null);
+      return;
+    }
+    const bounds = seekBoundsOfPool(pool);
+    const targetMs = resolveSeekTargetMs(burst.fromMs + burst.totalMs, bounds);
+    // remux 兜底流的 currentTime 是"流内位置",换算要扣掉歌内位置基准
+    const streamSeconds = (targetMs - bounds.streamStartMs) / 1000;
+    if (Number.isFinite(pool.activeVideo.currentTime)) {
+      pool.activeVideo.currentTime = Math.max(0, streamSeconds);
+    }
+    setSeekFeedback({ ...burst, toMs: targetMs });
+    seekHideTimerRef.current = globalThis.setTimeout(() => {
+      setSeekFeedback(null);
+    }, SEEK_FEEDBACK_TTL_MS);
+  }, []);
+
+  const nudgeSeek = useCallback(
+    (deltaMs: number) => {
+      const pool = videoPoolRef.current;
+      const currentSnapshot = latestSnapshotRef.current;
+      if (deltaMs === 0 || !pool || !currentSnapshot?.currentTarget) {
+        return;
+      }
+
+      const burst = advanceSeekBurst(seekBurstRef.current, deltaMs, pool.activePlaybackPositionMs());
+      seekBurstRef.current = burst;
+      // 提交前反馈的是按边界收敛后的预览位置
+      setSeekFeedback({
+        ...burst,
+        toMs: resolveSeekTargetMs(burst.fromMs + burst.totalMs, seekBoundsOfPool(pool))
+      });
+      if (seekHideTimerRef.current != null) {
+        globalThis.clearTimeout(seekHideTimerRef.current);
+        seekHideTimerRef.current = null;
+      }
+      if (seekCommitTimerRef.current != null) {
+        globalThis.clearTimeout(seekCommitTimerRef.current);
+      }
+      seekCommitTimerRef.current = globalThis.setTimeout(() => {
+        seekBurstRef.current = null;
+        seekCommitTimerRef.current = null;
+        commitSeekBurst(burst);
+      }, SEEK_COMMIT_DELAY_MS);
+    },
+    [commitSeekBurst]
+  );
+
+  // 遥控器/键盘左右键 = 快退/快进一步;重复连按在 nudgeSeek 里累积
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+      if (event.key === "ArrowRight") {
+        nudgeSeek(SEEK_STEP_MS);
+      } else if (event.key === "ArrowLeft") {
+        nudgeSeek(-SEEK_STEP_MS);
+      } else {
+        return;
+      }
+      event.preventDefault();
+    };
+
+    globalThis.addEventListener("keydown", handleKeyDown);
+    return () => globalThis.removeEventListener("keydown", handleKeyDown);
+  }, [nudgeSeek]);
+
+  // 手机端 seek:服务端在快照 currentTarget 里用 seekSeq+resumePositionMs 表达,
+  // 序列号变化时把进度应用到视频(边界收敛与本地 seek 共用一套逻辑)
+  const remoteSeekSeq = roomState.snapshot?.currentTarget?.seekSeq ?? null;
+  const remoteSeekTargetMs = roomState.snapshot?.currentTarget?.resumePositionMs ?? null;
+  useEffect(() => {
+    const pool = videoPoolRef.current;
+    if (remoteSeekSeq == null || remoteSeekTargetMs == null || !pool || !roomState.snapshot?.currentTarget) {
+      return;
+    }
+    if (appliedSeekSeqRef.current === remoteSeekSeq) {
+      return;
+    }
+    const firstObservation = appliedSeekSeqRef.current == null;
+    appliedSeekSeqRef.current = remoteSeekSeq;
+    // 首次观察(页面打开/换歌重 prime)不回放历史 seek,prime 已对齐位置
+    if (firstObservation) {
+      return;
+    }
+
+    const bounds = seekBoundsOfPool(pool);
+    const targetMs = resolveSeekTargetMs(remoteSeekTargetMs, bounds);
+    const fromMs = pool.activePlaybackPositionMs();
+    if (Number.isFinite(pool.activeVideo.currentTime)) {
+      pool.activeVideo.currentTime = Math.max(0, (targetMs - bounds.streamStartMs) / 1000);
+    }
+    const pressedMs = Math.abs(targetMs - fromMs);
+    if (pressedMs >= 500) {
+      setSeekFeedback({
+        direction: targetMs >= fromMs ? "forward" : "backward",
+        presses: Math.max(1, Math.round(pressedMs / 10_000)),
+        totalMs: targetMs - fromMs,
+        fromMs,
+        toMs: targetMs
+      });
+      if (seekHideTimerRef.current != null) {
+        globalThis.clearTimeout(seekHideTimerRef.current);
+      }
+      seekHideTimerRef.current = globalThis.setTimeout(() => {
+        setSeekFeedback(null);
+      }, SEEK_FEEDBACK_TTL_MS);
+    }
+  }, [remoteSeekSeq, remoteSeekTargetMs, roomState.snapshot?.currentTarget]);
+
+  // 换歌/换音轨时清掉未提交的快进快退状态
+  useEffect(() => {
+    seekBurstRef.current = null;
+    if (seekCommitTimerRef.current != null) {
+      globalThis.clearTimeout(seekCommitTimerRef.current);
+      seekCommitTimerRef.current = null;
+    }
+    if (seekHideTimerRef.current != null) {
+      globalThis.clearTimeout(seekHideTimerRef.current);
+      seekHideTimerRef.current = null;
+    }
+    setSeekFeedback(null);
+  }, [
+    roomState.snapshot?.currentTarget?.queueEntryId,
+    roomState.snapshot?.currentTarget?.assetId,
+    roomState.snapshot?.currentTarget?.vocalMode
+  ]);
+
 
   useEffect(() => {
     const pool = videoPoolRef.current;
@@ -229,11 +448,23 @@ export function useTvPlaybackRuntime(input: UseTvPlaybackRuntimeInput): TvPlayba
     handleFirstPlayPromptClick: retryCurrentPlayback,
     handleVideoEnded,
     interactions: roomState.interactions,
+    lyricLines: lyrics?.lines ?? null,
+    karaokeLines: karaoke?.lines ?? null,
     localPlaybackConfirmed: Boolean(currentTargetKey && confirmedPlaybackTargetKey === currentTargetKey),
+    seekFeedback,
+    nudgeSeek,
     playbackPositionMs,
     roomState,
     snapshot
   };
+}
+
+// remux 兜底流的 duration 是"从切换点起的剩余时长",歌内总时长 = 基准 + 剩余
+function seekBoundsOfPool(pool: DualVideoPool): SeekBounds {
+  const video = pool.activeVideo;
+  const durationMs =
+    Number.isFinite(video.duration) && video.duration > 0 ? pool.activePositionBaseMs + Math.trunc(video.duration * 1000) : null;
+  return { streamStartMs: pool.activePositionBaseMs, durationMs };
 }
 
 function mergeLocalNotice(snapshot: RoomSnapshot | null, localNotice: PlaybackNotice | null): RoomSnapshot | null {

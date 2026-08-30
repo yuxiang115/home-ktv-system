@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { MediaSourceRef } from "@home-ktv/domain";
 import type { ApiConfig } from "../config.js";
-import { buildEmptyOnlineTaskSummary, buildRoomControlSnapshot } from "../modules/rooms/build-control-snapshot.js";
+import { buildEmptyOnlineTaskSummary, buildRoomControlSnapshot, type ControlSnapshotRepositories } from "../modules/rooms/build-control-snapshot.js";
 import { getOrCreatePairingInfo, refreshPairingToken } from "../modules/rooms/pairing-token-service.js";
 import type { MediaGateway } from "../modules/media/media-gateway.js";
 import type { PlayableMediaRepository } from "../modules/media/playable-media-repository.js";
@@ -22,6 +22,7 @@ export interface AdminRoomsRouteDependencies {
   playbackSessions: PlaybackSessionRepository;
   queueEntries: QueueEntryRepository;
   playableMedia?: PlayableMediaRepository;
+  supplementTasks?: ControlSnapshotRepositories["supplementTasks"];
   controlSessions: ControlSessionRepository;
   mediaGateway?: Pick<MediaGateway, "createPlaybackUrl">;
   deviceSessions: PlayerDeviceSessionRepository;
@@ -47,6 +48,7 @@ export async function registerAdminRoomsRoutes(
         playbackSessions: dependencies.playbackSessions,
         queueEntries: dependencies.queueEntries,
         ...(dependencies.playableMedia ? { playableMedia: dependencies.playableMedia } : {}),
+        ...(dependencies.supplementTasks ? { supplementTasks: dependencies.supplementTasks } : {}),
         pairingTokens: dependencies.pairingTokens,
         controlSessions: dependencies.controlSessions,
         deviceSessions: dependencies.deviceSessions,
