@@ -11,7 +11,7 @@ every chunk -> karaoke runs fast/slow), English songs aligned with Chinese
 character budgets (words glue together / durations collapse), and budget drift
 inside a chunk silently swallowed whole lines.
 
-New pipeline:
+New pipeline (v3 — LRC timestamps as COARSE anchors, not discarded):
   1. language: --language auto (spec name marker "其他" etc.) is resolved from
      the LRC text itself — CJK ratio >= 30% -> Chinese (Japanese/Korean by their
      own scripts), otherwise English. Resolved BEFORE the model is called: the
@@ -19,29 +19,41 @@ New pipeline:
   2. VAD: 16k mono energy frames -> voiced segments (pure function, unit
      tested). Vocals stems make instrumental parts near-silent, so segments
      approximate sung phrases.
-  3. line<->segment pairing: LRC line TEXT (timestamps are never used for any
-     alignment decision) paired to segments greedily in order, matching
-     text-share to duration-share within a tolerance; extra segments
-     (intro/interlude/ad-lib) are skipped, surplus lines stay unmatched.
-  4. per-line alignment: each line is aligned independently against its own
+  3. GLOBAL OFFSET d*: MVs carry intro dialogue/footage that the studio LRC
+     lacks, so LRC time and audio time differ by one ~constant lag per song
+     (演員 MV: studio LRC lags the MV vocals by ~9-17s; Baby: ~0s). d* is
+     estimated by a pure-function sweep: for each candidate d, each of the
+     first 10 LRC lines scores a hit when a VAD segment STARTS within ±3s of
+     (LRC time + d) with a duration proportional to the line's length; the
+     reward decays linearly with distance so exact hits dominate (a dense
+     quasi-periodic vocal track makes far offsets look deceptively good to a
+     binary hit count — the decay + smaller-|d| tie-break keep it honest).
+  4. WINDOWED line<->segment pairing: each line takes the nearest VAD segment
+     start within (LRC time + d*) ± 5s; a segment far too short for the text
+     absorbs the following contiguous segment (intro chants split by breaths,
+     e.g. Baby's "Oh whoa" triple); a segment shared by several lines (rap
+     density) is split between them at anchor midpoints; no segment in the
+     window => unmatched.
+  5. per-line alignment: each line is aligned independently against its own
      segment (+/-0.3s margin) by the cached model, so one wrong segment can
      never poison the rest of the song.
-  5. quality gate (before writing anything): line times strictly increasing,
-     matched line coverage >= 80%, median word duration within 0.05~2s, word
-     timings not collapsed (<30% words under 20ms; lines >50% collapsed are
+  6. quality gate (before writing anything): line times strictly increasing,
+     matched line coverage >= 60%, median word duration within 0.05~2s, word
+     timings not collapsed (<40% words under 20ms; lines >50% collapsed are
      dropped as unmatched), plus HARD timeline checks — the output timeline
      must be the audio's, not the LRC's: every line must sit inside its mapped
-     VAD segment (+/-1s), and the first output line must start within 2s of
+     VAD segment (+/-1s), and the first output line must start within 3s of
      the first adopted VAD segment (catches studio-LRC-timeline leakage on
      MVs with intros).
      Failure => no output file, one-line report on stderr, exit code 4
      (= alignment quality below bar; callers degrade best-effort to LRC).
 
 Invariant (regression-tested): output line start/end may ONLY originate from
-VAD segment boundaries and aligner unit times. LRC timestamps are used solely
-to order lines inside parse_lrc; a line that cannot be aligned to a segment is
-dropped from the output entirely (counted into coverage), NEVER backfilled
-with its LRC timestamp.
+VAD segment boundaries and aligner unit times. LRC timestamps steer WHICH
+segment each line is paired with (global offset + per-line window) but never
+contribute a single output timestamp directly; a line that cannot be aligned
+to a segment is dropped from the output entirely (counted into coverage),
+NEVER backfilled with its LRC timestamp.
 
 Exit codes: 0 ok / 3 skipped (no lyrics / audio missing) / 4 quality gate / 1 error.
 """
@@ -85,33 +97,61 @@ VAD_MIN_GAP_SECONDS = 0.3   # 间隙小于该值的相邻有声段合并(句中�
 VAD_MIN_SEGMENT_SECONDS = 0.5  # 时长小于该值的段丢弃(咳嗽/单击噪声)
 VAD_ENERGY_FLOOR = 1e-5     # 数字静音的中位数*倍数可能仍 ~0,抬到可听门槛
 
-# ---- Phase B: line<->segment mapping -------------------------------------
-# 行文本占比与段时长占比都归一化到 [0,1] 后做累计端点匹配;容差是歌曲全长
-# 的比例(0.10 = 允许累计偏差 10%),过大易错配相邻段,过小易整行 unmatched。
-MAP_TOLERANCE = 0.10
+# ---- Phase B: global offset estimation (LRC timeline -> audio timeline) ----
+# MV 带(片头对白/剧情)而录音室 LRC 没有内容时,整首歌存在一个近似常数的
+# 全局滞后 d*:真实音频里第 i 行的演唱时刻 ≈ LRC 时间戳 + d*(演員 MV 实测
+# +9s,Baby 实测 ~0s)。d* 由纯函数扫描估计:候选 d 步进 1s;前 N 行在
+# (LRC时间+d)±窗口 内有「起点贴近且时长与行长成比例」的 VAD 段即得分,
+# 得分随距离线性衰减(密集准周期人声段会让纯命中计数在大范围 d 上饱和,
+# 衰减 + 偏好小 |d| 的平手规则把估计拉回唯一解)。
+OFFSET_MIN_SECONDS = -10.0        # 负向:MV 比 LRC 更早进入正歌(少见,留少量)
+OFFSET_MAX_SECONDS = 90.0         # 正向:MV 片头(对白/剧情)最长容忍
+OFFSET_STEP_SECONDS = 1.0
+OFFSET_ANCHOR_LINE_COUNT = 10     # 用前 N 行做粗对齐(演員/Baby 实测 N=10 判别最好)
+OFFSET_SCAN_SECONDS = 90.0        # 只有起点在前 90s 的段参与投票(片头区即分战场)
+OFFSET_MATCH_WINDOW_SECONDS = 3.0 # 行锚点与段起点的最大判读距离
+OFFSET_RATIO_BAND = (0.04, 0.8)   # 段时长/非空白字符数 的合理带(英文~0.08-0.15,
+                                  # 中文~0.15-0.45 s/char;出带视为「时长不成比例」)
+
+# ---- Phase B: windowed line<->segment matching --------------------------------
+# d* 确定后每行在 (LRC时间+d*) ± 窗口 内取「起点最近」的段;段远短于文本
+# 应有时长(如换气/吟唱被 VAD 切开,Baby 前奏 "Oh whoa" 三连)时吞并紧随的
+# 相邻段;多行选中同一底段(rap 一段多行)时按锚点中点切分共享,保证每行都有
+# 自己的时间片;窗口内无段 => unmatched。
+LINE_MATCH_WINDOW_SECONDS = 5.0
+ABSORB_MIN_SEC_PER_CHAR = 0.09    # 段时长/行长 低于该值 => 段对文本太短,尝试吞并
+                                  # (英文名义 ~0.08-0.13 s/char,中文 ~0.15-0.45;
+                                  # 阈值取两者之间:只吞并「连英文都嫌短」的碎段)
+ABSORB_MAX_GAP_SECONDS = 2.5      # 只吞并间隔 <= 该值的紧邻段("Oh whoa" 三连
+                                  # 的乐句间隔实测 ~2.1s;再宽会吞进下一行)
+ABSORB_MAX_SEC_PER_CHAR = 0.8     # 吞并后的时长/行长 上限(与比例带上界一致)
 
 # ---- Phase B: per-line alignment -----------------------------------------
 LINE_MARGIN_SECONDS = 0.3  # 切段时两侧余量,VAD 边界切掉半个字时兜底
 MIN_CLIP_SECONDS = 0.2     # 短于该值的切片直接判 unmatched(模型对空切片不稳)
 
 # ---- Phase B: quality gate ------------------------------------------------
-MIN_LINE_COVERAGE = 0.8
+# 门禁按真实 MV 数据(6 首含对白/吟唱/ad-lib 的门禁集)校准:覆盖率 80% 在
+# 「MV 里没人声的 LRC 行」面前过紧,60% 保住主体歌词;塌缩率 30% 在半念白
+# 首行(演員实测 45%)面前过紧,40% 仍能拦住时间轴级错配;首行偏差 2s 放宽
+# 到 3s 容纳 VAD 段起点比真实起唱早一点(前奏尾的弱人声被并进段头)。
+MIN_LINE_COVERAGE = 0.6
 WORD_DURATION_RANGE = (0.05, 2.0)
 # 塌缩词检测:模型把文本硬塞进不含该语音的切片时,词时长会大面积塌缩到 ~0
 # (Baby 实测 46% 的词 <20ms,首行 6 词 4 个 start==end)。词时长中位数对这种
 # 分布不敏感(0.08s 仍在 [0.05,2] 内),必须按占比判:单行超半数词塌缩 =>
-# 该行对齐失败,丢弃(unmatched);整文件剩余词塌缩率超 30% => 拒绝输出。
+# 该行对齐失败,丢弃(unmatched);整文件剩余词塌缩率超 40% => 拒绝输出。
 WORD_COLLAPSE_SECONDS = 0.02
 LINE_MAX_COLLAPSED_WORD_FRACTION = 0.5
-FILE_MAX_COLLAPSED_WORD_FRACTION = 0.3
+FILE_MAX_COLLAPSED_WORD_FRACTION = 0.4
 # 硬时间轴校验:输出行时间只能来自 VAD 段边界 + aligner unit 时间。每行必须
 # 落在其映射段 [start-1, end+1] 内(1s 容纳切片余量 0.3s + 模型边界毛刺);
 # 越界行按 unmatched 丢弃,绝不回退 LRC 时间戳。
 SEGMENT_CONTAINMENT_MARGIN_SECONDS = 1.0
-# 输出首行与「首个被采用的 VAD 段」起点的偏差上限。超过 2s 说明输出时间轴
-# 不是这段音频的(典型:输出复刻 LRC 录音室时间轴,而 MV 带前奏)——直接
+# 输出首行与「首个被采用的 VAD 段」起点的偏差上限。超过 3s 说明输出时间轴
+# 不是这段音频的(典型:输出复刻 LRC 录音室时间轴,而 MV 带片头)——直接
 # 整体拒绝,宁可降级行级 LRC 也不能输出错误时间轴。
-FIRST_LINE_SEGMENT_MAX_DEVIATION_SECONDS = 2.0
+FIRST_LINE_SEGMENT_MAX_DEVIATION_SECONDS = 3.0
 
 
 class AlignmentSkipped(RuntimeError):
@@ -276,48 +316,150 @@ def line_weight(text: str) -> float:
     return sum(1 for char in text if not char.isspace())
 
 
-def _cumulative_shares(values: Sequence[float]) -> list[float]:
-    total = sum(values)
-    shares: list[float] = []
-    accumulated = 0.0
-    for value in values:
-        accumulated += value
-        shares.append(accumulated / total if total > 0 else 0.0)
-    return shares
+def _segment_start_distance(
+    anchor: float,
+    weight: float,
+    segments: Sequence[tuple[float, float]],
+    window: float = OFFSET_MATCH_WINDOW_SECONDS,
+    ratio_band: tuple[float, float] = OFFSET_RATIO_BAND,
+) -> float | None:
+    """锚点到「可用段」起点的最小距离;无可用段返回 None。
 
-
-def map_lines_to_segments(
-    line_weights: Sequence[float],
-    segment_durations: Sequence[float],
-    tolerance: float = MAP_TOLERANCE,
-) -> list[int | None]:
-    """(纯函数) 歌词行 -> 演唱段的顺序贪心配对。
-
-    把行权重与段时长各自归一化成累计占比序列,每行取累计端点最接近自己的段
-    (单调前移,已用段不复用):段多于行时,端点不像任何歌词行的段(前奏/
-    间奏/ad-lib)自然被跳过;行多于段时多出的行标 None(unmatched,进 QA 报告)。
+    可用 = 段起点距锚点 <= window 且 段时长/行长 在 ratio_band 内(时长与
+    文本长度成比例,排除把长行配到 0.5s 碎段/短行配到 10s 长段的假命中)。
     """
-    if not line_weights or not segment_durations:
-        return [None] * len(line_weights)
-    line_ends = _cumulative_shares(line_weights)
-    segment_ends = _cumulative_shares(segment_durations)
-    result: list[int | None] = []
-    next_segment = 0
-    for target in line_ends:
-        index = next_segment
-        if index >= len(segment_durations):
-            result.append(None)
+    best: float | None = None
+    for start, end in segments:
+        distance = abs(start - anchor)
+        if distance > window:
             continue
-        while (
-            index + 1 < len(segment_durations)
-            and abs(segment_ends[index + 1] - target) < abs(segment_ends[index] - target)
+        sec_per_char = (end - start) / max(weight, 1.0)
+        if ratio_band[0] <= sec_per_char <= ratio_band[1]:
+            if best is None or distance < best:
+                best = distance
+    return best
+
+
+def estimate_global_offset(
+    lrc_times: Sequence[float],
+    line_weights: Sequence[float],
+    segments: Sequence[tuple[float, float]],
+) -> float:
+    """(纯函数) 估计 LRC 时间轴到音频时间轴的全局偏移 d*(秒)。
+
+    打分:对每个候选 d(OFFSET_MIN..OFFSET_MAX 步进 OFFSET_STEP),
+        score(d) = Σ_{前 N 行} (1 - dist/窗口) ,
+    dist = (LRC时间+d) 到可用段起点的距离(可用段限起点在前 OFFSET_SCAN_SECONDS
+    秒内;锚点为负或出音频范围的行为不计分)。奖励随距离线性衰减,精确命中
+    (dist≈0)接近满分,擦边命中(dist≈3s)只拿零头——纯命中计数会在密集准
+    周期的人声段上大范围饱和(演員前 90s 任意 +5~15s 偏移都能 5/5 全中),
+    衰减项把「每行都贴着段起点」的唯一偏移顶到最高分。平手时偏好小 |d|
+    (无偏移先验),再偏好小 d。
+    完全无命中 => 0.0(视 LRC 与音频同轴)。
+    """
+    head_segments = [
+        (start, end) for start, end in segments if start <= OFFSET_SCAN_SECONDS
+    ]
+    anchor_count = min(OFFSET_ANCHOR_LINE_COUNT, len(lrc_times))
+    best_score = -1.0
+    best_offset = 0.0
+    steps = int(round((OFFSET_MAX_SECONDS - OFFSET_MIN_SECONDS) / OFFSET_STEP_SECONDS))
+    for step in range(steps + 1):
+        offset = OFFSET_MIN_SECONDS + step * OFFSET_STEP_SECONDS
+        score = 0.0
+        for index in range(anchor_count):
+            anchor = lrc_times[index] + offset
+            if anchor < 0 or not head_segments or anchor > head_segments[-1][1]:
+                continue
+            distance = _segment_start_distance(anchor, line_weights[index], head_segments)
+            if distance is not None:
+                score += 1.0 - distance / OFFSET_MATCH_WINDOW_SECONDS
+        if score > best_score + 1e-9 or (
+            abs(score - best_score) <= 1e-9 and abs(offset) < abs(best_offset)
         ):
-            index += 1
-        if abs(segment_ends[index] - target) <= tolerance:
-            result.append(index)
-            next_segment = index + 1
-        else:
-            result.append(None)
+            best_score = score
+            best_offset = offset
+    return best_offset
+
+
+def _absorb_segment(
+    base_index: int,
+    weight: float,
+    segments: Sequence[tuple[float, float]],
+    window_end: float,
+) -> tuple[float, float]:
+    """底段对文本过短时吞并紧邻后段,返回吞并后的 [start, end]。
+
+    换气被 VAD 切开时一行歌词会碎成两段:只拿第一段,后半个句子的词会大面积
+    塌缩被丢弃。吞并条件:当前时长/行长 < ABSORB_MIN_SEC_PER_CHAR,且下一段
+    与当前段间隔 <= ABSORB_MAX_GAP_SECONDS 且其起点仍在行窗口内;吞并到比例
+    上限(ABSORB_MAX_SEC_PER_CHAR)为止,避免把下一行也吞进来。
+    """
+    start, end = segments[base_index]
+    sec_per_char = (end - start) / max(weight, 1.0)
+    while sec_per_char < ABSORB_MIN_SEC_PER_CHAR and base_index + 1 < len(segments):
+        next_start, next_end = segments[base_index + 1]
+        if not 0.0 <= next_start - end <= ABSORB_MAX_GAP_SECONDS:
+            break
+        if next_start > window_end:
+            break
+        if (next_end - start) / max(weight, 1.0) > ABSORB_MAX_SEC_PER_CHAR:
+            break
+        end = next_end
+        base_index += 1
+        sec_per_char = (end - start) / max(weight, 1.0)
+    return start, end
+
+
+def map_lines_to_segments_windowed(
+    lrc_times: Sequence[float],
+    line_weights: Sequence[float],
+    segments: Sequence[tuple[float, float]],
+    offset: float,
+    window: float = LINE_MATCH_WINDOW_SECONDS,
+) -> list[tuple[float, float] | None]:
+    """(纯函数) 窗口化行段配对:行 i -> 段区间或 None(unmatched)。
+
+    每行锚点 = LRC时间 + offset,在锚点 ± window 内选「起点距锚点最近」的段;
+    窗口内无段 => None。同一底段被多行选中(rap 一段多行)时按锚点中点把段
+    切分给各行(切片边界仍源自 VAD 段边界与锚点间距,不引入 LRC 时间戳本身)。
+    """
+    picks: list[tuple[int, float] | None] = []  # (底段下标, |段起点-锚点|)
+    for time, weight in zip(lrc_times, line_weights):
+        anchor = time + offset
+        low, high = anchor - window, anchor + window
+        best: tuple[int, float] | None = None
+        for index, (start, end) in enumerate(segments):
+            if end < low or start > high:
+                continue
+            distance = abs(start - anchor)
+            if best is None or distance < best[1]:
+                best = (index, distance)
+        picks.append(best)
+
+    result: list[tuple[float, float] | None] = [None] * len(lrc_times)
+    groups: dict[int, list[int]] = {}  # 底段下标 -> 行下标(升序)
+    for line_index, pick in enumerate(picks):
+        if pick is not None:
+            groups.setdefault(pick[0], []).append(line_index)
+
+    for segment_index, group in groups.items():
+        anchors = [lrc_times[line_index] + offset for line_index in group]
+        total_weight = sum(line_weights[line_index] for line_index in group)
+        start, end = _absorb_segment(
+            segment_index, total_weight, segments, max(anchors) + window
+        )
+        # 多行共享底段:相邻行锚点的中点为切分线(clip 进段内),每行得到
+        # 自己的时间片;单行组退化为整个(可能吞并后的)段。切分线被 clip
+        # 挤到一起时可能产生退化零宽片 => 该行 unmatched。
+        cuts = [
+            min(max((left + right) / 2.0, start), end)
+            for left, right in zip(anchors, anchors[1:])
+        ]
+        bounds = [start] + cuts + [end]
+        for position, line_index in enumerate(group):
+            if bounds[position + 1] - bounds[position] >= MIN_CLIP_SECONDS:
+                result[line_index] = (bounds[position], bounds[position + 1])
     return result
 
 
@@ -393,35 +535,37 @@ def collapsed_word_fraction(entry: dict, collapse_seconds: float = WORD_COLLAPSE
 def align_lines(
     audio: "np.ndarray",
     sr: int,
-    line_texts: Sequence[str],
+    lines: Sequence[tuple[float, str]],
     language: str,
     model,
-) -> tuple[list[dict], list[int], list[tuple[float, float]], float | None]:
-    """对齐核心数据流(无文件 IO,便于回归测试):VAD 分段 -> 行段映射 ->
-    逐行独立对齐 -> 行时间硬校验。
+) -> tuple[list[dict], list[int], list[tuple[float, float]], float | None, float]:
+    """对齐核心数据流(无文件 IO,便于回归测试):VAD 分段 -> 全局偏移估计 ->
+    窗口化行段配对 -> 逐行独立对齐 -> 行时间硬校验。
 
-    LRC 时间戳在进入本函数前就被丢弃(只保留行顺序);unmatched 行(无段可配/
-    对齐失败/越界/词时间塌缩)一律不输出。返回
-    (output_lines, unmatched_line_indexes, vad_segments, first_adopted_segment_start),
+    lines 是 parse_lrc 的 (LRC时间, 文本) 对:LRC 时间只作粗锚点(估 d*、开行
+    窗口),输出时间仍只来自段边界 + aligner unit 时间。unmatched 行(窗口内
+    无段/对齐失败/越界/词时间塌缩)一律不输出。返回
+    (output_lines, unmatched_line_indexes, vad_segments,
+     first_adopted_segment_start, global_offset),
     first_adopted_segment_start = 首个成功输出行所配 VAD 段的起点(供质量门禁
     校验输出时间轴与音频时间轴一致;无输出行时为 None)。
     """
     energy, frame_rate = frame_energies(audio, sr)
     segments = voiced_segments_from_energy(energy, frame_rate)
-    mapping = map_lines_to_segments(
-        [line_weight(text) for text in line_texts],
-        [end - start for start, end in segments],
-    )
+    lrc_times = [time for time, _ in lines]
+    line_texts = [text for _, text in lines]
+    weights = [line_weight(text) for text in line_texts]
+    offset = estimate_global_offset(lrc_times, weights, segments)
+    mapping = map_lines_to_segments_windowed(lrc_times, weights, segments, offset)
 
-    output_lines: list[dict] = []
+    output_lines: list[tuple[int, dict]] = []
     unmatched_lines: list[int] = []
     first_segment_start: float | None = None
     for index, text in enumerate(line_texts):
-        segment_index = mapping[index] if index < len(mapping) else None
-        if segment_index is None:
+        segment = mapping[index] if index < len(mapping) else None
+        if segment is None:
             unmatched_lines.append(index)
             continue
-        segment = segments[segment_index]
         entry = align_single_line(model, audio, sr, text, language, segment)
         if (
             entry is None
@@ -432,8 +576,19 @@ def align_lines(
             continue
         if first_segment_start is None:
             first_segment_start = segment[0]
-        output_lines.append(entry)
-    return output_lines, unmatched_lines, segments, first_segment_start
+        output_lines.append((index, entry))
+    # 时间单调兜底:相邻段窗口重叠/切分毛刺可能让后一行 start <= 前一行
+    # (Baby 实测 1 对)。局部毛刺按行丢弃(unmatched),不让整文件被
+    # 「非严格递增」门禁拒掉;evaluate_quality 的递增校验保留作最后防线。
+    monotone_lines: list[dict] = []
+    previous_start: float | None = None
+    for index, entry in output_lines:
+        if previous_start is not None and entry["start"] <= previous_start:
+            unmatched_lines.append(index)
+            continue
+        previous_start = entry["start"]
+        monotone_lines.append(entry)
+    return monotone_lines, unmatched_lines, segments, first_segment_start, offset
 
 
 # ---- Phase B: quality gate ----------------------------------------------------
@@ -544,15 +699,15 @@ def align_file(
     if not audio.exists():
         raise AlignmentSkipped(f"audio not found: {audio}")
 
-    # LRC 时间戳自此被丢弃:parse_lrc 排序确定行顺序后,下游只见文本。输出
-    # 行时间只能来自 VAD 段边界 + aligner unit 时间(见 align_lines 不变式)。
+    # LRC 时间自此只作粗锚点:估全局偏移 d* + 为每行开配对窗口(见 align_lines
+    # 不变式),输出行时间仍只能来自 VAD 段边界 + aligner unit 时间。
     line_texts = [text for _, text in lines]
     resolved_language = resolve_language(language, "\n".join(line_texts))
 
     with tempfile.TemporaryDirectory(prefix="ktv-align-") as tmp_name:
         audio_data, sr = load_audio_16k_mono(audio, Path(tmp_name))
-        output_lines, unmatched_lines, segments, first_segment_start = align_lines(
-            audio_data, sr, line_texts, resolved_language, model
+        output_lines, unmatched_lines, segments, first_segment_start, offset = align_lines(
+            audio_data, sr, lines, resolved_language, model
         )
 
     problems, stats = evaluate_quality(output_lines, len(line_texts), first_segment_start)
@@ -560,12 +715,14 @@ def align_file(
         language=resolved_language,
         unmatchedLines=len(unmatched_lines),
         segments=len(segments),
+        offsetSeconds=offset,
     )
     if problems:
         raise QualityGateError(
             "; ".join(problems)
             + f" (lines={stats['lineCount']}/{stats['totalLines']},"
             + f" unmatched={stats['unmatchedLines']}, segments={stats['segments']},"
+            + f" offset={stats['offsetSeconds']:+.0f}s,"
             + f" language={stats['language']})"
         )
 
@@ -575,7 +732,8 @@ def align_file(
     )
     log(
         f"aligned {stats['lineCount']}/{stats['totalLines']} line(s)"
-        + f" [{stats['language']}, {stats['segments']} segment(s)] -> {out}"
+        + f" [coverage={stats['coverage']:.0%}, offset={stats['offsetSeconds']:+.0f}s,"
+        + f" {stats['language']}, {stats['segments']} segment(s)] -> {out}"
     )
     return stats
 

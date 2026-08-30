@@ -20,16 +20,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from align_lyrics import (  # noqa: E402
-    MAP_TOLERANCE,
+    ABSORB_MIN_SEC_PER_CHAR,
+    LINE_MATCH_WINDOW_SECONDS,
+    OFFSET_MAX_SECONDS,
+    OFFSET_MIN_SECONDS,
     VAD_MIN_GAP_SECONDS,
     VAD_MIN_SEGMENT_SECONDS,
     align_lines,
     cjk_char_ratio,
     collapsed_word_fraction,
+    estimate_global_offset,
     evaluate_quality,
     line_weight,
     line_within_segment,
-    map_lines_to_segments,
+    map_lines_to_segments_windowed,
     parse_lrc,
     resolve_language,
     voiced_segments_from_energy,
@@ -133,41 +137,117 @@ def test_voiced_segments_silence_floor_and_empty() -> None:
     assert voiced_segments_from_energy([0.5] * 10, frame_rate=10.0) == [(0.0, 1.0)]
 
 
-# ---- Phase B: line<->segment mapping ------------------------------------------
+# ---- Phase B: global offset estimation ------------------------------------------
 
 
-def test_map_lines_equal_count_pairs_in_order() -> None:
-    weights = [10.0, 10.0, 10.0, 10.0]
-    durations = [10.0, 10.0, 10.0, 10.0]
-    assert map_lines_to_segments(weights, durations) == [0, 1, 2, 3]
+def _studio_lrc_and_mv_segments(lag: float, count: int = 10, step: float = 4.0):
+    """前奏 lag 秒的合成数据:LRC 行等距 step 秒,MV 段=LRC 时间+lag 起、
+    时长/行长 ≈ 0.3 s/char(中文慢歌典型值)。"""
+    lrc_times = [index * step for index in range(count)]
+    weights = [10.0] * count
+    segments = [(t + lag, t + lag + 3.0) for t in lrc_times if t + lag <= 90.0]
+    return lrc_times, weights, segments
 
 
-def test_map_lines_skips_adlib_segment() -> None:
-    # 4 行歌词,段列表里混进一个短的 ad-lib 段(占 5% 时长):第一行应跳过
-    # 它配到真正的演唱段,后续顺延(段多余时跳过端点最不像歌词行的段)
-    weights = [25.0, 25.0, 25.0, 25.0]
-    durations = [5.0, 25.0, 25.0, 25.0, 20.0]
-    assert map_lines_to_segments(weights, durations) == [1, 2, 3, 4]
+def test_estimate_global_offset_recovers_intro_lag() -> None:
+    # 演員形形状:MV 带片头,录音室 LRC 滞后音频 +17s(实测 d*≈17)
+    lrc_times, weights, segments = _studio_lrc_and_mv_segments(lag=17.0)
+    assert estimate_global_offset(lrc_times, weights, segments) == 17.0
 
 
-def test_map_lines_more_lines_than_segments_marks_unmatched() -> None:
-    # 行多于段(如相邻行被 VAD 合并成一段):累计端点离所有剩余段都超过
-    # 容差的行标 None(unmatched,进 QA 报告),其余行仍按序配对
-    assert map_lines_to_segments([10.0] * 6, [30.0] * 3) == [None, 0, None, 1, None, 2]
-    assert map_lines_to_segments([25.0] * 4, [10.0, 10.0]) == [None, 0, None, 1]
+def test_estimate_global_offset_zero_when_already_aligned() -> None:
+    # Baby 形状:LRC 与 MV 同轴(d*≈0),不能被周期性段骗去别的偏移
+    lrc_times, weights, segments = _studio_lrc_and_mv_segments(lag=0.0)
+    assert estimate_global_offset(lrc_times, weights, segments) == 0.0
 
 
-def test_map_lines_rejects_far_segments() -> None:
-    # 容差拒绝:第 1 行的累计占比与最近段的端点差 0.4,默认容差下 unmatched,
-    # 放宽容差到 0.45 后才允许配对
-    assert map_lines_to_segments([10.0, 10.0], [10.0, 90.0], tolerance=0.1) == [None, 1]
-    assert map_lines_to_segments([10.0, 10.0], [10.0, 90.0], tolerance=0.45) == [0, 1]
+def test_estimate_global_offset_negative_lag() -> None:
+    # LRC 比 MV 晚进入正歌(LRC 带 [offset] 元数据前移/后期提速):d* < 0
+    lrc_times = [10.0 + index * 4.0 for index in range(8)]
+    weights = [10.0] * 8
+    segments = [(t - 5.0, t - 5.0 + 3.0) for t in lrc_times]
+    assert estimate_global_offset(lrc_times, weights, segments) == -5.0
 
 
-def test_map_lines_empty_inputs() -> None:
-    assert map_lines_to_segments([], [1.0]) == []
-    assert map_lines_to_segments([1.0], []) == [None]
-    assert map_lines_to_segments([], []) == []
+def test_estimate_global_offset_requires_proportional_duration() -> None:
+    # 「时长与文本长度成比例」过滤:诱饵段起点精确贴着 LRC+d 但时长 60s
+    # (60s/10字 = 6.0 s/char 远超上界 0.8),不能投票;真正的偏移来自
+    # 比例正常的段
+    lrc_times, weights, segments = _studio_lrc_and_mv_segments(lag=6.0)
+    decoys = [(t + 30.0, t + 90.0) for t in lrc_times if t + 30.0 <= 90.0]
+    assert estimate_global_offset(lrc_times, weights, segments + decoys) == 6.0
+
+
+def test_estimate_global_offset_empty_or_silent_returns_zero() -> None:
+    # 无段(分离失败/全静音)/无行:无从估计,回退「同轴」假设
+    assert estimate_global_offset([1.0, 5.0], [10.0, 10.0], []) == 0.0
+    assert estimate_global_offset([], [], [(1.0, 2.0)]) == 0.0
+
+
+def test_estimate_global_offset_prefers_sharp_hits_over_dense_noise() -> None:
+    # 密集准周期段上纯命中计数会饱和:在 LRC+0 处放 2 个精确贴起点的段,
+    # 在 LRC+9 处放 8 个起点偏 ~0.4s 的密集段 —— 线性衰减打分必须让
+    # 「每行精确命中」的 d=0 胜过「行更多但都擦边」的 d=9
+    lrc_times = [20.0, 24.0]
+    weights = [10.0, 10.0]
+    dense = [(29.4 + index * 0.5, 30.5 + index * 0.5) for index in range(4)]
+    dense += [(33.4 + index * 0.5, 34.5 + index * 0.5) for index in range(4)]
+    sharp = [(20.0, 23.0), (24.0, 27.0)]
+    assert estimate_global_offset(lrc_times, weights, sharp + dense) == 0.0
+
+
+# ---- Phase B: windowed line<->segment matching -----------------------------------
+
+
+def test_map_lines_windowed_picks_nearest_segment_start() -> None:
+    # 每行取窗口内「起点最近」的段;窗口边缘外的段不可见
+    segments = [(9.8, 13.0), (19.5, 25.0), (40.0, 45.0)]
+    result = map_lines_to_segments_windowed([10.0, 20.0], [10.0, 10.0], segments, 0.0)
+    assert result == [(9.8, 13.0), (19.5, 25.0)]
+
+
+def test_map_lines_windowed_applies_global_offset() -> None:
+    # 演員实测形态:LRC 首行 21.5s,d*=+9 后锚点 30.5 落在段 (30.4,31.8);
+    # 不加偏移时窗口内无段 => unmatched
+    segments = [(30.4, 31.8)]
+    assert map_lines_to_segments_windowed([21.5], [11.0], segments, 9.0) == [(30.4, 31.8)]
+    assert map_lines_to_segments_windowed([21.5], [11.0], segments, 0.0) == [None]
+
+
+def test_map_lines_windowed_no_segment_unmatched() -> None:
+    # 窗口内无段(前奏行/MV 未唱行)=> None,绝不借用 LRC 时间戳
+    result = map_lines_to_segments_windowed([10.0, 100.0], [10.0, 10.0], [(40.0, 45.0)], 0.0)
+    assert result == [None, None]
+
+
+def test_map_lines_windowed_absorbs_fragment_segment() -> None:
+    # 换气把一行切成两段:首段时长/行长 1.0/40=0.025 < 0.09(过短)=>
+    # 吞并紧邻段(间隔 0.4s <= 2.5s),合并后 0.1 s/char 合理
+    segments = [(10.0, 11.0), (11.4, 14.0)]
+    assert map_lines_to_segments_windowed([10.0], [40.0], segments, 0.0) == [(10.0, 14.0)]
+    # 已够长的段不吞并(1.5/12=0.125 >= 0.09)
+    segments = [(10.0, 11.5), (12.0, 14.0)]
+    assert map_lines_to_segments_windowed([10.0], [12.0], segments, 0.0) == [(10.0, 11.5)]
+    # 吞并受比例上限约束:合并后会超过 0.8 s/char => 只保留原段
+    segments = [(10.0, 11.0), (11.4, 50.0)]
+    assert map_lines_to_segments_windowed([10.0], [30.0], segments, 0.0) == [(10.0, 11.0)]
+
+
+def test_map_lines_windowed_splits_shared_segment() -> None:
+    # rap 密度:两行锚点落进同一段(VAD 把两行合成一段)——按锚点中点切分
+    # 共享,每行得到自己的时间片(而非丢一行),输出行时间才可能严格递增
+    segments = [(10.2, 16.0)]
+    result = map_lines_to_segments_windowed([10.0, 11.0], [10.0, 10.0], segments, 0.0)
+    assert result == [(10.2, 10.5), (10.5, 16.0)]
+    # 三行共享:两条切分线都在锚点中点
+    segments = [(10.0, 20.0)]
+    result = map_lines_to_segments_windowed([10.0, 12.0, 18.0], [10.0, 10.0, 10.0], segments, 0.0)
+    assert result == [(10.0, 11.0), (11.0, 15.0), (15.0, 20.0)]
+
+
+def test_map_lines_windowed_empty_inputs() -> None:
+    assert map_lines_to_segments_windowed([], [], [(1.0, 2.0)], 0.0) == []
+    assert map_lines_to_segments_windowed([1.0], [10.0], [], 0.0) == [None]
 
 
 def test_line_weight_counts_non_whitespace_only() -> None:
@@ -235,8 +315,10 @@ def _baby_like_audio():
 
 def test_align_lines_output_timeline_comes_from_audio_not_lrc() -> None:
     # 回归(实锤 bug):LRC 首行 [00:03.41](LRCLIB 录音室时间轴),但该 MV
-    # 混音/人声首段在 15.8s。输出首行必须来自音频段(15-17s 区间),绝不
-    # 是 3.4s——v1 管线按 LRC 时间戳切块时首行就精确落在 3.4s。
+    # 混音/人声首段在 15.8s。v3 管线先估全局偏移 d*(此处 ≈ +12s,首行锚点
+    # 3.41+d* 贴进 15.8 段),再窗口化配段;输出首行必须来自音频段
+    # (15-17s 区间),绝不是 3.4s——v1 管线按 LRC 时间戳切块时首行就精确
+    # 落在 3.4s。
     audio, sr = _baby_like_audio()
     with tempfile.TemporaryDirectory() as tmp:
         lrc = Path(tmp) / "baby.lrc"
@@ -247,13 +329,13 @@ def test_align_lines_output_timeline_comes_from_audio_not_lrc() -> None:
         )
         lines = parse_lrc(lrc)
         assert abs(lines[0][0] - 3.41) < 0.01  # LRC 确实声称首行 3.41s
-        line_texts = [text for _, text in lines]
 
-        output, unmatched, segments, first_segment_start = align_lines(
-            audio, sr, line_texts, "English", _StubAligner()
+        output, unmatched, segments, first_segment_start, offset = align_lines(
+            audio, sr, lines, "English", _StubAligner()
         )
 
     assert not unmatched
+    assert 10.0 <= offset <= 13.0  # 音频比 LRC 晚 ~12s,偏移被估出
     assert 15.5 <= segments[0][0] <= 16.0  # VAD 首段就是音频里的 15.8s
     assert first_segment_start == segments[0][0]
     first_start = output[0]["start"]
@@ -264,7 +346,7 @@ def test_align_lines_output_timeline_comes_from_audio_not_lrc() -> None:
     for entry in output:
         assert line_within_segment(entry, segments[0]) or line_within_segment(entry, segments[1])
     # 门禁(含首行-首段偏差硬校验)应通过
-    problems, stats = evaluate_quality(output, len(line_texts), first_segment_start)
+    problems, stats = evaluate_quality(output, len(lines), first_segment_start)
     assert problems == []
     assert stats["coverage"] == 1.0
 
@@ -273,14 +355,17 @@ def test_align_lines_drops_lines_whose_times_escape_segment() -> None:
     # 模型 artifact(unit 时间跑到 clip 外):该行必须被丢弃(unmatched),
     # 绝不能带着远离音频段的时间输出,也不回退 LRC 时间戳。
     audio, sr = _baby_like_audio()
-    line_texts = ["Oh whoa, oh whoa, oh whoa", "You know you love me, I know you care"]
-    output, unmatched, segments, first_segment_start = align_lines(
-        audio, sr, line_texts, "English", _StubAligner(lying=True)
+    lines = [
+        (3.41, "Oh whoa, oh whoa, oh whoa"),
+        (14.64, "You know you love me, I know you care"),
+    ]
+    output, unmatched, segments, first_segment_start, _offset = align_lines(
+        audio, sr, lines, "English", _StubAligner(lying=True)
     )
     assert output == []
     assert unmatched == [0, 1]
     assert first_segment_start is None
-    problems, stats = evaluate_quality(output, len(line_texts), first_segment_start)
+    problems, stats = evaluate_quality(output, len(lines), first_segment_start)
     assert stats["coverage"] == 0.0
     assert any("coverage" in problem for problem in problems)
 
@@ -290,9 +375,12 @@ def test_align_lines_drops_lines_with_collapsed_word_timings() -> None:
     # (模型把文本硬塞进不含该语音的段,如把整句词配到前奏 ad-lib 段)。这种行
     # 必须按 unmatched 丢弃,而不是带着塌缩词时间输出。
     audio, sr = _baby_like_audio()
-    line_texts = ["Oh whoa, oh whoa, oh whoa", "You know you love me, I know you care"]
-    output, unmatched, segments, first_segment_start = align_lines(
-        audio, sr, line_texts, "English", _StubAligner(collapsing=True)
+    lines = [
+        (3.41, "Oh whoa, oh whoa, oh whoa"),
+        (14.64, "You know you love me, I know you care"),
+    ]
+    output, unmatched, segments, first_segment_start, _offset = align_lines(
+        audio, sr, lines, "English", _StubAligner(collapsing=True)
     )
     # 6 词塌 4 个(67%)、9 词塌 7 个(78%):两行都超 50% 阈值被丢弃
     assert output == []
@@ -314,8 +402,22 @@ def test_collapsed_word_fraction_and_file_gate() -> None:
         {"text": "whoa", "start": 5.12, "end": 5.12},
     ]}) > 0.5
     assert collapsed_word_fraction({"words": []}) == 1.0
-    # 文件级兜底:两行各 30-50% 塌缩(逐行阈值不丢),总体 33% > 30% => 拒绝
+    # 文件级兜底:两行各 50% 塌缩(逐行阈值「>50%」不丢),总体 50% > 40% => 拒绝
     lines = [
+        {"start": 1.0, "end": 2.0, "text": "a b", "words": [
+            {"text": "a", "start": 1.0, "end": 1.5},
+            {"text": "b", "start": 1.5, "end": 1.5},
+        ]},
+        {"start": 3.0, "end": 4.0, "text": "c d", "words": [
+            {"text": "c", "start": 3.0, "end": 3.5},
+            {"text": "d", "start": 3.5, "end": 3.5},
+        ]},
+    ]
+    problems, stats = evaluate_quality(lines, 2)
+    assert any("collapsed" in problem for problem in problems)
+    assert stats["collapsedWordFraction"] == 0.5
+    # 半念白残余(演員首行实测 45%):60% 门禁内可容忍的塌缩水平 => 放行
+    tolerant = [
         {"start": 1.0, "end": 2.0, "text": "a b c", "words": [
             {"text": "a", "start": 1.0, "end": 1.3},
             {"text": "b", "start": 1.3, "end": 1.6},
@@ -327,9 +429,9 @@ def test_collapsed_word_fraction_and_file_gate() -> None:
             {"text": "f", "start": 3.6, "end": 3.6},
         ]},
     ]
-    problems, stats = evaluate_quality(lines, 2)
-    assert any("collapsed" in problem for problem in problems)
-    assert stats["collapsedWordFraction"] == round(2 / 6, 3)
+    problems, stats = evaluate_quality(tolerant, 2)
+    assert not any("collapsed" in problem for problem in problems)
+    assert stats["collapsedWordFraction"] == round(1 / 3, 3)
     # 健康输出:零塌缩,不受影响
     healthy = [{"start": 1.0, "end": 2.0, "text": "a b", "words": [
         {"text": "a", "start": 1.0, "end": 1.5}, {"text": "b", "start": 1.5, "end": 2.0},
@@ -340,17 +442,19 @@ def test_collapsed_word_fraction_and_file_gate() -> None:
 
 
 def test_align_lines_silent_audio_maps_nothing() -> None:
-    # 全静音音频(分离失败/拿错文件):无 VAD 段,所有行 unmatched,门禁拒绝
+    # 全静音音频(分离失败/拿错文件):无 VAD 段,偏移无从估计回退 0,所有行
+    # unmatched,门禁拒绝
     import numpy as np
 
     sr = 16000
     audio = np.zeros(int(10 * sr), dtype=np.float32)
-    output, unmatched, segments, first_segment_start = align_lines(
-        audio, sr, ["一句歌词", "另一句歌词"], "Chinese", _StubAligner()
+    output, unmatched, segments, first_segment_start, offset = align_lines(
+        audio, sr, [(0.0, "一句歌词"), (4.0, "另一句歌词")], "Chinese", _StubAligner()
     )
     assert output == [] and segments == []
     assert unmatched == [0, 1]
     assert first_segment_start is None
+    assert offset == 0.0
 
 
 def test_line_within_segment_margins() -> None:
@@ -391,7 +495,7 @@ def test_evaluate_quality_flags_regression_increasing() -> None:
 
 
 def test_evaluate_quality_flags_coverage_and_word_duration() -> None:
-    # 覆盖率 1/5 = 20% < 80%,且词时长中位数 4s 超出 [0.05, 2.0]
+    # 覆盖率 1/5 = 20% < 60%,且词时长中位数 4s 超出 [0.05, 2.0]
     lines = [
         {"start": 1.0, "end": 5.0, "text": "a", "words": [{"text": "a", "start": 1.0, "end": 5.0}]},
     ]
@@ -430,7 +534,13 @@ def test_defaults_are_sensible() -> None:
     # 默认参数快照:改默认值必须连带评估对存量歌曲的影响
     assert VAD_MIN_GAP_SECONDS == 0.3
     assert VAD_MIN_SEGMENT_SECONDS == 0.5
-    assert 0.05 < MAP_TOLERANCE < 0.2
+    # 偏移扫描范围:负向少量(MV 更早进正歌罕见),正向覆盖 MV 片头
+    assert OFFSET_MIN_SECONDS == -10.0 and OFFSET_MAX_SECONDS == 90.0
+    # 行配对窗口必须宽于偏移扫描步长,且不能宽到吃进相邻行(行距常见 3-5s)
+    assert 2.0 * 1.0 < LINE_MATCH_WINDOW_SECONDS <= 5.0
+    # 吞并阈值取英文名义(~0.08-0.13)与中文名义(~0.15-0.45)之间:
+    # 只吞并「连英文演唱都嫌短」的碎段,避免把中文行的下一行吞进来
+    assert 0.08 < ABSORB_MIN_SEC_PER_CHAR < 0.13
 
 
 def _run_all() -> int:
