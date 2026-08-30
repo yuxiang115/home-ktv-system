@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { activeKaraokeLineIndex, parseKaraokeLyrics } from "../runtime/karaoke.js";
+import {
+  activeKaraokeLineIndex,
+  karaokeWordNeedsSpace,
+  karaokeWordProgress,
+  parseKaraokeLyrics,
+  type KaraokeWord
+} from "../runtime/karaoke.js";
 
 const SAMPLE = JSON.stringify({
   lines: [
@@ -66,5 +72,38 @@ describe("activeKaraokeLineIndex", () => {
 
   it("handles an empty list", () => {
     expect(activeKaraokeLineIndex([], 1_000)).toBe(-1);
+  });
+});
+
+describe("karaokeWordProgress", () => {
+  const word: KaraokeWord = { text: "think", startMs: 1_000, endMs: 2_000 };
+
+  it("interpolates 0..1 across the word and clamps outside of it", () => {
+    expect(karaokeWordProgress(word, 999)).toBe(0);
+    expect(karaokeWordProgress(word, 1_000)).toBe(0);
+    expect(karaokeWordProgress(word, 1_500)).toBe(0.5);
+    expect(karaokeWordProgress(word, 2_000)).toBe(1);
+    expect(karaokeWordProgress(word, 9_999)).toBe(1);
+  });
+
+  it("treats zero/negative-width words as fully sung instead of dividing by zero", () => {
+    const zeroWidth: KaraokeWord = { text: "me", startMs: 3_000, endMs: 3_000 };
+    expect(karaokeWordProgress(zeroWidth, 2_999)).toBe(0);
+    expect(karaokeWordProgress(zeroWidth, 3_000)).toBe(1);
+
+    const negativeWidth: KaraokeWord = { text: "me", startMs: 3_000, endMs: 2_900 };
+    expect(karaokeWordProgress(negativeWidth, 3_000)).toBe(1);
+  });
+});
+
+describe("karaokeWordNeedsSpace", () => {
+  it("only asks for a trailing space after non-CJK words", () => {
+    expect(karaokeWordNeedsSpace("When")).toBe(true);
+    expect(karaokeWordNeedsSpace("me,")).toBe(true);
+    expect(karaokeWordNeedsSpace("안녕")).toBe(true);
+    expect(karaokeWordNeedsSpace("我")).toBe(false);
+    expect(karaokeWordNeedsSpace("曾经")).toBe(false);
+    expect(karaokeWordNeedsSpace("ね")).toBe(false);
+    expect(karaokeWordNeedsSpace("")).toBe(false);
   });
 });

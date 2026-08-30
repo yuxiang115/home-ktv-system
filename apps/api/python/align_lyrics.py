@@ -110,25 +110,68 @@ def chunk_lines(lines: list[tuple[float, str]]) -> list[list[tuple[float, str]]]
     return chunks
 
 
+def is_space_separated(language: str) -> bool:
+    # 中日文无空格分隔;其他语言(英/韩等)按空格分词,与 join_text 的分隔规则保持一致
+    return language not in ("Chinese", "Cantonese", "Japanese")
+
+
 def join_text(lines: list[tuple[float, str]], language: str) -> str:
-    # 中日文无空格分隔;其他语言按空格 join
-    separator = "" if language in ("Chinese", "Cantonese", "Japanese") else " "
+    separator = "" if not is_space_separated(language) else " "
     return separator.join(text for _, text in lines)
 
 
+def count_words(text: str) -> int:
+    # 空白分词语言的"词数":按任意空白切分;全空白按 0 计(与字符预算的空行行为一致)
+    return len(text.split())
+
+
+def _looks_cjk(text: str) -> bool:
+    # 未显式传 space_separated 的调用方(如 media_sidecar 的 cmd_align,按位置传参、
+    # 不能跟着改签名)靠文本侧推断:非空白字符中汉字/假名过半 => CJK 字符预算语言。
+    # 韩文不算 CJK(谚文用空格分词,与 join_text 的规则一致)。
+    chars = [char for char in text if not char.isspace()]
+    if not chars:
+        return False
+    cjk = sum(
+        1
+        for char in chars
+        if "\u3040" <= char <= "\u30ff"
+        or "\u3400" <= char <= "\u4dbf"
+        or "\u4e00" <= char <= "\u9fff"
+        or "\uf900" <= char <= "\ufaff"
+    )
+    return cjk * 2 >= len(chars)
+
+
 def assign_units_to_lines(
-    units: list[tuple[str, float, float]], line_texts: list[str]
+    units: list[tuple[str, float, float]], line_texts: list[str], space_separated: bool | None = None
 ) -> list[dict]:
-    """Walk aligner units sequentially, consuming each line's char budget."""
+    """Walk aligner units sequentially, consuming each line's budget.
+
+    CJK: budget = non-whitespace character count (units are characters).
+    Space-separated languages: budget = word count (units are words). Counting
+    characters drifts when unit boundaries do not land exactly on word
+    boundaries (punctuation, merged tokens), pushing later words onto the
+    wrong line; the word count can only be off by whole units, never by a
+    fraction, so lines stay aligned to the aligner's own tokenization.
+
+    space_separated=None (default) infers the mode from the line texts so that
+    callers that do not know the language still get the right budget.
+    """
+    if space_separated is None:
+        space_separated = not _looks_cjk("".join(line_texts))
     output: list[dict] = []
     unit_index = 0
     for text in line_texts:
-        need = sum(1 for char in text if not char.isspace())
+        need = count_words(text) if space_separated else sum(1 for char in text if not char.isspace())
         words: list[dict] = []
         while need > 0 and unit_index < len(units):
             unit_text, start, end = units[unit_index]
             words.append({"text": unit_text, "start": round(start, 3), "end": round(end, 3)})
-            need -= max(1, sum(1 for char in unit_text if not char.isspace()))
+            consumed = count_words(unit_text) if space_separated else sum(
+                1 for char in unit_text if not char.isspace()
+            )
+            need -= max(1, consumed)
             unit_index += 1
         if words:
             output.append(
@@ -199,7 +242,11 @@ def main() -> int:
                 (unit.text, unit.start_time + chunk_start, unit.end_time + chunk_start)
                 for unit in (results[0] if results else [])
             ]
-            all_output.extend(assign_units_to_lines(units, [text for _, text in chunk]))
+            all_output.extend(
+                assign_units_to_lines(
+                    units, [text for _, text in chunk], is_space_separated(args.language)
+                )
+            )
 
     Path(args.out).write_text(
         json.dumps({"lines": all_output}, ensure_ascii=False, indent=2), encoding="utf-8"

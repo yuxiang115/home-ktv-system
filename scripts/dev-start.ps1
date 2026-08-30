@@ -76,6 +76,9 @@ if ($py) {
 $ffCmd = Get-Command ffmpeg -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($ffCmd -and -not $env:FFMPEG_BIN) { $env:FFMPEG_BIN = $ffCmd.Source }
 if (-not $env:ONLINE_SUPPLEMENT_WORKFLOW) { $env:ONLINE_SUPPLEMENT_WORKFLOW = "youtube-enhanced" }
+# 推理服务(Mac 上的 oMLX):rename 用 LLM,LRCLIB 未命中时歌词转写用 ASR
+if (-not $env:KTV_LLM_BASE_URL) { $env:KTV_LLM_BASE_URL = "http://192.168.1.5:8000/v1"; $env:KTV_LLM_MODEL = "mlx-community/Qwen3.5-4B-MLX-4bit" }
+if (-not $env:KTV_ASR_BASE_URL) { $env:KTV_ASR_BASE_URL = "http://192.168.1.5:8000" }
 # 逐字对齐:python 环境装了 qwen-asr 才启用(未装则 align 阶段自动跳过)
 if ($py -and -not $env:ALIGNER_BIN) {
   & $py -c "import qwen_asr" 2>$null
